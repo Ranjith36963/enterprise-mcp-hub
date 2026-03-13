@@ -18,6 +18,9 @@ REED_API_KEY = os.getenv("REED_API_KEY", "")
 ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
 JSEARCH_API_KEY = os.getenv("JSEARCH_API_KEY", "")
+USAJOBS_API_KEY = os.getenv("USAJOBS_API_KEY", "")
+USAJOBS_EMAIL = os.getenv("USAJOBS_EMAIL", "")
+JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY", "")
 
 # Email
 SMTP_HOST = "smtp.gmail.com"
@@ -49,6 +52,16 @@ RATE_LIMITS = {
     "workable": {"concurrent": 2, "delay": 1.5},
     "ashby": {"concurrent": 2, "delay": 1.5},
     "findajob": {"concurrent": 1, "delay": 3.0},
+    "weworkremotely": {"concurrent": 2, "delay": 1.5},
+    "themuse": {"concurrent": 2, "delay": 1.0},
+    "usajobs": {"concurrent": 1, "delay": 2.0},
+    "careerjet": {"concurrent": 1, "delay": 2.0},
+    "jooble": {"concurrent": 1, "delay": 2.0},
+    "devitjobs": {"concurrent": 2, "delay": 1.0},
+    "jobsearch_gov_au": {"concurrent": 1, "delay": 2.0},
+    "relocate_me": {"concurrent": 2, "delay": 1.0},
+    "landingjobs": {"concurrent": 2, "delay": 1.0},
+    "nofluffjobs": {"concurrent": 2, "delay": 1.0},
 }
 
 # Retry

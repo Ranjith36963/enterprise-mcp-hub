@@ -54,10 +54,15 @@ def test_upload_cv_help():
     assert "CV_PATH" in result.output
 
 
-def test_source_registry_has_12_sources():
-    """SOURCE_REGISTRY should have all 12 sources."""
-    assert len(SOURCE_REGISTRY) == 12
-    expected = {"reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
-                "jobicy", "himalayas", "greenhouse", "lever", "workable",
-                "ashby", "findajob"}
+def test_source_registry_has_all_sources():
+    """SOURCE_REGISTRY should have all 22 sources."""
+    assert len(SOURCE_REGISTRY) == 22
+    expected = {
+        "reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
+        "jobicy", "himalayas", "greenhouse", "lever", "workable",
+        "ashby", "findajob",
+        "weworkremotely", "themuse", "usajobs", "careerjet",
+        "jooble", "devitjobs", "jobsearch_gov_au", "relocate_me",
+        "landingjobs", "nofluffjobs",
+    }
     assert set(SOURCE_REGISTRY.keys()) == expected

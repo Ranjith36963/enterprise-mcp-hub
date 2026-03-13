@@ -7,6 +7,7 @@ import aiohttp
 
 from src.config.settings import (
     REED_API_KEY, ADZUNA_APP_ID, ADZUNA_APP_KEY, JSEARCH_API_KEY,
+    USAJOBS_API_KEY, USAJOBS_EMAIL, JOOBLE_API_KEY,
     DB_PATH, EXPORTS_DIR, REPORTS_DIR, REQUEST_TIMEOUT, MIN_MATCH_SCORE,
 )
 from src.utils.logger import setup_logging
@@ -33,6 +34,16 @@ from src.sources.lever import LeverSource
 from src.sources.workable import WorkableSource
 from src.sources.ashby import AshbySource
 from src.sources.findajob import FindAJobSource
+from src.sources.weworkremotely import WeWorkRemotelySource
+from src.sources.themuse import TheMuseSource
+from src.sources.usajobs import USAJobsSource
+from src.sources.careerjet import CareerjetSource
+from src.sources.jooble import JoobleSource
+from src.sources.devitjobs import DevITJobsSource
+from src.sources.jobsearch_gov_au import JobSearchGovAUSource
+from src.sources.relocate_me import RelocateMeSource
+from src.sources.landingjobs import LandingJobsSource
+from src.sources.nofluffjobs import NoFluffJobsSource
 
 logger = logging.getLogger("job360.main")
 
@@ -50,21 +61,40 @@ SOURCE_REGISTRY = {
     "workable": WorkableSource,
     "ashby": AshbySource,
     "findajob": FindAJobSource,
+    "weworkremotely": WeWorkRemotelySource,
+    "themuse": TheMuseSource,
+    "usajobs": USAJobsSource,
+    "careerjet": CareerjetSource,
+    "jooble": JoobleSource,
+    "devitjobs": DevITJobsSource,
+    "jobsearch_gov_au": JobSearchGovAUSource,
+    "relocate_me": RelocateMeSource,
+    "landingjobs": LandingJobsSource,
+    "nofluffjobs": NoFluffJobsSource,
 }
 
 
 def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = None) -> list:
     """Build source instances, optionally filtered to a single source."""
     all_sources = [
-        # Group A: Keyed APIs
+        # Group A: Keyed APIs (free tier)
         ReedSource(session, api_key=REED_API_KEY),
         AdzunaSource(session, app_id=ADZUNA_APP_ID, app_key=ADZUNA_APP_KEY),
         JSearchSource(session, api_key=JSEARCH_API_KEY),
-        # Group B: Free APIs
+        USAJobsSource(session, api_key=USAJOBS_API_KEY, email=USAJOBS_EMAIL),
+        JoobleSource(session, api_key=JOOBLE_API_KEY),
+        # Group B: Free APIs (no key needed)
         ArbeitnowSource(session),
         RemoteOKSource(session),
         JobicySource(session),
         HimalayasSource(session),
+        WeWorkRemotelySource(session),
+        TheMuseSource(session),
+        CareerjetSource(session),
+        DevITJobsSource(session),
+        RelocateMeSource(session),
+        LandingJobsSource(session),
+        NoFluffJobsSource(session),
         # Group C: ATS boards
         GreenhouseSource(session),
         LeverSource(session),
@@ -72,6 +102,7 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         AshbySource(session),
         # Group D: Government
         FindAJobSource(session),
+        JobSearchGovAUSource(session),
     ]
     if source_filter:
         return [s for s in all_sources if s.name == source_filter]

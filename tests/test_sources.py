@@ -15,6 +15,16 @@ from src.sources.lever import LeverSource
 from src.sources.workable import WorkableSource
 from src.sources.ashby import AshbySource
 from src.sources.findajob import FindAJobSource
+from src.sources.weworkremotely import WeWorkRemotelySource
+from src.sources.themuse import TheMuseSource
+from src.sources.usajobs import USAJobsSource
+from src.sources.careerjet import CareerjetSource
+from src.sources.jooble import JoobleSource
+from src.sources.devitjobs import DevITJobsSource
+from src.sources.jobsearch_gov_au import JobSearchGovAUSource
+from src.sources.relocate_me import RelocateMeSource
+from src.sources.landingjobs import LandingJobsSource
+from src.sources.nofluffjobs import NoFluffJobsSource
 
 
 def _run(coro):
@@ -296,6 +306,244 @@ def test_findajob_parses_html():
                 assert len(jobs) >= 1
                 assert jobs[0].source == "findajob"
                 assert "findajob.dwp.gov.uk" in jobs[0].apply_url
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_weworkremotely_parses_rss():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            rss_xml = """<?xml version="1.0"?>
+            <rss><channel>
+            <item>
+                <title><![CDATA[Senior Python Engineer]]></title>
+                <link>https://weworkremotely.com/jobs/123</link>
+                <company><![CDATA[Acme Corp]]></company>
+                <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+                <description><![CDATA[Python developer with Django and AWS experience]]></description>
+            </item>
+            </channel></rss>"""
+            with aioresponses() as m:
+                m.get(re.compile(r"https://weworkremotely\.com/categories/.*"),
+                      body=rss_xml, content_type="text/xml", repeat=True)
+                source = WeWorkRemotelySource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "weworkremotely"
+                assert jobs[0].location == "Remote"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_themuse_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://www\.themuse\.com/api/public/jobs.*"), payload={"results": [{
+                    "name": "Software Engineer",
+                    "company": {"name": "Google"},
+                    "locations": [{"name": "London, UK"}],
+                    "contents": "<p>Python developer role</p>",
+                    "refs": {"landing_page": "https://themuse.com/jobs/google/123"},
+                    "publication_date": "2024-01-01",
+                }]}, repeat=True)
+                source = TheMuseSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "themuse"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_usajobs_skips_without_key():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            source = USAJobsSource(session, api_key="", email="")
+            jobs = await source.fetch_jobs()
+            assert jobs == []
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_usajobs_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://data\.usajobs\.gov/api/Search.*"), payload={
+                    "SearchResult": {"SearchResultItems": [{
+                        "MatchedObjectDescriptor": {
+                            "PositionTitle": "IT Specialist",
+                            "OrganizationName": "Department of Defense",
+                            "QualificationSummary": "Python and AWS required",
+                            "PositionURI": "https://usajobs.gov/job/123",
+                            "PositionLocation": [{"CityName": "Washington", "CountrySubDivisionCode": "DC"}],
+                            "PositionRemuneration": [{"MinimumRange": "80000", "MaximumRange": "120000"}],
+                            "PublicationStartDate": "2024-01-01",
+                        }
+                    }]}
+                }, repeat=True)
+                source = USAJobsSource(session, api_key="test", email="test@test.com")
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "usajobs"
+                assert jobs[0].salary_min == 80000.0
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_careerjet_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"http://public\.api\.careerjet\.net/search.*"), payload={"jobs": [{
+                    "title": "Python Developer",
+                    "company": "TechCorp",
+                    "locations": "London",
+                    "description": "Python role",
+                    "url": "https://careerjet.co.uk/job/123",
+                    "date": "2024-01-01",
+                }]}, repeat=True)
+                source = CareerjetSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "careerjet"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_jooble_skips_without_key():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            source = JoobleSource(session, api_key="")
+            jobs = await source.fetch_jobs()
+            assert jobs == []
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_jooble_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.post(re.compile(r"https://jooble\.org/api/.*"), payload={"jobs": [{
+                    "title": "Data Engineer",
+                    "company": "DataCo",
+                    "location": "London",
+                    "snippet": "Python SQL role",
+                    "link": "https://jooble.org/job/123",
+                    "updated": "2024-01-01",
+                }]}, repeat=True)
+                source = JoobleSource(session, api_key="test-key")
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "jooble"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_devitjobs_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://devitjobs\.com/api/jobsLight.*"), payload=[{
+                    "title": "React Developer",
+                    "companyName": "WebCo",
+                    "description": "React and TypeScript role with Python backend",
+                    "slug": "react-dev-123",
+                    "cityName": "Berlin",
+                    "salaryFrom": 50000,
+                    "salaryTo": 70000,
+                    "createdAt": "2024-01-01",
+                }])
+                source = DevITJobsSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "devitjobs"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_relocateme_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://relocate\.me/api/.*"), payload=[{
+                    "title": "Backend Engineer",
+                    "company": "StartupX",
+                    "description": "Python Django role with relocation",
+                    "location": "Amsterdam",
+                    "url": "https://relocate.me/jobs/123",
+                    "published_at": "2024-01-01",
+                }], repeat=True)
+                source = RelocateMeSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "relocate_me"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_landingjobs_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://landing\.jobs/api/.*"), payload={"data": [{
+                    "title": "Full Stack Developer",
+                    "company": {"name": "EUTech"},
+                    "description": "Python React role",
+                    "city": "Lisbon",
+                    "url": "https://landing.jobs/job/123",
+                    "salary_from": 40000,
+                    "salary_to": 60000,
+                    "published_at": "2024-01-01",
+                }]})
+                source = LandingJobsSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "landingjobs"
+        finally:
+            await session.close()
+    _run(_test())
+
+
+def test_nofluffjobs_parses_response():
+    async def _test():
+        session = aiohttp.ClientSession()
+        try:
+            with aioresponses() as m:
+                m.get(re.compile(r"https://nofluffjobs\.com/api/posting.*"), payload={"postings": [{
+                    "title": "Java Developer",
+                    "company": {"name": "PolishTech"},
+                    "technology": ["Java", "Spring"],
+                    "location": {"places": [{"city": "Warsaw"}]},
+                    "url": "java-dev-123",
+                    "salary": {"from": 15000, "to": 25000},
+                    "posted": "2024-01-01",
+                }]})
+                source = NoFluffJobsSource(session)
+                jobs = await source.fetch_jobs()
+                assert len(jobs) >= 1
+                assert jobs[0].source == "nofluffjobs"
         finally:
             await session.close()
     _run(_test())
