@@ -121,7 +121,7 @@ with st.sidebar:
         visa_filter = "All"
 
     st.divider()
-    st.subheader("CV Profile")
+    st.subheader("Your Profile")
 
     from src.cv_parser import (
         extract_text,
@@ -129,65 +129,248 @@ with st.sidebar:
         save_profile,
         load_profile,
     )
-    from src.filters.skill_matcher import reload_profile
-    from src.config.settings import CV_PROFILE_PATH
-
-    uploaded_cv = st.file_uploader(
-        "Upload CV (PDF/DOCX)",
-        type=["pdf", "docx"],
-        key="cv_upload",
-        help="Upload your CV to personalise job matching. "
-        "Skills are extracted automatically and used to score jobs.",
+    from src.preferences import (
+        load_preferences,
+        save_preferences,
+        get_empty_preferences,
     )
+    from src.filters.skill_matcher import reload_profile
+    from src.config.settings import CV_PROFILE_PATH, USER_PREFERENCES_PATH
 
-    if uploaded_cv is not None:
-        suffix = Path(uploaded_cv.name).suffix
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
-        try:
-            os.write(tmp_fd, uploaded_cv.getvalue())
-            os.close(tmp_fd)
-            text = extract_text(tmp_path)
-            profile = extract_profile(text)
-            profile["source_file"] = uploaded_cv.name
-            save_profile(profile)
-            reload_profile()
-            total_skills = (
-                len(profile["primary_skills"])
-                + len(profile["secondary_skills"])
-                + len(profile["tertiary_skills"])
-            )
-            st.success(
-                f"Extracted {total_skills} skills from **{uploaded_cv.name}**"
-            )
-            st.cache_data.clear()
-            st.rerun()
-        except (ValueError, FileNotFoundError) as exc:
-            st.error(f"Failed to process CV: {exc}")
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+    # --- Tab layout for the three input layers ---
+    cv_tab, prefs_tab, linkedin_tab = st.tabs(["CV", "Preferences", "LinkedIn"])
 
-    _cv_profile = load_profile()
-    if _cv_profile:
-        st.success(f"Active: {_cv_profile.get('source_file', 'unknown')}")
-        st.caption(f"Extracted: {_cv_profile.get('extracted_at', 'N/A')}")
-        with st.expander("Skills Profile"):
-            for label, key in [
-                ("Job Titles", "job_titles"),
-                ("Primary Skills", "primary_skills"),
-                ("Secondary Skills", "secondary_skills"),
-                ("Tertiary Skills", "tertiary_skills"),
-                ("Locations", "locations"),
-            ]:
-                items = _cv_profile.get(key, [])
-                st.write(f"**{label} ({len(items)}):** {', '.join(items) if items else 'None'}")
-        if st.button("Reset to Default Profile", use_container_width=True):
-            CV_PROFILE_PATH.unlink(missing_ok=True)
+    # ---- TAB 1: CV Upload ----
+    with cv_tab:
+        uploaded_cv = st.file_uploader(
+            "Upload CV (PDF/DOCX)",
+            type=["pdf", "docx"],
+            key="cv_upload",
+            help="Upload your CV to personalise job matching. "
+            "Skills are extracted automatically.",
+        )
+
+        if uploaded_cv is not None:
+            suffix = Path(uploaded_cv.name).suffix
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+            try:
+                os.write(tmp_fd, uploaded_cv.getvalue())
+                os.close(tmp_fd)
+                text = extract_text(tmp_path)
+                profile = extract_profile(text)
+                profile["source_file"] = uploaded_cv.name
+                save_profile(profile)
+                reload_profile()
+                total_skills = (
+                    len(profile["primary_skills"])
+                    + len(profile["secondary_skills"])
+                    + len(profile["tertiary_skills"])
+                )
+                st.success(
+                    f"Extracted {total_skills} skills from **{uploaded_cv.name}**"
+                )
+                st.cache_data.clear()
+                st.rerun()
+            except (ValueError, FileNotFoundError) as exc:
+                st.error(f"Failed to process CV: {exc}")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        _cv_profile = load_profile()
+        if _cv_profile:
+            st.success(f"Active: {_cv_profile.get('source_file', 'unknown')}")
+            st.caption(f"Extracted: {_cv_profile.get('extracted_at', 'N/A')}")
+            with st.expander("CV Skills Profile"):
+                for label, key in [
+                    ("Job Titles", "job_titles"),
+                    ("Primary Skills", "primary_skills"),
+                    ("Secondary Skills", "secondary_skills"),
+                    ("Tertiary Skills", "tertiary_skills"),
+                    ("Locations", "locations"),
+                ]:
+                    items = _cv_profile.get(key, [])
+                    st.write(f"**{label} ({len(items)}):** {', '.join(items) if items else 'None'}")
+            if st.button("Reset CV Profile", use_container_width=True):
+                CV_PROFILE_PATH.unlink(missing_ok=True)
+                reload_profile()
+                st.cache_data.clear()
+                st.rerun()
+        else:
+            st.info("No CV uploaded yet.")
+
+    # ---- TAB 2: Preferences ----
+    with prefs_tab:
+        st.caption("Add info beyond your CV — titles you'd accept, skills you know, etc.")
+        _prefs = load_preferences() or get_empty_preferences()
+
+        pref_titles = st.text_area(
+            "Job Titles (one per line)",
+            value="\n".join(_prefs.get("job_titles", [])),
+            height=80,
+            key="pref_titles",
+            help="Roles you'd consider, e.g. 'AI Platform Engineer', 'Cloud ML Engineer'",
+        )
+        pref_skills = st.text_area(
+            "Skills (one per line)",
+            value="\n".join(_prefs.get("skills", [])),
+            height=80,
+            key="pref_skills",
+            help="Skills you have but may not be on your CV, e.g. 'Azure', 'GCP'",
+        )
+        pref_locations = st.text_area(
+            "Locations (one per line)",
+            value="\n".join(_prefs.get("locations", [])),
+            height=60,
+            key="pref_locations",
+            help="Where you'd like to work, e.g. 'Remote', 'London', 'Berlin'",
+        )
+        pref_about = st.text_area(
+            "About Me",
+            value=_prefs.get("about_me", ""),
+            height=80,
+            key="pref_about",
+            help="Brief career objective or personal summary",
+        )
+        pref_projects = st.text_area(
+            "Projects (one per line)",
+            value="\n".join(_prefs.get("projects", [])),
+            height=80,
+            key="pref_projects",
+            help="Notable projects you've worked on",
+        )
+        pref_certs = st.text_area(
+            "Certifications / Licenses (one per line)",
+            value="\n".join(_prefs.get("certifications", [])),
+            height=60,
+            key="pref_certs",
+            help="e.g. 'AWS Solutions Architect', 'PMP', 'CKA'",
+        )
+
+        if st.button("Save Preferences", use_container_width=True, type="primary"):
+            new_prefs = {
+                "job_titles": [t.strip() for t in pref_titles.strip().split("\n") if t.strip()],
+                "skills": [s.strip() for s in pref_skills.strip().split("\n") if s.strip()],
+                "locations": [l.strip() for l in pref_locations.strip().split("\n") if l.strip()],
+                "about_me": pref_about.strip(),
+                "projects": [p.strip() for p in pref_projects.strip().split("\n") if p.strip()],
+                "certifications": [c.strip() for c in pref_certs.strip().split("\n") if c.strip()],
+            }
+            # Preserve LinkedIn data if it was imported
+            if _prefs.get("linkedin"):
+                new_prefs["linkedin"] = _prefs["linkedin"]
+            save_preferences(new_prefs)
             reload_profile()
             st.cache_data.clear()
+            st.success("Preferences saved!")
             st.rerun()
+
+        if load_preferences():
+            if st.button("Clear Preferences", use_container_width=True):
+                USER_PREFERENCES_PATH.unlink(missing_ok=True)
+                reload_profile()
+                st.cache_data.clear()
+                st.rerun()
+
+    # ---- TAB 3: LinkedIn Import ----
+    with linkedin_tab:
+        st.caption(
+            "Import your LinkedIn data export (ZIP) for comprehensive profile data. "
+            "Download from LinkedIn: Settings > Data Privacy > Get a copy of your data."
+        )
+        uploaded_linkedin = st.file_uploader(
+            "Upload LinkedIn Export (ZIP)",
+            type=["zip"],
+            key="linkedin_upload",
+        )
+
+        if uploaded_linkedin is not None:
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+            try:
+                os.write(tmp_fd, uploaded_linkedin.getvalue())
+                os.close(tmp_fd)
+                from src.linkedin_import import parse_linkedin_zip
+                li_data = parse_linkedin_zip(tmp_path)
+                # Store LinkedIn data inside preferences
+                prefs_current = load_preferences() or get_empty_preferences()
+                prefs_current["linkedin"] = li_data
+                save_preferences(prefs_current)
+                reload_profile()
+                st.success(
+                    f"LinkedIn imported: {len(li_data.get('job_titles', []))} titles, "
+                    f"{len(li_data.get('skills', []))} skills, "
+                    f"{len(li_data.get('certifications', []))} certifications"
+                )
+                st.cache_data.clear()
+                st.rerun()
+            except (ValueError, FileNotFoundError) as exc:
+                st.error(f"Failed to process LinkedIn export: {exc}")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        # Show LinkedIn data if imported
+        _prefs_li = load_preferences()
+        if _prefs_li and _prefs_li.get("linkedin"):
+            li = _prefs_li["linkedin"]
+            with st.expander("LinkedIn Data"):
+                for label, key in [
+                    ("Job Titles", "job_titles"),
+                    ("Skills", "skills"),
+                    ("Locations", "locations"),
+                    ("Certifications", "certifications"),
+                    ("Companies", "companies"),
+                    ("Education", "education"),
+                    ("Projects", "projects"),
+                ]:
+                    items = li.get(key, [])
+                    if items:
+                        st.write(f"**{label} ({len(items)}):** {', '.join(items[:20])}")
+            if st.button("Remove LinkedIn Data", use_container_width=True):
+                _prefs_li.pop("linkedin", None)
+                save_preferences(_prefs_li)
+                reload_profile()
+                st.cache_data.clear()
+                st.rerun()
+        else:
+            st.info("No LinkedIn data imported yet.")
+
+    # ---- Merged Profile Summary ----
+    st.divider()
+    from src.filters.skill_matcher import _load_active_profile
+    _merged = _load_active_profile()
+    _has_cv = load_profile() is not None
+    _has_prefs = load_preferences() is not None
+    _sources = []
+    if _has_cv:
+        _sources.append("CV")
+    if _has_prefs:
+        _sources.append("Preferences")
+        if (load_preferences() or {}).get("linkedin"):
+            _sources.append("LinkedIn")
+    if _sources:
+        st.caption(f"Active sources: {', '.join(_sources)}")
+        with st.expander("Merged Profile"):
+            st.write(f"**Job Titles ({len(_merged.get('job_titles', []))}):** "
+                     f"{', '.join(_merged.get('job_titles', [])[:15]) or 'None'}")
+            st.write(f"**Primary Skills ({len(_merged.get('primary_skills', []))}):** "
+                     f"{', '.join(_merged.get('primary_skills', [])[:15]) or 'None'}")
+            st.write(f"**Secondary Skills ({len(_merged.get('secondary_skills', []))}):** "
+                     f"{', '.join(_merged.get('secondary_skills', [])[:15]) or 'None'}")
+            st.write(f"**Tertiary Skills ({len(_merged.get('tertiary_skills', []))}):** "
+                     f"{', '.join(_merged.get('tertiary_skills', [])[:15]) or 'None'}")
+            st.write(f"**Locations ({len(_merged.get('locations', []))}):** "
+                     f"{', '.join(_merged.get('locations', [])) or 'None'}")
     else:
-        st.info("No CV uploaded. Using default profile.")
+        st.info("No profile data. Upload a CV or set preferences to personalise your search.")
+
+    if _has_cv or _has_prefs:
+        if st.button("Reset Everything", use_container_width=True):
+            CV_PROFILE_PATH.unlink(missing_ok=True)
+            USER_PREFERENCES_PATH.unlink(missing_ok=True)
+            reload_profile()
+            st.cache_data.clear()
+            st.rerun()
 
     st.divider()
     st.subheader("\u2699\uFE0F Actions")
@@ -254,7 +437,7 @@ if trigger_search:
 # Header
 # ---------------------------------------------------------------------------
 st.title("\U0001F4BC Job360 Dashboard")
-st.caption("Personalised Job Search Aggregator — Powered by Your CV")
+st.caption("Personalised Job Search Aggregator — Powered by Your CV, Preferences & LinkedIn")
 
 # ---------------------------------------------------------------------------
 # Empty state

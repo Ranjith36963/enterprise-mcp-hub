@@ -1,11 +1,15 @@
 """Skill matcher — scores jobs against the active user profile.
 
-When a CV profile exists, scoring is personalised to THAT user's skills,
-titles, and locations.  Without a CV, falls back to the default AI/ML
-keywords in config/keywords.py.
+The active profile is built by merging up to THREE input layers:
+1. **CV** — proven strengths extracted from the user's resume
+2. **Preferences** — additional titles, skills, locations the user wants
+3. **LinkedIn export** — full professional history (optional)
+
+When none of these exist, falls back to the default keywords in
+config/keywords.py.
 
 The scoring engine is domain-agnostic: it derives all matching terms
-from the active profile rather than using hardcoded domain words.
+from the merged profile rather than using hardcoded domain words.
 """
 
 import re
@@ -21,6 +25,7 @@ from src.config.keywords import (
     VISA_KEYWORDS,
 )
 from src.cv_parser import load_profile
+from src.preferences import load_preferences
 
 # Weights for scoring components (total = 100)
 TITLE_WEIGHT = 20
@@ -37,15 +42,108 @@ SKILL_CAP = SKILL_WEIGHT
 _cached_profile: dict | None = None
 
 
+def _unique_list(items: list) -> list:
+    """Deduplicate a list while preserving order (case-insensitive)."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        key = item.lower().strip()
+        if key and key not in seen:
+            seen.add(key)
+            result.append(item.strip())
+    return result
+
+
+def _merge_profile_and_preferences(cv_profile: dict | None, prefs: dict | None) -> dict:
+    """Merge CV profile + user preferences into a single unified profile.
+
+    Priority: CV skills keep their tier. Preference skills are added as
+    secondary (they're things the user CAN do but hasn't proven on CV).
+    Preference job titles and locations are appended to CV-extracted ones.
+    """
+    base = {
+        "job_titles": [],
+        "primary_skills": [],
+        "secondary_skills": [],
+        "tertiary_skills": [],
+        "locations": [],
+    }
+
+    # Layer 1: CV profile (proven strengths)
+    if cv_profile:
+        base["job_titles"] = list(cv_profile.get("job_titles", []))
+        base["primary_skills"] = list(cv_profile.get("primary_skills", []))
+        base["secondary_skills"] = list(cv_profile.get("secondary_skills", []))
+        base["tertiary_skills"] = list(cv_profile.get("tertiary_skills", []))
+        base["locations"] = list(cv_profile.get("locations", []))
+
+    # Layer 2: User preferences (what they WANT and CAN do)
+    if prefs:
+        # Preference titles go after CV titles
+        base["job_titles"].extend(prefs.get("job_titles", []))
+        # Preference skills → secondary (user says they can do it, not proven on CV)
+        base["secondary_skills"].extend(prefs.get("skills", []))
+        # Preference locations
+        base["locations"].extend(prefs.get("locations", []))
+        # Extract skill-like terms from projects, certifications, about_me
+        extra_text = " ".join([
+            prefs.get("about_me", ""),
+            " ".join(prefs.get("projects", [])),
+            " ".join(prefs.get("certifications", [])),
+        ])
+        if extra_text.strip():
+            # Add these as tertiary (background signal, not primary skills)
+            from src.cv_parser import _find_skills_in_text
+            extra_skills = _find_skills_in_text(extra_text)
+            existing = {s.lower() for s in base["primary_skills"] + base["secondary_skills"] + base["tertiary_skills"]}
+            for skill in extra_skills:
+                if skill.lower() not in existing:
+                    base["tertiary_skills"].append(skill)
+
+    # Layer 3: LinkedIn data (stored in preferences under "linkedin" key)
+    linkedin = prefs.get("linkedin", {}) if prefs else {}
+    if linkedin:
+        base["job_titles"].extend(linkedin.get("job_titles", []))
+        # LinkedIn skills → secondary
+        base["secondary_skills"].extend(linkedin.get("skills", []))
+        base["locations"].extend(linkedin.get("locations", []))
+        # Certifications/projects → mine for skill terms as tertiary
+        extra = " ".join(linkedin.get("certifications", []) + linkedin.get("projects", []))
+        if extra.strip():
+            from src.cv_parser import _find_skills_in_text
+            cert_skills = _find_skills_in_text(extra)
+            existing = {s.lower() for s in base["primary_skills"] + base["secondary_skills"] + base["tertiary_skills"]}
+            for skill in cert_skills:
+                if skill.lower() not in existing:
+                    base["tertiary_skills"].append(skill)
+
+    # Deduplicate all lists
+    base["job_titles"] = _unique_list(base["job_titles"])
+    base["primary_skills"] = _unique_list(base["primary_skills"])
+    base["secondary_skills"] = _unique_list(base["secondary_skills"])
+    base["tertiary_skills"] = _unique_list(base["tertiary_skills"])
+    base["locations"] = _unique_list(base["locations"])
+
+    # Remove secondary/tertiary skills that are already primary (avoid double-counting)
+    primary_lower = {s.lower() for s in base["primary_skills"]}
+    base["secondary_skills"] = [s for s in base["secondary_skills"] if s.lower() not in primary_lower]
+    secondary_lower = primary_lower | {s.lower() for s in base["secondary_skills"]}
+    base["tertiary_skills"] = [s for s in base["tertiary_skills"] if s.lower() not in secondary_lower]
+
+    return base
+
+
 def _load_active_profile() -> dict:
-    """Return the active keyword profile (CV-based or default)."""
+    """Return the active keyword profile (merged from CV + preferences + LinkedIn)."""
     global _cached_profile
     if _cached_profile is not None:
         return _cached_profile
 
-    profile = load_profile()
-    if profile:
-        _cached_profile = profile
+    cv_profile = load_profile()
+    prefs = load_preferences()
+
+    if cv_profile or prefs:
+        _cached_profile = _merge_profile_and_preferences(cv_profile, prefs)
     else:
         _cached_profile = {
             "job_titles": JOB_TITLES,

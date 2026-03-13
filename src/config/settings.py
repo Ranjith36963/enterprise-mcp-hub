@@ -11,6 +11,7 @@ EXPORTS_DIR = DATA_DIR / "exports"
 REPORTS_DIR = DATA_DIR / "reports"
 LOGS_DIR = DATA_DIR / "logs"
 CV_PROFILE_PATH = DATA_DIR / "cv_profile.json"
+USER_PREFERENCES_PATH = DATA_DIR / "user_preferences.json"
 
 # API Keys (Group A)
 REED_API_KEY = os.getenv("REED_API_KEY", "")
