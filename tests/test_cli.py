@@ -40,14 +40,33 @@ def test_sources_command():
         assert name in result.output
 
 
-def test_source_registry_has_24_sources():
-    """SOURCE_REGISTRY should have all 24 sources."""
+def test_upload_cv_in_commands():
+    """upload-cv command should appear in CLI help."""
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "upload-cv" in result.output
+
+
+def test_upload_cv_help():
+    """upload-cv --help should show CV_PATH argument."""
+    result = runner.invoke(cli, ["upload-cv", "--help"])
+    assert result.exit_code == 0
+    assert "CV_PATH" in result.output
+
+
+def test_source_registry_has_all_sources():
+    """SOURCE_REGISTRY should have all 24 UK-focused sources."""
     assert len(SOURCE_REGISTRY) == 24
-    expected = {"reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
-                "jobicy", "himalayas", "greenhouse", "lever", "workable",
-                "ashby", "findajob", "remotive", "jooble", "linkedin",
-                "smartrecruiters", "pinpoint", "recruitee", "indeed", "glassdoor",
-                "workday", "google_jobs", "devitjobs", "landingjobs"}
+    expected = {
+        "reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
+        "jobicy", "himalayas", "greenhouse", "lever", "workable",
+        "ashby", "findajob",
+        "weworkremotely", "themuse", "careerjet",
+        "jooble", "devitjobs", "relocate_me",
+        "landingjobs", "nofluffjobs",
+        "remotive", "smartrecruiters", "recruitee",
+        "findwork",
+    }
     assert set(SOURCE_REGISTRY.keys()) == expected
 
 

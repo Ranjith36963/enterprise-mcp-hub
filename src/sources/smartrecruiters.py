@@ -1,3 +1,10 @@
+"""SmartRecruiters — ATS with free public posting API.
+
+No API key needed. JSON API.
+Covers: large enterprise companies (Visa, Bosch, Siemens, Adidas, etc.)
+URL: https://developers.smartrecruiters.com/
+"""
+
 import re
 import logging
 from datetime import datetime, timezone
@@ -7,7 +14,7 @@ import aiohttp
 from src.models import Job
 from src.sources.base import BaseJobSource
 from src.config.companies import SMARTRECRUITERS_COMPANIES, COMPANY_NAME_OVERRIDES
-from src.config.keywords import RELEVANCE_KEYWORDS
+from src.filters.skill_matcher import get_relevance_keywords
 
 logger = logging.getLogger("job360.sources.smartrecruiters")
 
@@ -23,32 +30,44 @@ class SmartRecruitersSource(BaseJobSource):
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []
+        keywords = get_relevance_keywords()
+
         for slug in self._companies:
-            url = f"https://api.smartrecruiters.com/v1/companies/{slug}/postings"
-            data = await self._get_json(url, params={"limit": "100"})
+            data = await self._get_json(
+                f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+                params={"limit": 100},
+            )
             if not data or "content" not in data:
                 continue
             company_name = COMPANY_NAME_OVERRIDES.get(slug, slug.replace("-", " ").title())
             for item in data["content"]:
                 title = item.get("name", "")
-                text = title.lower()
-                if not any(kw in text for kw in RELEVANCE_KEYWORDS):
-                    continue
+                desc = item.get("customField", [])
+                # SmartRecruiters uses department/location objects
+                dept = item.get("department", {})
+                dept_name = dept.get("label", "") if isinstance(dept, dict) else ""
                 loc = item.get("location", {})
                 if isinstance(loc, dict):
                     city = loc.get("city", "")
                     country = loc.get("country", "")
-                    location = f"{city}, {country}".strip(", ")
+                    location = f"{city}, {country}".strip(", ") if city else country
                 else:
-                    location = str(loc)
-                ref = item.get("ref", "")
-                apply_url = ref if ref.startswith("http") else f"https://jobs.smartrecruiters.com/{slug}/{item.get('id', '')}"
-                date_found = item.get("releasedDate") or datetime.now(timezone.utc).isoformat()
+                    location = str(loc) if loc else ""
+
+                text = f"{title} {dept_name}".lower()
+                if not any(kw in text for kw in keywords):
+                    continue
+
+                ref = item.get("ref", "") or item.get("id", "")
+                apply_url = item.get("ref", "")
+                if not apply_url or not apply_url.startswith("http"):
+                    apply_url = f"https://jobs.smartrecruiters.com/{slug}/{ref}"
+                date_found = item.get("releasedDate", "") or datetime.now(timezone.utc).isoformat()
                 jobs.append(Job(
                     title=title,
                     company=company_name,
-                    location=location,
-                    description="",
+                    location=location or "Global",
+                    description=dept_name,
                     apply_url=apply_url,
                     source=self.name,
                     date_found=date_found,

@@ -10,7 +10,7 @@ import aiohttp
 
 from src.config.settings import (
     REED_API_KEY, ADZUNA_APP_ID, ADZUNA_APP_KEY, JSEARCH_API_KEY,
-    JOOBLE_API_KEY, SERPAPI_KEY,
+    JOOBLE_API_KEY, FINDWORK_API_KEY,
     DB_PATH, EXPORTS_DIR, REPORTS_DIR, REQUEST_TIMEOUT, MIN_MATCH_SCORE,
 )
 from src.utils.logger import setup_logging
@@ -37,17 +37,18 @@ from src.sources.lever import LeverSource
 from src.sources.workable import WorkableSource
 from src.sources.ashby import AshbySource
 from src.sources.findajob import FindAJobSource
-from src.sources.remotive import RemotiveSource
+from src.sources.weworkremotely import WeWorkRemotelySource
+from src.sources.themuse import TheMuseSource
+from src.sources.careerjet import CareerjetSource
 from src.sources.jooble import JoobleSource
-from src.sources.linkedin import LinkedInSource
-from src.sources.smartrecruiters import SmartRecruitersSource
-from src.sources.pinpoint import PinpointSource
-from src.sources.recruitee import RecruiteeSource
-from src.sources.indeed import JobSpySource
-from src.sources.workday import WorkdaySource
-from src.sources.google_jobs import GoogleJobsSource
 from src.sources.devitjobs import DevITJobsSource
+from src.sources.relocate_me import RelocateMeSource
 from src.sources.landingjobs import LandingJobsSource
+from src.sources.nofluffjobs import NoFluffJobsSource
+from src.sources.remotive import RemotiveSource
+from src.sources.smartrecruiters import SmartRecruitersSource
+from src.sources.recruitee import RecruiteeSource
+from src.sources.findwork import FindworkSource
 
 logger = logging.getLogger("job360.main")
 
@@ -65,18 +66,18 @@ SOURCE_REGISTRY = {
     "workable": WorkableSource,
     "ashby": AshbySource,
     "findajob": FindAJobSource,
-    "remotive": RemotiveSource,
+    "weworkremotely": WeWorkRemotelySource,
+    "themuse": TheMuseSource,
+    "careerjet": CareerjetSource,
     "jooble": JoobleSource,
-    "linkedin": LinkedInSource,
-    "smartrecruiters": SmartRecruitersSource,
-    "pinpoint": PinpointSource,
-    "recruitee": RecruiteeSource,
-    "indeed": JobSpySource,
-    "glassdoor": JobSpySource,
-    "workday": WorkdaySource,
-    "google_jobs": GoogleJobsSource,
     "devitjobs": DevITJobsSource,
+    "relocate_me": RelocateMeSource,
     "landingjobs": LandingJobsSource,
+    "nofluffjobs": NoFluffJobsSource,
+    "remotive": RemotiveSource,
+    "smartrecruiters": SmartRecruitersSource,
+    "recruitee": RecruiteeSource,
+    "findwork": FindworkSource,
 }
 
 
@@ -98,38 +99,34 @@ def _format_date(date_str: str) -> str:
 def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = None) -> list:
     """Build source instances, optionally filtered to a single source."""
     all_sources = [
-        # Group A: Keyed APIs
+        # Group A: Keyed APIs (free tier)
         ReedSource(session, api_key=REED_API_KEY),
         AdzunaSource(session, app_id=ADZUNA_APP_ID, app_key=ADZUNA_APP_KEY),
         JSearchSource(session, api_key=JSEARCH_API_KEY),
-        # Group B: Free APIs
+        JoobleSource(session, api_key=JOOBLE_API_KEY),
+        FindworkSource(session, api_key=FINDWORK_API_KEY),
+        # Group B: Free APIs (no key needed)
         ArbeitnowSource(session),
         RemoteOKSource(session),
         JobicySource(session),
         HimalayasSource(session),
+        WeWorkRemotelySource(session),
+        TheMuseSource(session),
+        CareerjetSource(session),
+        DevITJobsSource(session),
+        RelocateMeSource(session),
+        LandingJobsSource(session),
+        NoFluffJobsSource(session),
+        RemotiveSource(session),
         # Group C: ATS boards
         GreenhouseSource(session),
         LeverSource(session),
         WorkableSource(session),
         AshbySource(session),
-        # Group D: Government
-        FindAJobSource(session),
-        # Group E: New free APIs
-        RemotiveSource(session),
-        JoobleSource(session, api_key=JOOBLE_API_KEY),
-        LinkedInSource(session),
-        # Group F: New ATS boards
         SmartRecruitersSource(session),
-        PinpointSource(session),
         RecruiteeSource(session),
-        # Group G: Scraper-based
-        JobSpySource(session),
-        # Group H: Workday ATS
-        WorkdaySource(session),
-        # Group I: Real-time data sources
-        GoogleJobsSource(session, api_key=SERPAPI_KEY),
-        DevITJobsSource(session),
-        LandingJobsSource(session),
+        # Group D: Government (UK)
+        FindAJobSource(session),
     ]
     if source_filter:
         return [s for s in all_sources if s.name == source_filter]

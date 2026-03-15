@@ -1,0 +1,388 @@
+"""CV Parser — extracts a personalised skills profile from any PDF/DOCX CV.
+
+Two-layer extraction:
+1. **Database matching** — scans against KNOWN_SKILLS (400+ terms) for
+   recognised technologies.
+2. **Freeform discovery** — parses Skills sections, bullet points, and
+   contextual patterns ("experience with X", "proficient in Y") to find
+   terms NOT in the database.  This means even brand-new or niche tools
+   (Pulumi, Temporal, dbt Cloud, etc.) get captured automatically.
+
+Both layers feed into the same auto-categorisation logic (frequency +
+section position → primary / secondary / tertiary).
+"""
+
+import json
+import logging
+import re
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+from src.config.keywords import (
+    # Legacy fixed lists — used as fallback when no CV is uploaded
+    JOB_TITLES,
+    PRIMARY_SKILLS,
+    SECONDARY_SKILLS,
+    TERTIARY_SKILLS,
+    LOCATIONS,
+    # Broad multi-domain databases for open-ended extraction
+    KNOWN_SKILLS,
+    KNOWN_TITLE_PATTERNS,
+    KNOWN_LOCATIONS,
+)
+from src.config.settings import CV_PROFILE_PATH
+
+logger = logging.getLogger("job360.cv_parser")
+
+
+# ---------------------------------------------------------------------------
+# Text extraction (PDF / DOCX)
+# ---------------------------------------------------------------------------
+
+def extract_text(file_path: str) -> str:
+    """Extract raw text from a PDF or DOCX file."""
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        import pdfplumber
+        with pdfplumber.open(path) as pdf:
+            pages = [page.extract_text() or "" for page in pdf.pages]
+        return "\n".join(pages)
+    elif suffix == ".docx":
+        from docx import Document
+        doc = Document(str(path))
+        return "\n".join(para.text for para in doc.paragraphs)
+    else:
+        raise ValueError(f"Unsupported file type: {suffix}. Use .pdf or .docx")
+
+
+# ---------------------------------------------------------------------------
+# Legacy matcher (kept for backward compat in tests)
+# ---------------------------------------------------------------------------
+
+def _match_terms(text: str, master_list: list) -> list:
+    """Return all terms from master_list found in text (case-insensitive)."""
+    text_lower = text.lower()
+    return [term for term in master_list if term.lower() in text_lower]
+
+
+# ---------------------------------------------------------------------------
+# Smart extraction helpers
+# ---------------------------------------------------------------------------
+
+_SECTION_HEADERS = re.compile(
+    r"(?:^|\n)\s*(?:#+\s*)?("
+    r"skills?|technical\s+skills?|core\s+competenc|"
+    r"technologies|tech\s+stack|proficien|"
+    r"tools?\s*(?:&|and)?\s*technologies|"
+    r"key\s+skills?"
+    r")[\s:]*(?:\n|$)",
+    re.IGNORECASE,
+)
+
+
+def _find_skills_in_text(text: str) -> Counter:
+    """Scan *text* against the KNOWN_SKILLS database.
+
+    Returns a Counter mapping each found skill to the number of times
+    it appears.  Matching is case-insensitive and uses word-boundary
+    checks for short terms to avoid false positives (e.g. "R" inside
+    "Research").
+    """
+    text_lower = text.lower()
+    counts: Counter = Counter()
+
+    for skill in KNOWN_SKILLS:
+        skill_lower = skill.lower()
+        # For very short terms (<=2 chars) use word-boundary regex
+        if len(skill_lower) <= 2:
+            pattern = rf"\b{re.escape(skill_lower)}\b"
+            n = len(re.findall(pattern, text_lower))
+        else:
+            n = text_lower.count(skill_lower)
+        if n > 0:
+            counts[skill] = n
+
+    return counts
+
+
+def _find_job_titles(text: str) -> list[str]:
+    """Extract job titles mentioned in the CV text."""
+    text_lower = text.lower()
+    found = []
+    for title in KNOWN_TITLE_PATTERNS:
+        if title.lower() in text_lower:
+            found.append(title)
+    return found
+
+
+def _find_locations(text: str) -> list[str]:
+    """Extract locations mentioned in the CV text."""
+    text_lower = text.lower()
+    found = []
+    for loc in KNOWN_LOCATIONS:
+        loc_lower = loc.lower()
+        # Word-boundary check for short location names
+        if len(loc_lower) <= 3:
+            if re.search(rf"\b{re.escape(loc_lower)}\b", text_lower):
+                found.append(loc)
+        else:
+            if loc_lower in text_lower:
+                found.append(loc)
+    return found
+
+
+# ---------------------------------------------------------------------------
+# Freeform extraction — discovers skills NOT in the database
+# ---------------------------------------------------------------------------
+
+# Noise words to exclude from freeform extraction
+_NOISE_WORDS = {
+    "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "of",
+    "with", "from", "by", "as", "is", "was", "are", "were", "be", "been",
+    "have", "has", "had", "do", "does", "did", "will", "would", "can",
+    "could", "should", "may", "might", "must", "shall", "not", "no",
+    "but", "if", "so", "up", "out", "all", "my", "me", "we", "our",
+    "you", "your", "he", "she", "it", "its", "they", "them", "their",
+    "this", "that", "these", "those", "i", "am", "just", "also", "such",
+    "very", "well", "more", "most", "many", "much", "some", "any",
+    "each", "every", "both", "few", "other", "new", "old", "good",
+    "great", "high", "low", "best", "first", "last", "long", "own",
+    "same", "able", "about", "above", "after", "again", "between",
+    "through", "during", "before", "while", "since", "into", "over",
+    "under", "further", "then", "once", "here", "there", "when",
+    "where", "why", "how", "what", "which", "who", "whom", "than",
+    # Common CV filler words
+    "experience", "experienced", "years", "year", "worked", "working",
+    "developed", "developing", "development", "built", "building",
+    "managed", "managing", "management", "led", "leading", "lead",
+    "team", "teams", "project", "projects", "responsible", "role",
+    "company", "client", "clients", "various", "including", "using",
+    "across", "within", "strong", "knowledge", "understanding",
+    "skills", "skill", "expertise", "proficient", "proficiency",
+    "familiar", "hands-on", "etc", "based", "related", "focused",
+    "driven", "oriented", "level", "senior", "junior", "mid",
+    "per", "via", "e.g", "i.e", "key", "core", "full", "part",
+    "time", "day", "days", "month", "months", "current", "currently",
+}
+
+# Pattern to detect "experience with X, Y, Z" style phrases
+_CONTEXT_PATTERNS = re.compile(
+    r"(?:experience\s+(?:with|in|using)|"
+    r"proficient\s+(?:in|with)|"
+    r"skilled\s+(?:in|with|at)|"
+    r"expertise\s+(?:in|with)|"
+    r"knowledge\s+of|"
+    r"familiar\s+with|"
+    r"worked\s+(?:with|on|in)|"
+    r"hands[- ]on\s+(?:experience\s+)?(?:with|in)|"
+    r"competent\s+(?:in|with)|"
+    r"strong\s+(?:background\s+)?in|"
+    r"exposure\s+to)"
+    r"\s+(.+?)(?:\.(?:\s|$)|\n|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Split on common list separators
+_LIST_SPLIT = re.compile(r"[,;|/•·–—\n]+")
+
+
+def _extract_skills_section_text(text: str) -> list[str]:
+    """Extract all text within Skills-type sections."""
+    sections: list[str] = []
+    for m in _SECTION_HEADERS.finditer(text):
+        # Grab text until next section header or end-of-text (max 1500 chars)
+        start = m.end()
+        end = start + 1500
+        # Look for the next section header to stop
+        next_header = re.search(
+            r"\n\s*(?:#+\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*[\n:]",
+            text[start:end],
+        )
+        if next_header:
+            end = start + next_header.start()
+        sections.append(text[start:end])
+    return sections
+
+
+def _split_list_items(text: str) -> list[str]:
+    """Split comma/bullet/pipe-separated text into individual items."""
+    items = _LIST_SPLIT.split(text)
+    cleaned = []
+    for item in items:
+        item = item.strip().strip("-").strip("•").strip()
+        # Strip leading "and"/"or" (e.g. "and Metaflow" → "Metaflow")
+        item = re.sub(r'^(?:and|or)\s+', '', item, flags=re.IGNORECASE).strip()
+        # Skip very long phrases (likely sentences, not skill names)
+        if 1 < len(item) < 50:
+            cleaned.append(item)
+    return cleaned
+
+
+def _is_likely_skill(term: str) -> bool:
+    """Heuristic: does this look like a technology/skill name?"""
+    term = term.strip()
+    if not term or len(term) < 2:
+        return False
+    # All lowercase noise?
+    if term.lower() in _NOISE_WORDS:
+        return False
+    # Too many words → probably a sentence fragment
+    words = term.split()
+    if len(words) > 4:
+        return False
+    # Must contain at least one alphanumeric character
+    if not re.search(r'[a-zA-Z0-9]', term):
+        return False
+    # Skip if it's just numbers
+    if re.match(r'^[\d\s.,%]+$', term):
+        return False
+    return True
+
+
+def _discover_freeform_skills(text: str) -> Counter:
+    """Discover skills from CV structure that are NOT in the KNOWN_SKILLS db.
+
+    Scans:
+    1. Skills/Technologies sections → extract all listed items
+    2. Contextual patterns ("experience with X, Y, Z")
+    3. These are merged with database matches to ensure nothing is missed.
+    """
+    known_lower = {s.lower() for s in KNOWN_SKILLS}
+    discovered: Counter = Counter()
+
+    # 1. Parse Skills sections
+    for section_text in _extract_skills_section_text(text):
+        for item in _split_list_items(section_text):
+            if _is_likely_skill(item) and item.lower() not in known_lower:
+                discovered[item.strip()] += 1
+
+    # 2. Parse contextual patterns
+    for m in _CONTEXT_PATTERNS.finditer(text):
+        phrase = m.group(1)
+        for item in _split_list_items(phrase):
+            if _is_likely_skill(item) and item.lower() not in known_lower:
+                discovered[item.strip()] += 1
+
+    return discovered
+
+
+def _is_in_skills_section(text: str, skill: str) -> bool:
+    """Heuristic: is *skill* mentioned near a skills-section header?"""
+    for m in _SECTION_HEADERS.finditer(text):
+        # Look at the ~600 chars after the header
+        window = text[m.end(): m.end() + 600].lower()
+        if skill.lower() in window:
+            return True
+    return False
+
+
+def _categorise_skills(
+    skill_counts: Counter,
+    full_text: str,
+) -> tuple[list[str], list[str], list[str]]:
+    """Split found skills into primary / secondary / tertiary.
+
+    Categorisation rules (in priority order):
+    1. Skills in the "Skills" section AND mentioned 2+ times → primary
+    2. Skills mentioned 3+ times → primary
+    3. Skills in the "Skills" section OR mentioned 2 times → secondary
+    4. Everything else → tertiary
+    """
+    primary: list[str] = []
+    secondary: list[str] = []
+    tertiary: list[str] = []
+
+    for skill, count in skill_counts.most_common():
+        in_skills_section = _is_in_skills_section(full_text, skill)
+
+        if (in_skills_section and count >= 2) or count >= 3:
+            primary.append(skill)
+        elif in_skills_section or count >= 2:
+            secondary.append(skill)
+        else:
+            tertiary.append(skill)
+
+    return primary, secondary, tertiary
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def extract_profile(text: str) -> dict:
+    """Extract a personalised profile from CV text.
+
+    Uses the broad KNOWN_SKILLS / KNOWN_TITLE_PATTERNS / KNOWN_LOCATIONS
+    databases so that ANY CV (Java dev, accountant, AI engineer, etc.)
+    produces a meaningful profile.
+    """
+    if not text.strip():
+        return {
+            "job_titles": [],
+            "primary_skills": [],
+            "secondary_skills": [],
+            "tertiary_skills": [],
+            "locations": [],
+            "source_file": "",
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # 1. Database matching — scan against KNOWN_SKILLS
+    skill_counts = _find_skills_in_text(text)
+
+    # 2. Freeform discovery — find skills NOT in the database
+    freeform_counts = _discover_freeform_skills(text)
+
+    # 3. Merge both into a single counter
+    merged_counts = skill_counts + freeform_counts
+
+    # 4. Auto-categorise by frequency + section position
+    primary, secondary, tert = _categorise_skills(merged_counts, text)
+
+    # 5. Extract job titles and locations
+    titles = _find_job_titles(text)
+    locations = _find_locations(text)
+
+    db_count = len(skill_counts)
+    ff_count = len(freeform_counts)
+
+    profile = {
+        "job_titles": titles,
+        "primary_skills": primary,
+        "secondary_skills": secondary,
+        "tertiary_skills": tert,
+        "locations": locations,
+        "source_file": "",
+        "extracted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    total = len(primary) + len(secondary) + len(tert)
+    logger.info(
+        "Extracted profile: %d titles, %d skills (%d db + %d discovered, "
+        "categorised %d/%d/%d), %d locations",
+        len(titles), total, db_count, ff_count,
+        len(primary), len(secondary), len(tert), len(locations),
+    )
+    return profile
+
+
+def save_profile(profile: dict, path: Path | None = None) -> Path:
+    """Write profile dict as JSON. Returns the path written to."""
+    dest = path or CV_PROFILE_PATH
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(profile, indent=2))
+    logger.info("CV profile saved to %s", dest)
+    return dest
+
+
+def load_profile(path: Path | None = None) -> dict | None:
+    """Load profile from JSON. Returns None if file doesn't exist."""
+    src = path or CV_PROFILE_PATH
+    if not src.exists():
+        return None
+    return json.loads(src.read_text())

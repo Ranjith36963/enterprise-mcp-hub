@@ -10,6 +10,8 @@ DB_PATH = DATA_DIR / "jobs.db"
 EXPORTS_DIR = DATA_DIR / "exports"
 REPORTS_DIR = DATA_DIR / "reports"
 LOGS_DIR = DATA_DIR / "logs"
+CV_PROFILE_PATH = DATA_DIR / "cv_profile.json"
+USER_PREFERENCES_PATH = DATA_DIR / "user_preferences.json"
 
 # API Keys (Group A)
 REED_API_KEY = os.getenv("REED_API_KEY", "")
@@ -17,6 +19,7 @@ ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
 JSEARCH_API_KEY = os.getenv("JSEARCH_API_KEY", "")
 JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY", "")
+FINDWORK_API_KEY = os.getenv("FINDWORK_API_KEY", "")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 
 # Email
@@ -53,18 +56,21 @@ RATE_LIMITS = {
     "workable": {"concurrent": 2, "delay": 1.5},
     "ashby": {"concurrent": 2, "delay": 1.5},
     "findajob": {"concurrent": 1, "delay": 3.0},
-    "remotive": {"concurrent": 2, "delay": 1.0},
+    "weworkremotely": {"concurrent": 2, "delay": 1.5},
+    "themuse": {"concurrent": 2, "delay": 1.0},
+    "careerjet": {"concurrent": 1, "delay": 2.0},
     "jooble": {"concurrent": 1, "delay": 2.0},
-    "linkedin": {"concurrent": 1, "delay": 3.0},
+    "devitjobs": {"concurrent": 2, "delay": 1.0},
+    "relocate_me": {"concurrent": 2, "delay": 1.0},
+    "landingjobs": {"concurrent": 2, "delay": 1.0},
+    "nofluffjobs": {"concurrent": 2, "delay": 1.0},
+    "remotive": {"concurrent": 1, "delay": 5.0},
     "smartrecruiters": {"concurrent": 2, "delay": 1.5},
-    "pinpoint": {"concurrent": 2, "delay": 1.5},
     "recruitee": {"concurrent": 2, "delay": 1.5},
-    "indeed": {"concurrent": 1, "delay": 3.0},
-    "glassdoor": {"concurrent": 1, "delay": 3.0},
+    "findwork": {"concurrent": 1, "delay": 2.0},
+    "pinpoint": {"concurrent": 2, "delay": 1.5},
     "workday": {"concurrent": 2, "delay": 1.5},
     "google_jobs": {"concurrent": 1, "delay": 2.0},
-    "devitjobs": {"concurrent": 2, "delay": 1.0},
-    "landingjobs": {"concurrent": 2, "delay": 1.0},
 }
 
 # Retry
@@ -73,4 +79,4 @@ RETRY_BACKOFF = [1, 2, 4]
 
 # HTTP
 REQUEST_TIMEOUT = 30
-USER_AGENT = "Job360/1.0 (UK Job Search Aggregator)"
+USER_AGENT = "Job360/1.0 (Job Search Aggregator)"
