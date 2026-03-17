@@ -440,7 +440,7 @@ PDF/DOCX -> extract_text() -> raw text
   +-> _find_sections() -> {skills, experience, education, certifications, summary}
   |
   +-> _extract_skills_from_text(skills_section) -> ["Python", "SQL", ...]
-  |     Uses KNOWN_SKILLS (326 entries) for matching
+  |     Uses KNOWN_SKILLS (391 entries) for matching
   +-> _extract_titles_from_experience(exp_section) -> ["Engineer at Google", ...]
   |     Uses KNOWN_TITLE_PATTERNS for matching
   +-> fallback: _extract_tech_names(full_text) -> capitalized tool names
