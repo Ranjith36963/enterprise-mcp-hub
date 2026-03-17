@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.adzuna")
 
 class AdzunaSource(BaseJobSource):
     name = "adzuna"
+    category = "keyed_api"
 
     def __init__(self, session: aiohttp.ClientSession, app_id: str = "", app_key: str = "", search_config=None):
         super().__init__(session, search_config=search_config)

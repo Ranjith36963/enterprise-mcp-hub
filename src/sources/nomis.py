@@ -17,6 +17,7 @@ class NomisSource(BaseJobSource):
     for regional vacancy analysis.
     """
     name = "nomis"
+    category = "other"
 
     async def fetch_jobs(self) -> list[Job]:
         data = await self._get_json(

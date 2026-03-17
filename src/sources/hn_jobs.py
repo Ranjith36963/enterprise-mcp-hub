@@ -13,6 +13,7 @@ logger = logging.getLogger("job360.sources.hn_jobs")
 class HNJobsSource(BaseJobSource):
     """YC Startup Jobs via Firebase HN API (job stories, NOT 'Who is Hiring')."""
     name = "hn_jobs"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         # Get list of job story IDs

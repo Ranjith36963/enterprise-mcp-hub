@@ -13,6 +13,7 @@ logger = logging.getLogger("job360.sources.biospace")
 class BioSpaceSource(BaseJobSource):
     """BioSpace — biotech/pharma AI jobs via RSS feed."""
     name = "biospace"
+    category = "rss"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

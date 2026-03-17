@@ -62,6 +62,7 @@ def _parse_hn_comment(text: str, relevance_keywords: list[str]) -> dict | None:
 
 class HackerNewsSource(BaseJobSource):
     name = "hackernews"
+    category = "other"
 
     async def fetch_jobs(self) -> list[Job]:
         # Step 1: Find latest "Who is Hiring" thread

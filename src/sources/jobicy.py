@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.jobicy")
 
 class JobicySource(BaseJobSource):
     name = "jobicy"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

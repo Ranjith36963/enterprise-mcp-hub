@@ -24,6 +24,7 @@ JSEARCH_QUERIES = [
 
 class JSearchSource(BaseJobSource):
     name = "jsearch"
+    category = "keyed_api"
 
     def __init__(self, session: aiohttp.ClientSession, api_key: str = "", search_config=None):
         super().__init__(session, search_config=search_config)

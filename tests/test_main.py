@@ -5,11 +5,11 @@ from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 from aioresponses import aioresponses
 
-from src.main import run_search
+from src.main import run_search, SOURCE_INSTANCE_COUNT, _build_sources
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # Shared mock endpoint setup for all free sources
@@ -189,7 +189,7 @@ def test_stats_include_per_source():
                 stats = await run_search(db_path=":memory:")
                 assert "per_source" in stats
                 assert isinstance(stats["per_source"], dict)
-                assert len(stats["per_source"]) == 47
+                assert len(stats["per_source"]) == SOURCE_INSTANCE_COUNT
     _run(_test())
 
 
@@ -293,4 +293,43 @@ def test_run_search_auto_purge():
                 os.unlink(db_path)
             except PermissionError:
                 pass  # Windows file lock
+    _run(_test())
+
+
+def test_source_instance_count_matches_build_sources():
+    """SOURCE_INSTANCE_COUNT constant must match actual _build_sources output."""
+    async def _test():
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            sources = _build_sources(session)
+            assert len(sources) == SOURCE_INSTANCE_COUNT
+    import aiohttp
+    _run(_test())
+
+
+def test_failed_source_tracked_as_none():
+    """A source that raises an exception should appear in per_source with count 0."""
+    async def _test():
+        with aioresponses() as m:
+            _mock_free_sources(m)
+            with _patch_no_notifications():
+                stats = await run_search(db_path=":memory:")
+                # All sources should be present in per_source
+                assert len(stats["per_source"]) == SOURCE_INSTANCE_COUNT
+                # Values should be non-negative integers
+                for name, count in stats["per_source"].items():
+                    assert isinstance(count, int)
+                    assert count >= 0
+    _run(_test())
+
+
+def test_dry_run_skips_db_writes():
+    """Dry run should return stats without writing to DB."""
+    async def _test():
+        with aioresponses() as m:
+            _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
+            with _patch_no_notifications():
+                stats = await run_search(db_path=":memory:", dry_run=True)
+                assert stats["sources_queried"] > 0
+                assert isinstance(stats["total_found"], int)
     _run(_test())

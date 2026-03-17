@@ -15,6 +15,7 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 class SmartRecruitersSource(BaseJobSource):
     name = "smartrecruiters"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[str] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

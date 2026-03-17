@@ -31,6 +31,7 @@ _LINK_RE = re.compile(r'href="(https://[^"]*linkedin\.com/jobs/view/[^"]*)"', re
 
 class LinkedInSource(BaseJobSource):
     name = "linkedin"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []
@@ -47,33 +48,36 @@ class LinkedInSource(BaseJobSource):
             if not html:
                 await asyncio.sleep(3)
                 continue
-            titles = _TITLE_RE.findall(html)
-            companies = _COMPANY_RE.findall(html)
-            locations = _LOCATION_RE.findall(html)
-            links = _LINK_RE.findall(html)
-            count = min(len(titles), len(links))
-            for i in range(count):
-                url = links[i].split("?")[0]
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                title = titles[i].strip()
-                text = title.lower()
-                if not any(kw in text for kw in self.relevance_keywords):
-                    continue
-                company = companies[i].strip() if i < len(companies) else ""
-                location = locations[i].strip() if i < len(locations) else "UK"
-                jobs.append(Job(
-                    title=title,
-                    company=company,
-                    location=location,
-                    description="",
-                    apply_url=url,
-                    source=self.name,
-                    date_found=datetime.now(timezone.utc).isoformat(),
-                ))
-                if len(jobs) >= 50:
-                    break
+            try:
+                titles = _TITLE_RE.findall(html)
+                companies = _COMPANY_RE.findall(html)
+                locations = _LOCATION_RE.findall(html)
+                links = _LINK_RE.findall(html)
+                count = min(len(titles), len(links))
+                for i in range(count):
+                    url = links[i].split("?")[0]
+                    if url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+                    title = titles[i].strip()
+                    text = title.lower()
+                    if not any(kw in text for kw in self.relevance_keywords):
+                        continue
+                    company = companies[i].strip() if i < len(companies) else ""
+                    location = locations[i].strip() if i < len(locations) else "UK"
+                    jobs.append(Job(
+                        title=title,
+                        company=company,
+                        location=location,
+                        description="",
+                        apply_url=url,
+                        source=self.name,
+                        date_found=datetime.now(timezone.utc).isoformat(),
+                    ))
+                    if len(jobs) >= 50:
+                        break
+            except Exception as e:
+                logger.warning(f"LinkedIn: HTML parsing failed for query '{query}': {e}")
             await asyncio.sleep(3)
             if len(jobs) >= 50:
                 break

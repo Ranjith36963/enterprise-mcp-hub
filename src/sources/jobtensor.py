@@ -17,6 +17,7 @@ _CONTEXT_RE = re.compile(r'var\s+context\s*=\s*(\{.*?\});\s*</script>', re.DOTAL
 class JobTensorSource(BaseJobSource):
     """JobTensor — UK AI/Science/Tech jobs via AJAX API."""
     name = "jobtensor"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         # Try the AJAX search API directly
@@ -80,41 +81,45 @@ class JobTensorSource(BaseJobSource):
 
     def _parse_html(self, html: str) -> list[Job]:
         """Fallback HTML parsing."""
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
+        try:
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
 
-        # Try to extract embedded JSON context
-        ctx_match = _CONTEXT_RE.search(html)
-        if ctx_match:
-            try:
-                ctx = json.loads(ctx_match.group(1))
-                hits = ctx.get("results", {}).get("hits", [])
-                if hits:
-                    return self._parse_api_results(hits)
-            except (json.JSONDecodeError, AttributeError):
-                pass
+            # Try to extract embedded JSON context
+            ctx_match = _CONTEXT_RE.search(html)
+            if ctx_match:
+                try:
+                    ctx = json.loads(ctx_match.group(1))
+                    hits = ctx.get("results", {}).get("hits", [])
+                    if hits:
+                        return self._parse_api_results(hits)
+                except (json.JSONDecodeError, AttributeError):
+                    pass
 
-        # Last resort: regex on any visible job links
-        link_pattern = re.compile(
-            r'<a[^>]+href="(/uk/[^"]*?)"[^>]*>([^<]+)</a>',
-            re.IGNORECASE
-        )
+            # Last resort: regex on any visible job links
+            link_pattern = re.compile(
+                r'<a[^>]+href="(/uk/[^"]*?)"[^>]*>([^<]+)</a>',
+                re.IGNORECASE
+            )
 
-        for match in link_pattern.finditer(html):
-            path, title = match.group(1), match.group(2).strip()
-            text = title.lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+            for match in link_pattern.finditer(html):
+                path, title = match.group(1), match.group(2).strip()
+                text = title.lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            apply_url = f"https://jobtensor.com{path}"
-            jobs.append(Job(
-                title=title,
-                company="Unknown",
-                location="UK",
-                description=title,
-                apply_url=apply_url,
-                source=self.name,
-                date_found=now,
-            ))
+                apply_url = f"https://jobtensor.com{path}"
+                jobs.append(Job(
+                    title=title,
+                    company="Unknown",
+                    location="UK",
+                    description=title,
+                    apply_url=apply_url,
+                    source=self.name,
+                    date_found=now,
+                ))
 
-        return jobs
+            return jobs
+        except Exception as e:
+            logger.warning(f"JobTensor: HTML parsing failed: {e}")
+            return []

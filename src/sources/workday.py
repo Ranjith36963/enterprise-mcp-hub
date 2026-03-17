@@ -32,6 +32,7 @@ def _parse_posted_on(text: str) -> str:
 
 class WorkdaySource(BaseJobSource):
     name = "workday"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[dict] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

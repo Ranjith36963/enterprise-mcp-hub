@@ -13,6 +13,7 @@ logger = logging.getLogger("job360.sources.weworkremotely")
 class WeWorkRemotelySource(BaseJobSource):
     """We Work Remotely — remote tech jobs via RSS feed."""
     name = "weworkremotely"
+    category = "rss"
 
     async def fetch_jobs(self) -> list[Job]:
         xml_text = await self._get_text("https://weworkremotely.com/remote-jobs.rss")

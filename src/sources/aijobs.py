@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.aijobs")
 
 class AIJobsSource(BaseJobSource):
     name = "aijobs"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         data = await self._get_json("https://aijobs.net/api/list-jobs/")

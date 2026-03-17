@@ -127,6 +127,11 @@ SOURCE_REGISTRY = {
     "nomis": NomisSource,
 }
 
+# Number of unique source instances created by _build_sources().
+# 47 not 48 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# Update this when adding/removing sources.
+SOURCE_INSTANCE_COUNT = 47
+
 
 def _format_date(date_str: str) -> str:
     """Parse date_found into a short 'Posted: 28 Feb 2026' format."""
@@ -274,21 +279,46 @@ async def run_search(
                     return await asyncio.wait_for(source.fetch_jobs(), timeout=120)
                 except asyncio.TimeoutError:
                     logger.warning(f"Source {source.name} timed out")
-                    return []
+                    return None
                 except Exception as e:
                     logger.error(f"Source {source.name} failed: {e}")
-                    return []
+                    return None
 
             results = await asyncio.gather(*[_fetch_source(s) for s in sources])
 
-            for source, jobs in zip(sources, results):
+            failed_sources = []
+            for source, result in zip(sources, results):
                 source_count += 1
-                per_source[source.name] = len(jobs)
-                all_jobs.extend(jobs)
-                if jobs:
-                    logger.info(f"  {source.name}: {len(jobs)} jobs")
+                if result is None:
+                    per_source[source.name] = 0
+                    failed_sources.append(source.name)
+                    logger.warning(f"  {source.name}: FAILED")
+                elif result:
+                    per_source[source.name] = len(result)
+                    all_jobs.extend(result)
+                    logger.info(f"  {source.name}: {len(result)} jobs")
                 else:
+                    per_source[source.name] = 0
                     logger.info(f"  {source.name}: 0 jobs")
+
+            if failed_sources:
+                logger.warning(f"Failed sources ({len(failed_sources)}): {', '.join(failed_sources)}")
+
+            # Source health: detect sources returning 0 that previously returned jobs
+            try:
+                history = await db.get_last_source_counts(5)
+                newly_empty = []
+                for name, count in per_source.items():
+                    if count == 0 and name in history:
+                        past_counts = history[name]
+                        if any(c > 0 for c in past_counts):
+                            newly_empty.append(name)
+                if newly_empty:
+                    logger.warning(
+                        f"Sources returning 0 that previously had jobs: {', '.join(newly_empty)}"
+                    )
+            except Exception as e:
+                logger.debug(f"Source health check skipped: {e}")
 
             logger.info(f"Total raw jobs: {len(all_jobs)}")
 

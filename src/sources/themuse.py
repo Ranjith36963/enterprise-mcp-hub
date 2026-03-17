@@ -17,6 +17,7 @@ MAX_PAGES = 5
 
 class TheMuseSource(BaseJobSource):
     name = "themuse"
+    category = "other"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

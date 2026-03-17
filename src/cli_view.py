@@ -1,9 +1,12 @@
 """Rich terminal view with time-bucketed job tables."""
 
 import argparse
+import logging
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+logger = logging.getLogger("job360.cli_view")
 
 from rich.console import Console
 from rich.panel import Panel
@@ -36,7 +39,8 @@ def _load_jobs_sync(db_path: str | None = None, days: int = 7, min_score: int = 
             (cutoff, min_score),
         )
         return [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to load jobs from database: %s", e)
         return []
     finally:
         conn.close()

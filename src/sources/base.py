@@ -47,6 +47,7 @@ def _is_uk_or_remote(location: str) -> bool:
 
 class BaseJobSource(ABC):
     name: str = "base"
+    category: str = "unknown"  # keyed_api, free_json, ats, rss, scraper, other
 
     def __init__(self, session: aiohttp.ClientSession, search_config=None):
         self._session = session

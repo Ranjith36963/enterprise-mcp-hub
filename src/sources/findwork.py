@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.findwork")
 
 class FindworkSource(BaseJobSource):
     name = "findwork"
+    category = "keyed_api"
 
     def __init__(self, session: aiohttp.ClientSession, api_key: str = "", search_config=None):
         super().__init__(session, search_config=search_config)

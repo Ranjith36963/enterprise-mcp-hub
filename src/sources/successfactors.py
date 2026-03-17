@@ -15,6 +15,7 @@ logger = logging.getLogger("job360.sources.successfactors")
 class SuccessFactorsSource(BaseJobSource):
     """SAP SuccessFactors career sites — UK defence/enterprise jobs via sitemap."""
     name = "successfactors"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[dict] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

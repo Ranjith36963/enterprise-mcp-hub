@@ -19,6 +19,7 @@ _JOB_LINK_RE = re.compile(
 class BCSJobsSource(BaseJobSource):
     """BCS (Chartered Institute for IT) Job Board — UK IT professional jobs."""
     name = "bcs_jobs"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         # Try multiple URL patterns
@@ -41,40 +42,44 @@ class BCSJobsSource(BaseJobSource):
         return jobs
 
     def _parse_html(self, html: str) -> list[Job]:
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
-        seen_urls = set()
+        try:
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
+            seen_urls = set()
 
-        for match in _JOB_LINK_RE.finditer(html):
-            path, title = match.group(1), match.group(2).strip()
+            for match in _JOB_LINK_RE.finditer(html):
+                path, title = match.group(1), match.group(2).strip()
 
-            # Skip navigation links
-            if title.lower() in ("jobs", "careers", "job board", "search", "view all"):
-                continue
+                # Skip navigation links
+                if title.lower() in ("jobs", "careers", "job board", "search", "view all"):
+                    continue
 
-            text = title.lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+                text = title.lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            if path.startswith("http"):
-                apply_url = path
-            elif path.startswith("/"):
-                apply_url = f"https://www.bcs.org{path}"
-            else:
-                apply_url = f"https://www.bcs.org/{path}"
+                if path.startswith("http"):
+                    apply_url = path
+                elif path.startswith("/"):
+                    apply_url = f"https://www.bcs.org{path}"
+                else:
+                    apply_url = f"https://www.bcs.org/{path}"
 
-            if apply_url in seen_urls:
-                continue
-            seen_urls.add(apply_url)
+                if apply_url in seen_urls:
+                    continue
+                seen_urls.add(apply_url)
 
-            jobs.append(Job(
-                title=title,
-                company="Unknown",
-                location="UK",
-                description=title,
-                apply_url=apply_url,
-                source=self.name,
-                date_found=now,
-            ))
+                jobs.append(Job(
+                    title=title,
+                    company="Unknown",
+                    location="UK",
+                    description=title,
+                    apply_url=apply_url,
+                    source=self.name,
+                    date_found=now,
+                ))
 
-        return jobs
+            return jobs
+        except Exception as e:
+            logger.warning(f"BCS Jobs: HTML parsing failed: {e}")
+            return []
