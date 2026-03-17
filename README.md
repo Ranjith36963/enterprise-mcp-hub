@@ -341,7 +341,7 @@ for channel in get_configured_channels():
 - **11 tertiary skills** (1pt each): CI/CD, MLflow, Git, Linux, n8n, Data Pipelines, ETL, Feature Engineering, S3, CloudWatch, Machine Learning
 - **24 UK locations** + Remote/Hybrid
 - **60 negative title keywords** across 12 categories (sales, IT ops, healthcare, legal, finance, etc.)
-- **326 known skills** for CV parsing (programming languages, frameworks, cloud, databases, etc.)
+- **391 known skills** for CV parsing (programming languages, frameworks, cloud, databases, etc.)
 
 ### ATS Companies (`src/config/companies.py`)
 - **Greenhouse** (25): DeepMind, Monzo, Deliveroo, Darktrace, Stability AI, Anthropic, Graphcore, Wayve, PolyAI, Synthesia, Wise, Snyk, Stripe, Cloudflare, Databricks, Dataiku, Ocado Technology, Tractable, Paddle, Harness, Isomorphic Labs, Speechmatics, Onfido, Oxford Nanopore, Bloomberg
@@ -367,7 +367,7 @@ job360/
 │   ├── dashboard.py             # Streamlit web dashboard (filters, charts, KPIs, profile setup)
 │   ├── config/
 │   │   ├── settings.py          # Env vars, rate limits, timeouts, thresholds
-│   │   ├── keywords.py          # Default keywords + KNOWN_SKILLS (326) + KNOWN_TITLE_PATTERNS
+│   │   ├── keywords.py          # Default keywords + KNOWN_SKILLS (391) + KNOWN_TITLE_PATTERNS (107)
 │   │   └── companies.py         # ATS company slugs (~104 companies across 10 platforms)
 │   ├── profile/
 │   │   ├── models.py            # CVData, UserPreferences, UserProfile, SearchConfig

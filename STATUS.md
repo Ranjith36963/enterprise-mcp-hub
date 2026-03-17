@@ -121,7 +121,7 @@
 | Issue | Severity | Notes |
 |-------|----------|-------|
 | 3 tests skip on Windows | Low | bash-only tests for `setup.sh` and `cron_run.sh` — pass on Linux/Mac |
-| `job360/` stale subdirectory | Low | Old copy of code, active code is in root `src/` and `tests/`. Should be deleted. |
+
 | CV parser section detection | Low | Regex-based — may miss non-standard CV formats. Works for ~80% of CVs |
 | No skill inference | Medium | Profile system only extracts explicitly listed skills. Users must add related skills via preferences |
 | python-jobspy not in requirements.txt | Low | Intentionally optional (heavy dependencies). Indeed/Glassdoor source skips with warning if not installed. |

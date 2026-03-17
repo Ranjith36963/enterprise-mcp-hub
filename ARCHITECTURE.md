@@ -35,7 +35,7 @@ job360/
 |   +-- models.py            # Job dataclass with normalized_key()
 |   +-- config/
 |   |   +-- settings.py      # Env vars, paths, RATE_LIMITS (48 entries), thresholds
-|   |   +-- keywords.py      # Default AI/ML keywords, KNOWN_SKILLS (326), KNOWN_TITLE_PATTERNS
+|   |   +-- keywords.py      # Default AI/ML keywords, KNOWN_SKILLS (391), KNOWN_TITLE_PATTERNS (107)
 |   |   +-- companies.py     # ATS company slugs (~104 companies across 10 ATS platforms)
 |   +-- profile/
 |   |   +-- models.py        # CVData, UserPreferences, UserProfile, SearchConfig

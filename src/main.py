@@ -274,21 +274,30 @@ async def run_search(
                     return await asyncio.wait_for(source.fetch_jobs(), timeout=120)
                 except asyncio.TimeoutError:
                     logger.warning(f"Source {source.name} timed out")
-                    return []
+                    return None
                 except Exception as e:
                     logger.error(f"Source {source.name} failed: {e}")
-                    return []
+                    return None
 
             results = await asyncio.gather(*[_fetch_source(s) for s in sources])
 
-            for source, jobs in zip(sources, results):
+            failed_sources = []
+            for source, result in zip(sources, results):
                 source_count += 1
-                per_source[source.name] = len(jobs)
-                all_jobs.extend(jobs)
-                if jobs:
-                    logger.info(f"  {source.name}: {len(jobs)} jobs")
+                if result is None:
+                    per_source[source.name] = 0
+                    failed_sources.append(source.name)
+                    logger.warning(f"  {source.name}: FAILED")
+                elif result:
+                    per_source[source.name] = len(result)
+                    all_jobs.extend(result)
+                    logger.info(f"  {source.name}: {len(result)} jobs")
                 else:
+                    per_source[source.name] = 0
                     logger.info(f"  {source.name}: 0 jobs")
+
+            if failed_sources:
+                logger.warning(f"Failed sources ({len(failed_sources)}): {', '.join(failed_sources)}")
 
             logger.info(f"Total raw jobs: {len(all_jobs)}")
 

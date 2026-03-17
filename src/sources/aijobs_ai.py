@@ -43,43 +43,47 @@ class AIJobsAISource(BaseJobSource):
         return jobs
 
     def _parse_html(self, html: str) -> list[Job]:
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
+        try:
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
 
-        for match in _JOB_LINK_RE.finditer(html):
-            path, title = match.group(1), match.group(2).strip()
+            for match in _JOB_LINK_RE.finditer(html):
+                path, title = match.group(1), match.group(2).strip()
 
-            # Skip navigation/non-job links
-            if len(title) < 5 or title.lower() in ("view all", "see more", "load more"):
-                continue
+                # Skip navigation/non-job links
+                if len(title) < 5 or title.lower() in ("view all", "see more", "load more"):
+                    continue
 
-            text = title.lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+                text = title.lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            # Try to extract company/location from nearby HTML
-            pos = match.start()
-            block = html[max(0, pos - 500):pos + 1000]
+                # Try to extract company/location from nearby HTML
+                pos = match.start()
+                block = html[max(0, pos - 500):pos + 1000]
 
-            company = self._extract_nearby(block, r'(?:company|employer|org)[^"]*"[^>]*>\s*([^<]+)')
-            location = self._extract_nearby(block, r'(?:location|city)[^"]*"[^>]*>\s*([^<]+)')
+                company = self._extract_nearby(block, r'(?:company|employer|org)[^"]*"[^>]*>\s*([^<]+)')
+                location = self._extract_nearby(block, r'(?:location|city)[^"]*"[^>]*>\s*([^<]+)')
 
-            if not _is_uk_or_remote(location):
-                continue
+                if not _is_uk_or_remote(location):
+                    continue
 
-            apply_url = path if path.startswith("http") else f"https://aijobs.ai{path}"
+                apply_url = path if path.startswith("http") else f"https://aijobs.ai{path}"
 
-            jobs.append(Job(
-                title=title,
-                company=company or "Unknown",
-                location=location or "",
-                description=title,
-                apply_url=apply_url,
-                source=self.name,
-                date_found=now,
-            ))
+                jobs.append(Job(
+                    title=title,
+                    company=company or "Unknown",
+                    location=location or "",
+                    description=title,
+                    apply_url=apply_url,
+                    source=self.name,
+                    date_found=now,
+                ))
 
-        return jobs
+            return jobs
+        except Exception as e:
+            logger.warning(f"AI Jobs AI: HTML parsing failed: {e}")
+            return []
 
     @staticmethod
     def _extract_nearby(block: str, pattern: str) -> str:

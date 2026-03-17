@@ -43,85 +43,93 @@ class ClimatebaseSource(BaseJobSource):
 
     def _extract_jobs_from_next_data(self, html: str) -> list[Job]:
         """Extract jobs from Next.js __NEXT_DATA__ script tag."""
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
-
-        match = _NEXT_DATA_RE.search(html)
-        if not match:
-            # Fallback to HTML scraping if __NEXT_DATA__ not found
-            return self._parse_html_fallback(html)
-
         try:
-            data = json.loads(match.group(1))
-        except json.JSONDecodeError:
-            return self._parse_html_fallback(html)
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
 
-        # Navigate to jobs in the Next.js props structure
-        page_props = data.get("props", {}).get("pageProps", {})
-        job_list = page_props.get("jobs", [])
+            match = _NEXT_DATA_RE.search(html)
+            if not match:
+                # Fallback to HTML scraping if __NEXT_DATA__ not found
+                return self._parse_html_fallback(html)
 
-        if not isinstance(job_list, list):
-            return self._parse_html_fallback(html)
+            try:
+                data = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                return self._parse_html_fallback(html)
 
-        for item in job_list:
-            title = item.get("title", "")
-            company = item.get("name_of_employer", "") or item.get("company", "") or "Unknown"
+            # Navigate to jobs in the Next.js props structure
+            page_props = data.get("props", {}).get("pageProps", {})
+            job_list = page_props.get("jobs", [])
 
-            text = f"{title} {company}".lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+            if not isinstance(job_list, list):
+                return self._parse_html_fallback(html)
 
-            locations = item.get("locations", [])
-            if isinstance(locations, list):
-                location = ", ".join(str(l) for l in locations) if locations else "United Kingdom"
-            else:
-                location = str(locations) if locations else "United Kingdom"
+            for item in job_list:
+                title = item.get("title", "")
+                company = item.get("name_of_employer", "") or item.get("company", "") or "Unknown"
 
-            job_id = item.get("id", "")
-            apply_url = f"https://climatebase.org/jobs/{job_id}" if job_id else ""
+                text = f"{title} {company}".lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            salary_min = item.get("salary_from")
-            salary_max = item.get("salary_to")
+                locations = item.get("locations", [])
+                if isinstance(locations, list):
+                    location = ", ".join(str(l) for l in locations) if locations else "United Kingdom"
+                else:
+                    location = str(locations) if locations else "United Kingdom"
 
-            jobs.append(Job(
-                title=title,
-                company=company,
-                location=location,
-                description=title,
-                apply_url=apply_url,
-                source=self.name,
-                date_found=now,
-                salary_min=salary_min,
-                salary_max=salary_max,
-            ))
+                job_id = item.get("id", "")
+                apply_url = f"https://climatebase.org/jobs/{job_id}" if job_id else ""
 
-        return jobs
+                salary_min = item.get("salary_from")
+                salary_max = item.get("salary_to")
+
+                jobs.append(Job(
+                    title=title,
+                    company=company,
+                    location=location,
+                    description=title,
+                    apply_url=apply_url,
+                    source=self.name,
+                    date_found=now,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                ))
+
+            return jobs
+        except Exception as e:
+            logger.warning(f"Climatebase: HTML/JSON parsing failed: {e}")
+            return []
 
     def _parse_html_fallback(self, html: str) -> list[Job]:
         """Fallback HTML parsing if __NEXT_DATA__ extraction fails."""
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
+        try:
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
 
-        link_pattern = re.compile(
-            r'<a[^>]+href="(/jobs/[^"]+)"[^>]*>([^<]+)</a>',
-            re.IGNORECASE
-        )
+            link_pattern = re.compile(
+                r'<a[^>]+href="(/jobs/[^"]+)"[^>]*>([^<]+)</a>',
+                re.IGNORECASE
+            )
 
-        for match in link_pattern.finditer(html):
-            path, title = match.group(1), match.group(2).strip()
-            text = title.lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+            for match in link_pattern.finditer(html):
+                path, title = match.group(1), match.group(2).strip()
+                text = title.lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            apply_url = f"https://climatebase.org{path}"
-            jobs.append(Job(
-                title=title,
-                company="Unknown",
-                location="United Kingdom",
-                description=title,
-                apply_url=apply_url,
-                source=self.name,
-                date_found=now,
-            ))
+                apply_url = f"https://climatebase.org{path}"
+                jobs.append(Job(
+                    title=title,
+                    company="Unknown",
+                    location="United Kingdom",
+                    description=title,
+                    apply_url=apply_url,
+                    source=self.name,
+                    date_found=now,
+                ))
 
-        return jobs
+            return jobs
+        except Exception as e:
+            logger.warning(f"Climatebase: HTML fallback parsing failed: {e}")
+            return []

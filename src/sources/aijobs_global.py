@@ -83,33 +83,37 @@ class AIJobsGlobalSource(BaseJobSource):
 
     def _parse_html(self, html: str) -> list[Job]:
         """Fallback HTML parsing for WP Job Manager listings."""
-        jobs = []
-        now = datetime.now(timezone.utc).isoformat()
+        try:
+            jobs = []
+            now = datetime.now(timezone.utc).isoformat()
 
-        # WP Job Manager uses .job_listing class
-        link_pattern = re.compile(
-            r'<a[^>]+href="(https://ai-jobs\.global/job[s]?/[^"]+)"[^>]*>\s*([^<]+?)\s*</a>',
-            re.IGNORECASE,
-        )
+            # WP Job Manager uses .job_listing class
+            link_pattern = re.compile(
+                r'<a[^>]+href="(https://ai-jobs\.global/job[s]?/[^"]+)"[^>]*>\s*([^<]+?)\s*</a>',
+                re.IGNORECASE,
+            )
 
-        for match in link_pattern.finditer(html):
-            url, title = match.group(1), match.group(2).strip()
+            for match in link_pattern.finditer(html):
+                url, title = match.group(1), match.group(2).strip()
 
-            if len(title) < 5:
-                continue
+                if len(title) < 5:
+                    continue
 
-            text = title.lower()
-            if not any(kw in text for kw in self.relevance_keywords):
-                continue
+                text = title.lower()
+                if not any(kw in text for kw in self.relevance_keywords):
+                    continue
 
-            jobs.append(Job(
-                title=title,
-                company="Unknown",
-                location="",
-                description=title,
-                apply_url=url,
-                source=self.name,
-                date_found=now,
-            ))
+                jobs.append(Job(
+                    title=title,
+                    company="Unknown",
+                    location="",
+                    description=title,
+                    apply_url=url,
+                    source=self.name,
+                    date_found=now,
+                ))
 
-        return jobs
+            return jobs
+        except Exception as e:
+            logger.warning(f"AI Jobs Global: HTML parsing failed: {e}")
+            return []
