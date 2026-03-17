@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.remotive")
 
 class RemotiveSource(BaseJobSource):
     name = "remotive"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

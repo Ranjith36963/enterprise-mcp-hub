@@ -38,6 +38,7 @@ _SALARY_RE = re.compile(
 
 class FindAJobSource(BaseJobSource):
     name = "findajob"
+    category = "rss"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

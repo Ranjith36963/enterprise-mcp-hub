@@ -23,6 +23,7 @@ _SEARCH_QUERIES = [
 class EightyKHoursSource(BaseJobSource):
     """80,000 Hours — high-impact AI safety jobs via Algolia API."""
     name = "eightykhours"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

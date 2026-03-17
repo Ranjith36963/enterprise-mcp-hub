@@ -76,3 +76,31 @@ def test_get_new_jobs_since(db):
     asyncio.run(db.insert_job(j1))
     jobs = asyncio.run(db.get_new_jobs_since(hours=1))
     assert len(jobs) == 1
+
+
+def test_migrate_no_op_on_fresh_db(db):
+    """Migration on a fresh database should be a no-op (all columns already exist)."""
+    # _migrate() is called during init_db(), so just verify it didn't break anything
+    tables = asyncio.run(db.get_tables())
+    assert "jobs" in tables
+    assert "run_log" in tables
+
+
+def test_get_last_source_counts_empty(db):
+    """get_last_source_counts should return empty dict when no runs exist."""
+    result = asyncio.run(db.get_last_source_counts(5))
+    assert result == {}
+
+
+def test_get_last_source_counts_with_data(db):
+    """get_last_source_counts should return per-source history from run_log."""
+    stats1 = {"total_found": 10, "new_jobs": 5, "per_source": {"reed": 5, "adzuna": 3}}
+    stats2 = {"total_found": 8, "new_jobs": 2, "per_source": {"reed": 0, "adzuna": 4}}
+    asyncio.run(db.log_run(stats1))
+    asyncio.run(db.log_run(stats2))
+    result = asyncio.run(db.get_last_source_counts(5))
+    # Most recent run first
+    assert "reed" in result
+    assert "adzuna" in result
+    assert 0 in result["reed"]
+    assert 5 in result["reed"]

@@ -12,6 +12,7 @@ logger = logging.getLogger("job360.sources.lever")
 
 class LeverSource(BaseJobSource):
     name = "lever"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[str] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

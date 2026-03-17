@@ -13,6 +13,7 @@ logger = logging.getLogger("job360.sources.realworkfromanywhere")
 class RealWorkFromAnywhereSource(BaseJobSource):
     """RealWorkFromAnywhere — remote jobs via RSS feed."""
     name = "realworkfromanywhere"
+    category = "rss"
 
     async def fetch_jobs(self) -> list[Job]:
         xml_text = await self._get_text("https://www.realworkfromanywhere.com/rss.xml")

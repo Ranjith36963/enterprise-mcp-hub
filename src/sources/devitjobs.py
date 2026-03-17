@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.devitjobs")
 
 class DevITJobsSource(BaseJobSource):
     name = "devitjobs"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         data = await self._get_json("https://devitjobs.uk/api/jobsLight")

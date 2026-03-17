@@ -31,6 +31,7 @@ _LINK_RE = re.compile(r'href="(https://[^"]*linkedin\.com/jobs/view/[^"]*)"', re
 
 class LinkedInSource(BaseJobSource):
     name = "linkedin"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

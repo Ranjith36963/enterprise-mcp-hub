@@ -15,6 +15,7 @@ _MAX_JOBS = 200
 
 class LandingJobsSource(BaseJobSource):
     name = "landingjobs"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

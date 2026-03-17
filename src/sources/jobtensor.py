@@ -17,6 +17,7 @@ _CONTEXT_RE = re.compile(r'var\s+context\s*=\s*(\{.*?\});\s*</script>', re.DOTAL
 class JobTensorSource(BaseJobSource):
     """JobTensor — UK AI/Science/Tech jobs via AJAX API."""
     name = "jobtensor"
+    category = "scraper"
 
     async def fetch_jobs(self) -> list[Job]:
         # Try the AJAX search API directly

@@ -127,6 +127,11 @@ SOURCE_REGISTRY = {
     "nomis": NomisSource,
 }
 
+# Number of unique source instances created by _build_sources().
+# 47 not 48 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# Update this when adding/removing sources.
+SOURCE_INSTANCE_COUNT = 47
+
 
 def _format_date(date_str: str) -> str:
     """Parse date_found into a short 'Posted: 28 Feb 2026' format."""
@@ -298,6 +303,22 @@ async def run_search(
 
             if failed_sources:
                 logger.warning(f"Failed sources ({len(failed_sources)}): {', '.join(failed_sources)}")
+
+            # Source health: detect sources returning 0 that previously returned jobs
+            try:
+                history = await db.get_last_source_counts(5)
+                newly_empty = []
+                for name, count in per_source.items():
+                    if count == 0 and name in history:
+                        past_counts = history[name]
+                        if any(c > 0 for c in past_counts):
+                            newly_empty.append(name)
+                if newly_empty:
+                    logger.warning(
+                        f"Sources returning 0 that previously had jobs: {', '.join(newly_empty)}"
+                    )
+            except Exception as e:
+                logger.debug(f"Source health check skipped: {e}")
 
             logger.info(f"Total raw jobs: {len(all_jobs)}")
 

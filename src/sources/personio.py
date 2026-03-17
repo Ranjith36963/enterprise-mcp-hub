@@ -18,6 +18,7 @@ _INTER_COMPANY_DELAY = 3.0
 class PersonioSource(BaseJobSource):
     """Personio ATS XML feed — multi-sector company job boards."""
     name = "personio"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[str] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

@@ -14,6 +14,7 @@ logger = logging.getLogger("job360.sources.workanywhere")
 class WorkAnywhereSource(BaseJobSource):
     """WorkAnywhere.pro remote Data/AI jobs via RSS feed."""
     name = "workanywhere"
+    category = "rss"
 
     async def fetch_jobs(self) -> list[Job]:
         # Try category-specific feed first, fallback to main feed

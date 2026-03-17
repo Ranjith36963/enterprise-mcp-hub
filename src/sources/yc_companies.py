@@ -13,6 +13,7 @@ logger = logging.getLogger("job360.sources.yc_companies")
 class YCCompaniesSource(BaseJobSource):
     """YC Company Directory — generates career page links for UK-based YC companies."""
     name = "yc_companies"
+    category = "free_json"
 
     async def fetch_jobs(self) -> list[Job]:
         data = await self._get_json("https://yc-oss.github.io/api/companies/all.json")

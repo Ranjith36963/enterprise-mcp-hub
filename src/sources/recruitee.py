@@ -12,6 +12,7 @@ logger = logging.getLogger("job360.sources.recruitee")
 
 class RecruiteeSource(BaseJobSource):
     name = "recruitee"
+    category = "ats"
 
     def __init__(self, session: aiohttp.ClientSession, companies: list[str] | None = None, search_config=None):
         super().__init__(session, search_config=search_config)

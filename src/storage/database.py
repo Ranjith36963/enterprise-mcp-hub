@@ -49,6 +49,26 @@ class JobDatabase:
             CREATE INDEX IF NOT EXISTS idx_jobs_match_score ON jobs(match_score);
         """)
         await self._conn.commit()
+        await self._migrate()
+
+    async def _migrate(self):
+        """Add any missing columns to existing tables (forward-compatible schema migration)."""
+        cursor = await self._conn.execute("PRAGMA table_info(jobs)")
+        existing = {row[1] for row in await cursor.fetchall()}
+
+        # Define columns added after initial schema.
+        # Format: (column_name, column_definition)
+        migrations = [
+            # Add future columns here, e.g.:
+            # ("salary_currency", "TEXT DEFAULT ''"),
+        ]
+        for col_name, col_def in migrations:
+            if col_name not in existing:
+                await self._conn.execute(
+                    f"ALTER TABLE jobs ADD COLUMN {col_name} {col_def}"
+                )
+        if migrations:
+            await self._conn.commit()
 
     async def get_tables(self) -> list[str]:
         cursor = await self._conn.execute(
@@ -145,6 +165,19 @@ class JobDatabase:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def get_last_source_counts(self, n: int = 5) -> dict[str, list[int]]:
+        """Get per-source job counts from the last N runs for health tracking."""
+        cursor = await self._conn.execute(
+            "SELECT per_source FROM run_log ORDER BY id DESC LIMIT ?", (n,)
+        )
+        rows = await cursor.fetchall()
+        source_history: dict[str, list[int]] = {}
+        for row in rows:
+            per_source = json.loads(row[0]) if row[0] else {}
+            for name, count in per_source.items():
+                source_history.setdefault(name, []).append(count)
+        return source_history
 
     async def close(self):
         if self._conn:

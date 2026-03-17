@@ -1,12 +1,15 @@
 """Job360 Web Dashboard — Streamlit UI with compact table-row layout."""
 
 import html
+import logging
 import sqlite3
 import json
 import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+logger = logging.getLogger("job360.dashboard")
 
 # Ensure project root is on sys.path so "src" package resolves
 # when Streamlit runs this file directly.
@@ -224,7 +227,8 @@ def load_jobs_7day() -> list[dict]:
             (cutoff, MIN_MATCH_SCORE),
         )
         rows = [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to load jobs: %s", e)
         return []
     finally:
         conn.close()
@@ -253,7 +257,8 @@ def load_run_logs() -> pd.DataFrame:
     conn = _get_conn()
     try:
         df = pd.read_sql_query("SELECT * FROM run_log ORDER BY id DESC", conn)
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to load run logs: %s", e)
         return pd.DataFrame()
     finally:
         conn.close()

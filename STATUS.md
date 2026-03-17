@@ -3,8 +3,8 @@
 ## Current State: Phase 2 Complete
 
 **Last updated:** 2026-03-17
-**Total tests:** 376 across 17 test modules
-**Source files:** 73+ Python modules | **Test files:** 17 test modules
+**Total tests:** 388+ across 18 test modules
+**Source files:** 73+ Python modules | **Test files:** 18 test modules
 **Job sources:** 48 registered in SOURCE_REGISTRY
 
 ---
@@ -72,6 +72,24 @@
 
 ---
 
+## Phase 2.5: Reliability & Extensibility Improvements -- COMPLETE
+
+**Goal:** Fix identified issues from codebase analysis — error handling, schema safety, source health, test coverage, and source metadata.
+
+### What was built/fixed
+
+| Component | File(s) | Status |
+|-----------|---------|--------|
+| DB error logging | `src/cli_view.py`, `src/dashboard.py` | Done -- `except Exception` blocks now log errors before returning empty |
+| Magic number elimination | `src/main.py`, `tests/test_main.py` | Done -- `SOURCE_INSTANCE_COUNT` constant replaces hard-coded 47 |
+| Schema migration | `src/storage/database.py` | Done -- `_migrate()` method uses PRAGMA table_info + ALTER TABLE for future columns |
+| Source health tracking | `src/main.py`, `src/storage/database.py` | Done -- detects sources returning 0 that previously had jobs, warns in logs |
+| Rate limiter tests | `tests/test_rate_limiter.py` | Done -- 5 tests: acquire/release, context manager, concurrency limit, delay, multi-concurrent |
+| Source category metadata | `src/sources/base.py`, all 46 source files | Done -- `category` class attribute (keyed_api/free_json/ats/rss/scraper/other) |
+| Integration tests | `tests/test_main.py`, `tests/test_database.py` | Done -- SOURCE_INSTANCE_COUNT validation, failed source tracking, migration, source history |
+
+---
+
 ## Phase 3+ (Future)
 
 - Skill inference from job titles (e.g., "Data Scientist" implies Python, SQL, statistics)
@@ -121,11 +139,11 @@
 | Issue | Severity | Notes |
 |-------|----------|-------|
 | 3 tests skip on Windows | Low | bash-only tests for `setup.sh` and `cron_run.sh` — pass on Linux/Mac |
-
 | CV parser section detection | Low | Regex-based — may miss non-standard CV formats. Works for ~80% of CVs |
 | No skill inference | Medium | Profile system only extracts explicitly listed skills. Users must add related skills via preferences |
 | python-jobspy not in requirements.txt | Low | Intentionally optional (heavy dependencies). Indeed/Glassdoor source skips with warning if not installed. |
 | GITHUB_TOKEN optional | Low | Without token, GitHub API rate limit is 60 req/hr. With token: 5000 req/hr. Profile enrichment may fail for users with many repos without a token. |
+| pdfminer/cryptography conflict | Low | Environment-specific: pyo3 panic in cryptography lib breaks pdfplumber import in some environments |
 
 ---
 
@@ -142,20 +160,21 @@
 | `test_notifications.py` | Slack + Discord + Email channels | 19 |
 | `test_deduplicator.py` | `deduplicator.py` | 13 |
 | `test_cli.py` | `cli.py` commands + SOURCE_REGISTRY | 11 |
-| `test_main.py` | `main.py` orchestrator | 9 |
+| `test_main.py` | `main.py` orchestrator + error paths | 12 |
 | `test_notification_base.py` | Channel base + discovery | 7 |
 | `test_reports.py` | Report generation | 6 |
-| `test_database.py` | SQLite database | 6 |
+| `test_database.py` | SQLite database + migration + source history | 9 |
 | `test_setup.py` | setup.sh + requirements | 6 |
 | `test_cli_view.py` | `cli_view.py` | 5 |
 | `test_cron.py` | cron_run.sh | 5 |
 | `test_csv_export.py` | CSV export | 4 |
-| **Total** | | **376** (3 skip on Windows) |
+| `test_rate_limiter.py` | `rate_limiter.py` | 5 |
+| **Total** | | **388+** (3 skip on Windows) |
 
 ### Not covered or lightly covered
 
 - `src/dashboard.py` — Streamlit UI is not unit-tested (would need Streamlit testing framework)
-- `src/utils/rate_limiter.py` — rate limiting tested indirectly through source tests, no dedicated tests
+- `src/utils/rate_limiter.py` — now has 5 dedicated tests in `test_rate_limiter.py`
 - Live HTTP behavior — all tests use mocked responses, so real API format changes are not caught by tests
 - Profile dashboard sidebar — interactive Streamlit profile form is not tested
 - Edge cases in LinkedIn ZIP parsing — malformed ZIPs, missing CSVs tested but exotic edge cases possible

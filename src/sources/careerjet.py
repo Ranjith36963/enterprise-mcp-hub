@@ -11,6 +11,7 @@ logger = logging.getLogger("job360.sources.careerjet")
 
 class CareerjetSource(BaseJobSource):
     name = "careerjet"
+    category = "keyed_api"
 
     def __init__(self, session: aiohttp.ClientSession, affid: str = "", search_config=None):
         super().__init__(session, search_config=search_config)
