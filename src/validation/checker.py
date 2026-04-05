@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -11,7 +12,24 @@ from typing import Optional
 
 import aiohttp
 
+from src.config.settings import (
+    JS_RENDERED_SOURCES, JS_DESC_SOURCES, REDIRECT_SOURCES,
+)
+
 logger = logging.getLogger("job360.validation")
+
+# CAPTCHA detection markers (case-insensitive search in HTML)
+_CAPTCHA_MARKERS = (
+    "captcha", "cf-browser-verification", "recaptcha",
+    "hcaptcha", "challenge-platform", "cf-turnstile",
+)
+
+
+def _is_captcha_page(html: str) -> bool:
+    """Detect if the response HTML is a CAPTCHA/challenge page, not job content."""
+    lower = html[:5000].lower()
+    return any(marker in lower for marker in _CAPTCHA_MARKERS)
+
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -156,9 +174,15 @@ def _title_similarity(stored: str, actual: str) -> float:
 def _desc_similarity(stored: str, actual_body: str) -> float:
     """Compare stored description against scraped page body.
 
-    Uses multiple strategies: substring search, keyword overlap, and
-    sequence matching. API descriptions often differ in formatting from
-    HTML pages, so we use the best signal available.
+    API descriptions are often truncated summaries of full web page content.
+    A stored description that is a SUBSET of the page is a perfect match —
+    the API gave us a shorter version of the real thing.
+
+    Uses tiered strategies (best match wins):
+    1. Subset containment — stored text appears inside page → 1.0
+    2. Phrase overlap — sentences from stored appear in page → 0.7-1.0
+    3. Keyword overlap — significant words shared → 0.6-1.0
+    4. Sequence matching — fuzzy character comparison → 0.0-1.0
     """
     if not stored or len(stored) < 50:
         return -1.0  # Skip — no stored description to compare
@@ -169,33 +193,38 @@ def _desc_similarity(stored: str, actual_body: str) -> float:
     s = _strip_html(stored).lower()
     a = actual_body.lower()
 
-    # Strategy 1: Check if meaningful chunks of stored desc appear in page
-    # Split stored into sentences/phrases and check how many appear
+    # Strategy 1: Subset containment — if stored text appears inside page,
+    # the data is correct (API gave a truncated version of the full JD).
+    # Check first 200 chars (handles API truncation at any length).
+    if s[:200] in a:
+        return 1.0
+    if s[:100] in a:
+        return 1.0
+
+    # Strategy 2: Phrase overlap — split into sentences, check presence
     phrases = [p.strip() for p in re.split(r'[.!?\n]', s) if len(p.strip()) > 15]
     if phrases:
         found = sum(1 for p in phrases[:15] if p in a)
         phrase_ratio = found / min(len(phrases), 15)
-        if phrase_ratio >= 0.2:
+        if phrase_ratio >= 0.15:  # Lowered from 0.2 — API summaries may share few phrases
             return max(0.7, round(min(phrase_ratio * 1.5, 1.0), 3))
 
-    # Strategy 2: Keyword overlap — extract significant words and compare
+    # Strategy 3: Keyword overlap — extract significant words, check coverage
     stored_words = set(re.findall(r'\b[a-z]{4,}\b', s))
     page_words = set(re.findall(r'\b[a-z]{4,}\b', a))
     if stored_words:
         overlap = stored_words & page_words
         word_ratio = len(overlap) / len(stored_words)
-        if word_ratio >= 0.5:
-            return max(0.6, round(min(word_ratio, 1.0), 3))
-
-    # Strategy 3: Substring containment (first 100 chars)
-    if s[:100] in a:
-        return 1.0
+        if word_ratio >= 0.4:  # Lowered from 0.5 — API summaries share fewer words
+            return max(0.6, round(min(word_ratio * 1.2, 1.0), 3))
 
     # Strategy 4: Sequence matching on comparable chunks
     ratio = SequenceMatcher(None, s[:500], a[:2000]).ratio()
-    # Scale up — 0.3+ ratio between API text and HTML page is actually good
-    if ratio >= 0.3:
-        return round(min(ratio * 2, 1.0), 3)
+    if ratio >= 0.30:
+        # Good overlap → scale conservatively (1.5x, not 2x)
+        # Prevents unrelated descriptions with incidental character overlap
+        # from scoring above 0.5
+        return round(min(ratio * 1.5, 1.0), 3)
     return round(ratio, 3)
 
 
@@ -371,7 +400,7 @@ async def validate_job(
         result.notes.append(f"Connection error: {type(exc).__name__}")
         result.url_alive = -1.0  # Can't validate — network issue, not a pipeline bug
         return result
-    except Exception as exc:
+    except (asyncio.TimeoutError, ValueError, OSError) as exc:
         result.notes.append(f"Error: {exc}")
         result.url_alive = -1.0
         return result
@@ -379,11 +408,16 @@ async def validate_job(
     if not html:
         return result
 
+    # CAPTCHA detection — skip content validation for challenge pages
+    if _is_captcha_page(html):
+        result.title_match = -1.0
+        result.description_match = -1.0
+        result.notes.append("CAPTCHA/challenge page detected — content validation skipped")
+        return result
+
     # Title check
     actual_title = _extract_title(html)
     result.actual_title = actual_title
-    # Detect pages where title extraction is unreliable
-    _js_rendered_titles = {"smartrecruiters", "lever", "workable", "recruitee"}
     if result.actual_status_code in (403, 0):
         # Can't extract title from blocked/failed page
         result.title_match = -1.0
@@ -392,7 +426,14 @@ async def validate_job(
         # Expired job — URL pattern valid but page gone. Can't validate content.
         result.title_match = -1.0
         result.description_match = -1.0
-    elif not actual_title or (job.get("source", "") in _js_rendered_titles and len(actual_title) < 20):
+    elif job.get("source", "") in REDIRECT_SOURCES:
+        # Redirect-based sources: URL leads to tracking page, not the job.
+        # Our stored data came from the API (correct), but the URL resolves
+        # to a generic landing page. Skip title/desc validation.
+        result.title_match = -1.0
+        result.description_match = -1.0
+        result.notes.append(f"Redirect-based source ({job.get('source')}) — content validation skipped")
+    elif not actual_title or (job.get("source", "") in JS_RENDERED_SOURCES and len(actual_title) < 20):
         result.title_match = -1.0  # Skip — can't validate JS-rendered pages via HTTP
         result.notes.append(f"JS-rendered page — title validation skipped ({actual_title[:30]})")
     else:
@@ -425,8 +466,7 @@ async def validate_job(
     # Description check
     stored_desc = job.get("description", "")
     # JS-rendered pages: API gives us good descriptions but HTTP can't see page content
-    _js_desc_sources = {"ashby", "pinpoint", "workable", "recruitee", "smartrecruiters"}
-    if job.get("source", "") in _js_desc_sources:
+    if job.get("source", "") in JS_DESC_SOURCES:
         if stored_desc and len(stored_desc) > 50:
             result.description_match = -1.0  # Can't validate via HTTP (JS-rendered)
         else:
@@ -481,7 +521,9 @@ def aggregate_by_source(results: list[ValidationResult]) -> list[SourceConfidenc
         if sc.date_score >= 0:
             w_parts.append((sc.date_score, 0.25))
         if sc.desc_score >= 0:
-            w_parts.append((sc.desc_score, 0.20))
+            # Description weight reduced: many sources provide truncated summaries
+            # vs full web page content, causing false similarity mismatches
+            w_parts.append((sc.desc_score, 0.15))
         total_w = sum(w for _, w in w_parts)
         if total_w > 0:
             sc.confidence = round(sum(v * w for v, w in w_parts) / total_w, 3)

@@ -85,7 +85,7 @@ def extract_text_from_pdf(file_path: str) -> str:
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
-    except Exception as e:
+    except (ValueError, OSError, TypeError) as e:
         logger.error(f"Failed to read PDF {file_path}: {e}")
         return ""
     return "\n".join(text_parts)
@@ -102,7 +102,7 @@ def extract_text_from_docx(file_path: str) -> str:
     try:
         doc = docx.Document(file_path)
         return "\n".join(para.text for para in doc.paragraphs if para.text.strip())
-    except Exception as e:
+    except (ValueError, OSError, TypeError) as e:
         logger.error(f"Failed to read DOCX {file_path}: {e}")
         return ""
 
@@ -362,7 +362,7 @@ def parse_cv(file_path: str) -> CVData:
     try:
         from src.profile.cv_structured_parser import enhance_cv_data
         cv = enhance_cv_data(cv, sections)
-    except Exception as e:
+    except (ValueError, OSError, TypeError) as e:
         logger.warning(f"Structured CV parsing failed (continuing with flat data): {e}")
 
     # Optional LLM enrichment
@@ -374,7 +374,7 @@ def parse_cv(file_path: str) -> CVData:
             cv = merge_llm_extraction(cv, extraction)
     except ImportError:
         pass  # LLM libraries not installed — continue with regex-only parsing
-    except Exception as e:
+    except (ValueError, OSError, TypeError) as e:
         logger.warning(f"LLM CV enrichment failed (continuing with regex results): {e}")
 
     return cv

@@ -5,6 +5,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.careerjet")
 
@@ -79,7 +80,7 @@ class CareerjetSource(BaseJobSource):
                     title=title,
                     company=item.get("company", ""),
                     location=item.get("locations", ""),
-                    description=description[:5000],
+                    description=description[:MAX_DESCRIPTION_LENGTH],
                     apply_url=apply_url,
                     source=self.name,
                     date_found=date_found,

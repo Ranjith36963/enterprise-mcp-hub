@@ -74,6 +74,7 @@ class UserPreferences:
     experience_level: str = ""
     negative_keywords: list[str] = field(default_factory=list)
     about_me: str = ""
+    excluded_companies: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -116,4 +117,6 @@ class SearchConfig:
     industries: list[str] = field(default_factory=list)
     # Phase 3E: auto-detected professional domains
     detected_domains: list[str] = field(default_factory=list)
+    # Companies to exclude (zero-out score)
+    excluded_companies: list[str] = field(default_factory=list)
 

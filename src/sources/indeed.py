@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.indeed")
 
@@ -38,7 +39,7 @@ class JobSpySource(BaseJobSource):
                     results_wanted=50,
                     hours_old=168,
                 )
-            except Exception as e:
+            except (RuntimeError, ValueError, OSError) as e:
                 logger.warning(f"JobSpy scrape failed for '{query}': {e}")
                 return []
             if df is None or df.empty:
@@ -74,7 +75,7 @@ class JobSpySource(BaseJobSource):
                     title=title,
                     company=str(row.get("company", "")),
                     location=location,
-                    description=desc[:5000],
+                    description=desc[:MAX_DESCRIPTION_LENGTH],
                     apply_url=str(row.get("job_url", "")),
                     source=source_name,
                     date_found=date_found,

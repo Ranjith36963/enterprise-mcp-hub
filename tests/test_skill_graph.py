@@ -90,8 +90,8 @@ def test_infer_python_ecosystem():
     assert "rest api" in inferred_lower
 
 
-def test_integration_search_config_inferred_in_tertiary():
-    """Inferred skills should appear in tertiary, not primary or secondary."""
+def test_integration_search_config_inferred_in_secondary():
+    """Inferred skills should appear in secondary (not primary — primary is proven)."""
     profile = UserProfile(
         cv_data=CVData(
             raw_text="I am an engineer",
@@ -105,15 +105,13 @@ def test_integration_search_config_inferred_in_tertiary():
     config = generate_search_config(profile)
     primary_lower = {s.lower() for s in config.primary_skills}
     secondary_lower = {s.lower() for s in config.secondary_skills}
-    tertiary_lower = {s.lower() for s in config.tertiary_skills}
 
-    # Azure should be inferred from AWS and placed in tertiary
-    assert "azure" in tertiary_lower
+    # Azure should be inferred from AWS and placed in secondary (inferred tier)
+    assert "azure" in secondary_lower
     assert "azure" not in primary_lower
-    assert "azure" not in secondary_lower
 
-    # Kubernetes inferred from Docker
-    assert "kubernetes" in tertiary_lower
+    # Kubernetes inferred from Docker → also in secondary
+    assert "kubernetes" in secondary_lower
 
 
 # ── ESCO-derived skill relationship tests ──

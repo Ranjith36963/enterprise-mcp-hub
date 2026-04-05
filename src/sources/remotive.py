@@ -5,6 +5,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.remotive")
 
@@ -57,7 +58,7 @@ class RemotiveSource(BaseJobSource):
                 title=title,
                 company=item.get("company_name", ""),
                 location=item.get("candidate_required_location", ""),
-                description=desc[:5000],
+                description=desc[:MAX_DESCRIPTION_LENGTH],
                 apply_url=item.get("url", ""),
                 source=self.name,
                 date_found=date_found,

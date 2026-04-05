@@ -29,10 +29,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 QA_PROFILES_DIR = PROJECT_ROOT / "tests" / "qa_profiles"
+QA_PDFS_DIR = QA_PROFILES_DIR / "pdfs"
 DATA_DIR = PROJECT_ROOT / "data"
 RESULTS_DIR = DATA_DIR / "qa_results"
 GROUND_TRUTH_PATH = QA_PROFILES_DIR / "ground_truth.json"
 BENCHMARK_PATH = DATA_DIR / "reports" / "BENCHMARK.md"
+SOURCE_HISTORY_PATH = RESULTS_DIR / "source_history.json"
 
 
 # ── CV Parsing (uses real parser, not simplified version) ────────────
@@ -158,6 +160,200 @@ def _cv_to_profile_json(cv, text: str) -> dict:
     }
 
 
+# ── WP2A: PDF Parsing Validation ───────────────────────────────────
+
+def _validate_pdf_parsing(cv_name: str, txt_cv) -> dict | None:
+    """If a PDF version of this CV exists, parse it and compare to TXT parsing.
+
+    Returns overlap metrics or None if no PDF exists.
+    """
+    pdf_path = QA_PDFS_DIR / f"{cv_name}.pdf"
+    if not pdf_path.exists():
+        return None
+
+    try:
+        from src.profile.cv_parser import parse_cv
+        pdf_cv = parse_cv(str(pdf_path))
+    except Exception as exc:
+        return {"error": str(exc), "skills_recall": 0, "titles_recall": 0}
+
+    txt_skills = {s.lower() for s in txt_cv.skills}
+    pdf_skills = {s.lower() for s in pdf_cv.skills}
+    skills_overlap = len(txt_skills & pdf_skills)
+    skills_recall = skills_overlap / max(len(txt_skills), 1)
+
+    txt_titles = {t.lower() for t in txt_cv.job_titles}
+    pdf_titles = {t.lower() for t in pdf_cv.job_titles}
+    titles_overlap = len(txt_titles & pdf_titles)
+    titles_recall = titles_overlap / max(len(txt_titles), 1)
+
+    return {
+        "skills_recall": round(skills_recall, 3),
+        "titles_recall": round(titles_recall, 3),
+        "pdf_skills_count": len(pdf_cv.skills),
+        "txt_skills_count": len(txt_cv.skills),
+        "overlap_skills": skills_overlap,
+    }
+
+
+# ── WP2B: SearchConfig Quality Validation ─────────────────────────
+
+def _validate_search_config(config, ground_truth_entry: dict) -> dict:
+    """Validate that generated SearchConfig is complete and correct.
+
+    Checks:
+    1. At least some primary skills extracted
+    2. Enough search queries (>= 3)
+    3. Detected domains match expected domain
+    4. No duplicate skills across primary + secondary
+    5. Locations include UK-relevant entries
+    6. Negative keywords present if non-entry level
+    """
+    checks = {}
+
+    # 1. Primary skills present
+    checks["has_primary_skills"] = len(config.primary_skills) > 0
+    checks["primary_skills_count"] = len(config.primary_skills)
+
+    # 2. Enough search queries
+    checks["has_enough_queries"] = len(config.search_queries) >= 3
+    checks["query_count"] = len(config.search_queries)
+
+    # 3. Detected domains match expected
+    expected_domain = ground_truth_entry.get("domain", "")
+    detected = getattr(config, "detected_domains", [])
+    checks["domain_detected"] = expected_domain in detected if expected_domain else True
+    checks["detected_domains"] = detected
+
+    # 4. No duplicate skills
+    all_skills_lower = [s.lower() for s in config.primary_skills + config.secondary_skills]
+    unique_count = len(set(all_skills_lower))
+    checks["no_skill_duplicates"] = unique_count == len(all_skills_lower)
+    checks["duplicate_count"] = len(all_skills_lower) - unique_count
+
+    # 5. UK locations present
+    loc_lower = [loc.lower() for loc in config.locations]
+    checks["has_uk_locations"] = any(
+        uk in loc for loc in loc_lower
+        for uk in ("uk", "london", "remote", "england", "united kingdom")
+    )
+
+    # 6. Negative keywords for non-entry
+    expected_seniority = ground_truth_entry.get("expected_seniority", "mid")
+    if expected_seniority != "entry":
+        checks["has_negative_keywords"] = len(config.negative_title_keywords) > 0
+    else:
+        checks["has_negative_keywords"] = True  # Not required for entry level
+
+    # Compute quality score (0-1)
+    passed = sum(1 for k, v in checks.items() if isinstance(v, bool) and v)
+    total_checks = sum(1 for k, v in checks.items() if isinstance(v, bool))
+    checks["quality_score"] = round(passed / max(total_checks, 1), 3)
+
+    return checks
+
+
+# ── WP2D: Per-Source Regression Tracking ──────────────────────────
+
+def _load_source_history() -> dict:
+    """Load per-source regression history from JSON."""
+    if SOURCE_HISTORY_PATH.exists():
+        try:
+            return json.loads(SOURCE_HISTORY_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _save_source_history(history: dict) -> None:
+    """Save per-source history, keeping last 30 entries."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Trim to last 30 dates
+    dates = sorted(history.keys())
+    if len(dates) > 30:
+        for old in dates[:-30]:
+            del history[old]
+    SOURCE_HISTORY_PATH.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+
+def _track_source_regression(search_stats: dict) -> list[str]:
+    """Compare current per-source stats vs last run; flag regressions > 50%.
+
+    Returns list of warning strings for regressions.
+    """
+    per_source = search_stats.get("per_source", {})
+    if not per_source:
+        return []
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    history = _load_source_history()
+
+    # Find last entry (most recent date before today)
+    prev_dates = sorted(d for d in history.keys() if d < today)
+    prev = history[prev_dates[-1]] if prev_dates else {}
+
+    # Save current run
+    current = {}
+    for src_name, stats in per_source.items():
+        fetched = stats if isinstance(stats, int) else stats.get("fetched", 0)
+        current[src_name] = {"fetched": fetched}
+    history[today] = current
+    _save_source_history(history)
+
+    # Check regressions
+    warnings = []
+    for src_name, cur_stats in current.items():
+        cur_fetched = cur_stats.get("fetched", 0)
+        prev_stats = prev.get(src_name, {})
+        prev_fetched = prev_stats.get("fetched", 0)
+        if prev_fetched > 0 and cur_fetched < prev_fetched * 0.5:
+            warnings.append(
+                f"{src_name}: fetched dropped {prev_fetched} -> {cur_fetched} "
+                f"({cur_fetched / prev_fetched:.0%} of previous)"
+            )
+    return warnings
+
+
+# ── WP2E: Before/After Benchmark Comparison ───────────────────────
+
+def _load_previous_benchmark() -> dict:
+    """Load the previous benchmark results from qa_results.json."""
+    results_path = RESULTS_DIR / "qa_results.json"
+    if results_path.exists():
+        try:
+            prev = json.loads(results_path.read_text(encoding="utf-8"))
+            return {r["cv_name"]: r for r in prev if "cv_name" in r}
+        except Exception:
+            pass
+    return {}
+
+
+def _compare_benchmarks(prev: dict, current: list[dict]) -> list[str]:
+    """Compare current results vs previous; flag improvements and regressions.
+
+    Returns list of comparison strings.
+    """
+    comparisons = []
+    for r in current:
+        name = r.get("cv_name", "")
+        if name not in prev:
+            comparisons.append(f"  {name}: NEW (no previous data)")
+            continue
+        old = prev[name]
+        for pillar in ("pillar1", "pillar2", "pillar3"):
+            old_conf = old.get(pillar, {}).get("confidence", 0) or 0
+            new_conf = r.get(pillar, {}).get("confidence", 0) or 0
+            if old_conf == 0 and new_conf == 0:
+                continue
+            diff = new_conf - old_conf
+            if abs(diff) > 0.05:
+                direction = "IMPROVED" if diff > 0 else "REGRESSED"
+                comparisons.append(
+                    f"  {name}/{pillar}: {old_conf:.0%} -> {new_conf:.0%} ({direction})"
+                )
+    return comparisons
+
+
 # ── Pipeline helpers ────────────────────────────────────────────────
 
 def _save_profile(profile_data: dict) -> None:
@@ -270,6 +466,16 @@ def run_qa_for_cv(
         "seniority": seniority,
     }
 
+    # ── WP2A: PDF Parsing Comparison (if PDF exists) ──
+    pdf_result = _validate_pdf_parsing(cv_name, cv)
+    if pdf_result:
+        if "error" in pdf_result:
+            print(f"  [PDF] Parse error: {pdf_result['error']}")
+        else:
+            print(f"  [PDF] Skills recall={pdf_result['skills_recall']:.0%}, "
+                  f"Titles recall={pdf_result['titles_recall']:.0%}")
+        result["pdf_parsing"] = pdf_result
+
     # ── PILLAR 1: CV Parsing Quality ──
     if 1 in run_pillars:
         print("  [P1] Validating parsing quality...")
@@ -306,6 +512,34 @@ def run_qa_for_cv(
             "missing_titles": p1.missing_titles,
             "domain": p1.domain,
         }
+
+    # ── WP2B+C: SearchConfig Quality + Domain Detection ──
+    try:
+        from src.profile.storage import load_profile as _lp
+        from src.profile.keyword_generator import generate_search_config
+        from src.profile.models import UserProfile, CVData, UserPreferences
+
+        _save_profile(profile)  # save temporarily for SearchConfig generation
+        loaded_profile = _lp()
+        if loaded_profile and loaded_profile.is_complete:
+            search_config = generate_search_config(loaded_profile)
+            gt_entry = ground_truth.get(cv_name, {})
+            sc_quality = _validate_search_config(search_config, gt_entry)
+            result["search_config_quality"] = sc_quality
+
+            # Domain detection accuracy
+            expected_domain = gt_entry.get("domain", "")
+            detected = getattr(search_config, "detected_domains", [])
+            result["domain_detection"] = {
+                "expected": expected_domain,
+                "detected": detected,
+                "match": expected_domain in detected if expected_domain else True,
+            }
+            print(f"  [SC] Quality={sc_quality['quality_score']:.0%}, "
+                  f"Domains={detected}, "
+                  f"{'MATCH' if result['domain_detection']['match'] else 'MISMATCH'}")
+    except Exception as exc:
+        print(f"  [SC] Validation error: {exc}")
 
     # ── Search Pipeline ──
     if run_search:
@@ -422,8 +656,8 @@ def _update_benchmark(all_results: list[dict]) -> None:
         "",
         "## Per-CV Results",
         "",
-        "| CV | Domain | P1 Parsing | P2 Source | P3 Engine | Jobs | Overall |",
-        "|---|--------|:---:|:---:|:---:|:---:|:---:|",
+        "| CV | Domain | P1 Parsing | P2 Source | P3 Engine | PDF | SC | Jobs | Overall |",
+        "|---|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|",
     ]
 
     for r in sorted(all_results, key=lambda x: x.get("cv_name", "")):
@@ -437,7 +671,15 @@ def _update_benchmark(all_results: list[dict]) -> None:
         row_avg = sum(row_scores) / len(row_scores) if row_scores else 0
         p2_str = f"{p2:.0%}" if p2 else "N/A"
         p3_str = f"{p3:.0%}" if p3 else "N/A"
-        lines.append(f"| {name} | {domain} | {p1:.0%} | {p2_str} | {p3_str} | {jobs} | **{row_avg:.0%}** |")
+        # WP2 columns: PDF parsing and SearchConfig quality
+        pdf = r.get("pdf_parsing", {})
+        pdf_str = f"{pdf['skills_recall']:.0%}" if pdf and "skills_recall" in pdf and not pdf.get("error") else "N/A"
+        sc = r.get("search_config_quality", {})
+        sc_str = f"{sc['quality_score']:.0%}" if sc and "quality_score" in sc else "N/A"
+        lines.append(
+            f"| {name} | {domain} | {p1:.0%} | {p2_str} | {p3_str} "
+            f"| {pdf_str} | {sc_str} | {jobs} | **{row_avg:.0%}** |"
+        )
 
     # Pillar 1 details
     lines.extend(["", "## Pillar 1: CV Parsing Details", ""])
@@ -545,6 +787,26 @@ def main():
             p3s = f"{p3:.0%}" if p3 else "N/A"
             print(f"{r['cv_name']:<30} {p1s:>5} {p2s:>5} {p3s:>5} {jobs:>6} {overall:>7.0%}")
 
+    # ── WP2D: Per-source regression tracking ──
+    for r in all_results:
+        search_stats = r.get("search", {})
+        if search_stats.get("per_source") or search_stats.get("sources_queried", 0) > 0:
+            regressions = _track_source_regression(search_stats)
+            if regressions:
+                print("\n  SOURCE REGRESSIONS:")
+                for w in regressions:
+                    print(f"    ⚠ {w}")
+            break  # Only track once (last search run)
+
+    # ── WP2E: Before/after benchmark comparison ──
+    prev_benchmark = _load_previous_benchmark()
+    if prev_benchmark:
+        comparisons = _compare_benchmarks(prev_benchmark, all_results)
+        if comparisons:
+            print("\n  BENCHMARK CHANGES:")
+            for c in comparisons:
+                print(f"    {c}")
+
     # Save results JSON
     results_path = RESULTS_DIR / "qa_results.json"
     results_path.write_text(json.dumps(all_results, indent=2), encoding="utf-8")
@@ -552,6 +814,11 @@ def main():
 
     # Update benchmark MD
     _update_benchmark(all_results)
+
+    # Clean up: remove benchmark DB and profile so they don't pollute
+    # the user's real dashboard. QA results are saved in qa_results.json.
+    _clear_data()
+    print("Cleaned up benchmark data (won't affect dashboard)")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from src.validation.checker import (
     _date_to_bucket,
     _extract_title,
     _extract_date,
+    _is_captcha_page,
 )
 from src.validation.report import (
     generate_validation_report,
@@ -204,3 +205,23 @@ class TestReport:
         assert "0 jobs checked" in md
         data = generate_validation_json([], [])
         assert data["overall_confidence"] == 0.0
+
+
+class TestCaptchaDetection:
+    """CAPTCHA page detection."""
+
+    def test_captcha_detected(self):
+        html = '<html><body><div class="cf-browser-verification">Checking your browser</div></body></html>'
+        assert _is_captcha_page(html) is True
+
+    def test_recaptcha_detected(self):
+        html = '<html><body><div class="g-recaptcha" data-sitekey="abc"></div></body></html>'
+        assert _is_captcha_page(html) is True
+
+    def test_normal_page_not_captcha(self):
+        html = '<html><body><h1>Software Engineer at DeepMind</h1><p>Great role</p></body></html>'
+        assert _is_captcha_page(html) is False
+
+    def test_hcaptcha_detected(self):
+        html = '<html><body><iframe src="https://hcaptcha.com/captcha/v1"></iframe></body></html>'
+        assert _is_captcha_page(html) is True

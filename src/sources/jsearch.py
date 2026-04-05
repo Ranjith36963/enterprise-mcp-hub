@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.jsearch")
 
@@ -79,7 +80,7 @@ class JSearchSource(BaseJobSource):
                     location=location,
                     salary_min=item.get("job_min_salary"),
                     salary_max=item.get("job_max_salary"),
-                    description=description[:5000],
+                    description=description[:MAX_DESCRIPTION_LENGTH],
                     apply_url=item.get("job_apply_link", ""),
                     source=self.name,
                     date_found=date_found,

@@ -3,8 +3,10 @@ import json
 import logging
 import re
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 
 import aiohttp
+import aiosqlite
 
 from src.models import Job
 from src.config.settings import MAX_RETRIES, RETRY_BACKOFF, REQUEST_TIMEOUT, USER_AGENT, RATE_LIMITS
@@ -16,9 +18,32 @@ logger = logging.getLogger("job360.sources")
 # HTTP status codes that indicate a bad request format — retrying won't help
 _NO_RETRY_STATUSES = (401, 403, 404, 422)
 
-# Circuit breaker: track consecutive failures per source
+# Circuit breaker: in-memory cache (runtime), backed by source_health DB table
 _circuit_breaker: dict[str, int] = {}
 _CIRCUIT_BREAKER_THRESHOLD = 3
+
+# Persistent health state loaded from DB at run start
+_source_health: dict[str, dict] = {}
+
+
+def load_source_health(health: dict[str, dict]):
+    """Load persistent source health into runtime state.
+
+    Called once at run start from main.py after DB init.
+    Pre-populates circuit breaker and skip-until from DB.
+    """
+    global _source_health
+    _source_health = health
+    now = datetime.now(timezone.utc).isoformat()
+    for name, info in health.items():
+        failures = info.get("consecutive_failures", 0)
+        skip_until = info.get("skip_until")
+        if skip_until and skip_until > now:
+            # Source is in cooldown — pre-open circuit breaker
+            _circuit_breaker[name] = max(failures, _CIRCUIT_BREAKER_THRESHOLD)
+        elif failures >= _CIRCUIT_BREAKER_THRESHOLD:
+            # Past threshold but cooldown expired — give it another chance
+            _circuit_breaker[name] = 0
 
 
 def _sanitize_xml(text: str) -> str:
@@ -88,9 +113,22 @@ class BaseJobSource(ABC):
     async def fetch_jobs(self) -> list[Job]:
         ...
 
-    async def safe_fetch(self) -> list[Job]:
-        """Fetch with circuit breaker — skip source after consecutive failures."""
+    async def safe_fetch(self, db=None) -> list[Job]:
+        """Fetch with circuit breaker — skip source after consecutive failures.
+
+        When *db* is provided (a JobDatabase instance), success/failure is
+        persisted across runs via the ``source_health`` table.
+        """
         failures = _circuit_breaker.get(self.name, 0)
+        # Check persistent skip_until
+        health = _source_health.get(self.name, {})
+        skip_until = health.get("skip_until")
+        if skip_until and skip_until > datetime.now(timezone.utc).isoformat():
+            logger.warning(
+                f"[{self.name}] Persistent circuit breaker — skipped until "
+                f"{skip_until[:16]} ({health.get('consecutive_failures', 0)} consecutive failures)"
+            )
+            return []
         if failures >= _CIRCUIT_BREAKER_THRESHOLD:
             logger.warning(
                 f"[{self.name}] Circuit breaker OPEN — skipping after "
@@ -100,6 +138,11 @@ class BaseJobSource(ABC):
         try:
             jobs = await self.fetch_jobs()
             _circuit_breaker[self.name] = 0  # Reset on success
+            if db:
+                try:
+                    await db.record_source_success(self.name)
+                except (aiosqlite.Error, OSError):
+                    pass
             return jobs
         except Exception as e:
             _circuit_breaker[self.name] = failures + 1
@@ -107,6 +150,11 @@ class BaseJobSource(ABC):
                 f"[{self.name}] Fetch failed ({failures + 1}/"
                 f"{_CIRCUIT_BREAKER_THRESHOLD}): {e}"
             )
+            if db:
+                try:
+                    await db.record_source_failure(self.name, str(e))
+                except (aiosqlite.Error, OSError):
+                    pass
             return []
 
     async def _gather_queries(self, coros: list, batch_size: int = 3) -> list:
@@ -132,6 +180,35 @@ class BaseJobSource(ABC):
                        headers: dict | None = None,
                        as_text: bool = False):
         """Shared retry/rate-limit logic for all HTTP methods."""
+        # robots.txt compliance check — skip for authenticated API calls.
+        # API keys = explicit permission from the provider. robots.txt is
+        # for web crawlers, not consumers of documented APIs.
+        _is_authenticated = (
+            # Header-based auth (Reed, Findwork, etc.)
+            (headers and any(
+                k.lower() in ("authorization", "x-api-key", "apikey")
+                for k in headers
+            ))
+            # Param-based auth (Adzuna, Jooble, SerpAPI, etc.)
+            or (params and any(
+                k.lower() in ("app_id", "app_key", "api_key", "apikey", "key")
+                for k in (params or {})
+            ))
+            # POST body auth (Jooble)
+            or (body and any(
+                k.lower() in ("api_key", "apikey", "key")
+                for k in (body or {})
+            ))
+        )
+        if not _is_authenticated:
+            try:
+                from src.utils.robots_checker import is_allowed
+                if not await is_allowed(self._session, url, USER_AGENT):
+                    logger.debug(f"[{self.name}] Blocked by robots.txt: {url}")
+                    return None
+            except Exception:
+                pass  # robots.txt check failed — proceed anyway
+
         exceptions = (aiohttp.ClientError, asyncio.TimeoutError)
         if not as_text:
             exceptions = (*exceptions, json.JSONDecodeError)

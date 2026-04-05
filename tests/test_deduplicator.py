@@ -206,3 +206,31 @@ def test_dedup_different_companies_not_compared():
     ]
     result = deduplicate(jobs)
     assert len(result) == 2
+
+
+# ---- Empty company edge cases ----
+
+
+def test_dedup_unknown_company_different_sources_kept():
+    """Jobs with empty company from different sources must NOT be collapsed."""
+    jobs = [
+        _make_job(title="Software Engineer", company="", source="linkedin",
+                  description="Build web apps at a startup"),
+        _make_job(title="Software Engineer", company="", source="climatebase",
+                  description="Climate tech engineering role"),
+    ]
+    result = deduplicate(jobs)
+    assert len(result) == 2
+
+
+def test_dedup_unknown_company_same_source_deduped():
+    """Jobs with empty company from the SAME source should still dedup."""
+    jobs = [
+        _make_job(title="Software Engineer", company="", source="linkedin",
+                  match_score=60),
+        _make_job(title="Software Engineer", company="", source="linkedin",
+                  match_score=80),
+    ]
+    result = deduplicate(jobs)
+    assert len(result) == 1
+    assert result[0].match_score == 80

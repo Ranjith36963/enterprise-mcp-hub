@@ -18,34 +18,103 @@ Metrics per CV:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("job360.validation.pillar3")
 
-# Domain keyword mapping — for each domain, keywords that SHOULD appear in relevant jobs
-DOMAIN_RELEVANCE_KEYWORDS: dict[str, list[str]] = {
-    "software_engineering": ["software", "developer", "engineer", "backend", "frontend", "full-stack", "fullstack", "programming", "code", "api", "devops"],
-    "devops": ["devops", "platform", "infrastructure", "cloud", "sre", "reliability", "kubernetes", "terraform", "ci/cd", "deployment"],
-    "data_engineering": ["data engineer", "data platform", "etl", "pipeline", "data warehouse", "spark", "kafka", "airflow", "dbt", "analytics engineer"],
-    "data_science": ["data scientist", "machine learning", "analytics", "statistical", "data analysis", "ml engineer", "predictive", "modelling"],
-    "marketing": ["marketing", "digital marketing", "seo", "ppc", "content", "brand", "campaign", "social media", "growth", "acquisition"],
-    "finance": ["finance", "financial", "analyst", "accountant", "banking", "investment", "audit", "fp&a", "treasury", "compliance"],
-    "human_resources": ["hr", "human resources", "people", "talent", "recruitment", "employee relations", "hrbp", "learning", "development", "cipd"],
-    "supply_chain": ["supply chain", "procurement", "logistics", "operations", "warehouse", "inventory", "sourcing", "planning", "manufacturing"],
-    "design": ["designer", "ux", "ui", "user experience", "product design", "figma", "design system", "research", "usability"],
-    "clinical_research": ["clinical", "research", "trial", "pharma", "cra", "gcp", "regulatory", "biotech", "medical"],
-    "structural_engineering": ["structural", "civil", "engineer", "construction", "building", "design", "bim", "concrete", "steel"],
-    "legal": ["lawyer", "solicitor", "legal", "counsel", "attorney", "law", "compliance", "contract", "regulatory"],
-    "biomedical_science": ["biomedical", "laboratory", "scientist", "nhs", "pathology", "diagnostics", "clinical", "genomics"],
-    "construction_pm": ["project manager", "construction", "building", "site", "nec", "jct", "programme", "quantity", "surveyor"],
-    "environmental": ["environmental", "sustainability", "carbon", "climate", "esg", "green", "ecology", "renewable", "net zero"],
-    "healthcare_ops": ["nhs", "healthcare", "hospital", "clinical", "operations", "service", "patient", "health"],
-    "cybersecurity": ["cyber", "security", "infosec", "penetration", "soc", "siem", "threat", "vulnerability", "incident"],
-    "nursing": ["nurse", "nursing", "nmc", "clinical", "patient care", "healthcare", "ward", "hospital"],
-    "product_management": ["product manager", "product owner", "product lead", "roadmap", "backlog", "agile", "scrum", "stakeholder"],
-}
+
+# ── LLM-based validation helpers ────────────────────────────────────
+
+def _llm_classify_domain(jobs: list[dict], domain: str) -> list[bool]:
+    """Use LLM to classify whether each job belongs to the given domain.
+
+    Falls back to keyword matching if LLM is unavailable.
+    """
+    try:
+        from src.llm.client import llm_complete, is_configured, parse_json_response
+        if not is_configured():
+            return []
+    except ImportError:
+        return []
+
+    # Batch jobs into chunks of 10 for efficient LLM calls
+    results: list[bool] = []
+    for i in range(0, len(jobs), 10):
+        batch = jobs[i:i + 10]
+        job_list = "\n".join(
+            f'{idx + 1}. "{j.get("title", "")} at {j.get("company", "")}"'
+            for idx, j in enumerate(batch)
+        )
+        prompt = (
+            f"You are classifying job listings by professional domain.\n"
+            f"Domain: {domain}\n\n"
+            f"For each job below, answer YES if it belongs to the {domain} domain, NO if not.\n"
+            f"Return ONLY a JSON array of booleans, e.g. [true, false, true, ...]\n\n"
+            f"Jobs:\n{job_list}"
+        )
+        try:
+            raw = llm_complete(prompt, max_tokens=200)
+            if raw:
+                parsed = parse_json_response(raw)
+                if isinstance(parsed, list) and len(parsed) == len(batch):
+                    results.extend(bool(v) for v in parsed)
+                    continue
+        except (RuntimeError, ValueError, OSError) as exc:
+            logger.debug(f"LLM domain classification failed: {exc}")
+        # Fallback: mark all as unknown (empty list triggers keyword fallback)
+        return []
+
+    return results
+
+
+def _llm_check_skill_overlap(jobs: list[dict], cv_skills: list[str]) -> list[float]:
+    """Use LLM to assess what % of CV skills are relevant to each job.
+
+    Returns a list of overlap scores (0.0-1.0) per job.
+    Falls back to keyword matching if LLM is unavailable.
+    """
+    try:
+        from src.llm.client import llm_complete, is_configured, parse_json_response
+        if not is_configured():
+            return []
+    except ImportError:
+        return []
+
+    skills_str = ", ".join(cv_skills[:20])  # Cap to avoid prompt bloat
+    results: list[float] = []
+
+    for job in jobs:
+        title = job.get("title", "")
+        desc = (job.get("description") or "")[:800]
+        prompt = (
+            f"A job seeker has these skills: {skills_str}\n\n"
+            f"Job: {title}\n"
+            f"Description: {desc}\n\n"
+            f"What percentage (0-100) of the seeker's skills are relevant to this job?\n"
+            f"Consider synonyms, related skills, and transferable skills.\n"
+            f"Return ONLY a single integer number (0-100)."
+        )
+        try:
+            raw = llm_complete(prompt, max_tokens=20)
+            if raw:
+                # Extract number from response
+                nums = re.findall(r'\d+', raw.strip())
+                if nums:
+                    pct = min(int(nums[0]), 100) / 100.0
+                    results.append(pct)
+                    continue
+        except (RuntimeError, ValueError, OSError) as exc:
+            logger.debug(f"LLM skill overlap failed: {exc}")
+        results.append(-1.0)  # -1 = LLM failed for this job
+
+    # If too many failures, return empty to trigger keyword fallback
+    failures = sum(1 for r in results if r < 0)
+    if failures > len(results) * 0.5:
+        return []
+    return [max(0.0, r) for r in results]
 
 
 @dataclass
@@ -80,24 +149,56 @@ class EngineResult:
 
 
 def _check_domain_relevance(jobs: list[dict], domain: str) -> tuple[float, int, list[str]]:
-    """Check what % of stored jobs match the CV's domain keywords."""
-    keywords = DOMAIN_RELEVANCE_KEYWORDS.get(domain, [])
-    if not keywords or not jobs:
+    """Check what % of stored jobs match the CV's domain.
+
+    Uses LLM classification first (understands context, not just keywords).
+    Falls back to keyword matching if LLM is unavailable.
+    """
+    if not jobs:
         return 0.0, 0, []
+
+    # Try LLM-based classification first
+    llm_results = _llm_classify_domain(jobs, domain)
 
     relevant = 0
     irrelevant_examples = []
 
-    for job in jobs:
-        title = (job.get("title") or "").lower()
-        desc = (job.get("description") or "").lower()[:500]
-        combined = f"{title} {desc}"
+    if llm_results and len(llm_results) == len(jobs):
+        # LLM classification available
+        for i, job in enumerate(jobs):
+            if llm_results[i]:
+                relevant += 1
+            elif len(irrelevant_examples) < 5:
+                irrelevant_examples.append(
+                    f"{job.get('title', 'Unknown')} @ {job.get('company', 'Unknown')}"
+                )
+        logger.info(f"P3 domain relevance: LLM classified {relevant}/{len(jobs)} as {domain}")
+    else:
+        # Fallback: keyword matching (less accurate but always available)
+        from src.filters.description_matcher import text_contains_with_synonyms
+        # Use domain detector's signal words instead of hardcoded list
+        try:
+            from src.profile.domain_detector import _DOMAIN_SIGNALS
+            title_kws, skill_kws = _DOMAIN_SIGNALS.get(domain, (set(), set()))
+            keywords = list(title_kws | skill_kws)
+        except ImportError:
+            keywords = []
 
-        is_relevant = any(kw in combined for kw in keywords)
-        if is_relevant:
-            relevant += 1
-        elif len(irrelevant_examples) < 5:
-            irrelevant_examples.append(f"{job.get('title', 'Unknown')} @ {job.get('company', 'Unknown')}")
+        if not keywords:
+            return 0.5, 0, []  # Unknown domain, neutral score
+
+        for job in jobs:
+            title = (job.get("title") or "").lower()
+            desc = (job.get("description") or "").lower()[:500]
+            combined = f"{title} {desc}"
+
+            is_relevant = any(kw in combined for kw in keywords)
+            if is_relevant:
+                relevant += 1
+            elif len(irrelevant_examples) < 5:
+                irrelevant_examples.append(
+                    f"{job.get('title', 'Unknown')} @ {job.get('company', 'Unknown')}"
+                )
 
     score = relevant / len(jobs) if jobs else 0.0
     return score, relevant, irrelevant_examples
@@ -149,42 +250,72 @@ def _check_score_sanity(jobs: list[dict]) -> tuple[float, dict]:
 
 
 def _check_skill_match(jobs: list[dict], cv_skills: list[str]) -> tuple[float, list[dict]]:
-    """Check skill overlap between top-scored jobs and CV skills."""
+    """Check skill overlap between top-scored jobs and CV skills.
+
+    Uses LLM for semantic skill matching (understands synonyms, related
+    skills, transferable skills). Falls back to keyword+synonym matching.
+    """
     if not jobs or not cv_skills:
         return 0.0, []
 
     # Sort by score, take top 10
     sorted_jobs = sorted(jobs, key=lambda j: j.get("match_score", 0), reverse=True)[:10]
-    cv_skills_lower = {s.lower() for s in cv_skills}
+
+    # Try LLM-based skill overlap first
+    llm_overlaps = _llm_check_skill_overlap(sorted_jobs, cv_skills)
 
     overlaps = []
     total_overlap = 0.0
 
-    for job in sorted_jobs:
-        desc = (job.get("description") or "").lower()
-        title = (job.get("title") or "").lower()
-        combined = f"{title} {desc}"
+    if llm_overlaps and len(llm_overlaps) == len(sorted_jobs):
+        # LLM results available
+        for i, job in enumerate(sorted_jobs):
+            pct = llm_overlaps[i]
+            total_overlap += pct
+            overlaps.append({
+                "title": job.get("title", "Unknown"),
+                "score": job.get("match_score", 0),
+                "overlap_pct": round(pct, 2),
+                "method": "llm",
+            })
+        logger.info(f"P3 skill match: LLM avg overlap={total_overlap / len(sorted_jobs):.0%}")
+    else:
+        # Fallback: keyword + synonym matching
+        try:
+            from src.filters.description_matcher import text_contains_with_synonyms
+            use_synonyms = True
+        except ImportError:
+            use_synonyms = False
 
-        matched = []
-        for skill in cv_skills_lower:
-            # Simple word boundary check
-            if skill in combined:
-                matched.append(skill)
+        cv_skills_lower = {s.lower() for s in cv_skills}
 
-        overlap_pct = len(matched) / len(cv_skills_lower) if cv_skills_lower else 0.0
-        total_overlap += overlap_pct
-        overlaps.append({
-            "title": job.get("title", "Unknown"),
-            "score": job.get("match_score", 0),
-            "skills_found": len(matched),
-            "skills_total": len(cv_skills_lower),
-            "overlap_pct": round(overlap_pct, 2),
-        })
+        for job in sorted_jobs:
+            desc = (job.get("description") or "").lower()
+            title = (job.get("title") or "").lower()
+            combined = f"{title} {desc}"
+
+            matched = []
+            for skill in cv_skills_lower:
+                if use_synonyms:
+                    if text_contains_with_synonyms(combined, skill):
+                        matched.append(skill)
+                elif skill in combined:
+                    matched.append(skill)
+
+            overlap_pct = len(matched) / len(cv_skills_lower) if cv_skills_lower else 0.0
+            total_overlap += overlap_pct
+            overlaps.append({
+                "title": job.get("title", "Unknown"),
+                "score": job.get("match_score", 0),
+                "skills_found": len(matched),
+                "skills_total": len(cv_skills_lower),
+                "overlap_pct": round(overlap_pct, 2),
+                "method": "synonym",
+            })
 
     avg_overlap = total_overlap / len(sorted_jobs) if sorted_jobs else 0.0
-    # Scale: 10%+ overlap for top jobs is good (many jobs won't list all CV skills)
-    # 5% is baseline, 20%+ is excellent
-    score = min(1.0, avg_overlap / 0.15)  # 15% overlap = 1.0
+    # Scale: 15%+ overlap for top jobs = 1.0 (many jobs won't list all CV skills)
+    score = min(1.0, avg_overlap / 0.15)
     return score, overlaps
 
 
@@ -196,8 +327,8 @@ def _check_seniority_alignment(jobs: list[dict], expected_seniority: str) -> flo
     seniority_keywords = {
         "entry": ["junior", "graduate", "entry", "trainee", "intern", "apprentice"],
         "mid": ["mid", "intermediate"],
-        "senior": ["senior", "sr", "experienced", "lead"],
-        "lead": ["lead", "principal", "head", "manager", "director"],
+        "senior": ["senior", "sr", "experienced", "staff", "principal"],
+        "lead": ["lead", "principal", "head", "manager", "director", "staff"],
         "executive": ["director", "vp", "chief", "head of", "executive", "cto", "cfo"],
     }
 
@@ -216,10 +347,12 @@ def _check_seniority_alignment(jobs: list[dict], expected_seniority: str) -> flo
 
     exact = 0
     close = 0
+    neutral = 0
     total_checked = 0
 
     for job in jobs[:20]:  # Check top 20
         title = (job.get("title") or "").lower()
+        desc = (job.get("description") or "").lower()[:300]
         if not title:
             continue
         total_checked += 1
@@ -228,12 +361,18 @@ def _check_seniority_alignment(jobs: list[dict], expected_seniority: str) -> flo
             exact += 1
         elif any(w in title for w in adjacent):
             close += 1
+        elif any(w in desc for w in target_words):
+            # Seniority signal in description but not title — weaker signal
+            close += 1
+        else:
+            # No seniority keyword anywhere — neutral (most JDs don't state level)
+            neutral += 1
 
     if total_checked == 0:
         return 0.5
 
-    # Exact match = 1.0, close = 0.5, neither = 0.0
-    alignment = (exact * 1.0 + close * 0.5) / total_checked
+    # Exact=1.0, close=0.7, no keyword=0.5 (neutral, not penalty)
+    alignment = (exact * 1.0 + close * 0.7 + neutral * 0.5) / total_checked
     return min(1.0, alignment)
 
 

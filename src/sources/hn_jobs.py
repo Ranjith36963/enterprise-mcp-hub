@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.hn_jobs")
 
@@ -69,7 +70,7 @@ class HNJobsSource(BaseJobSource):
             title=title,
             company=company,
             location="",
-            description=text[:5000] if text else title,
+            description=text[:MAX_DESCRIPTION_LENGTH] if text else title,
             apply_url=url or f"https://news.ycombinator.com/item?id={item.get('id', '')}",
             source=self.name,
             date_found=date_found,

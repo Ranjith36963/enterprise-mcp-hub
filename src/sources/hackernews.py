@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.hackernews")
 
@@ -38,7 +39,7 @@ def _parse_hn_comment(text: str, relevance_keywords: list[str]) -> dict | None:
     apply_url = url_match.group(0) if url_match else ""
 
     # Use full text as description
-    description = clean[:5000]
+    description = clean[:MAX_DESCRIPTION_LENGTH]
 
     # Infer title from relevance keywords in the text (word-boundary match)
     title = ""

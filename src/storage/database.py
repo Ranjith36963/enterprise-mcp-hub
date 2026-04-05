@@ -1,14 +1,17 @@
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 
 import aiosqlite
+
+logger = logging.getLogger("job360.database")
 
 from src.models import Job
 from src.storage.user_actions import UserActionsDB
 from src.pipeline.tracker import ApplicationTracker
 
 
-SCHEMA_VERSION = 6  # Bump when schema changes
+SCHEMA_VERSION = 7  # Bump when schema changes
 
 
 class JobDatabase:
@@ -26,7 +29,7 @@ class JobDatabase:
             )
             row = await cursor.fetchone()
             return row[0] if row else 0
-        except Exception:
+        except aiosqlite.Error:
             return 0
 
     async def _set_schema_version(self, version: int):
@@ -63,6 +66,10 @@ class JobDatabase:
             # v6: add embedding column + FTS5 virtual table
             await self._migrate_v6_fts5_and_embeddings()
 
+        if current < 7:
+            # v7: source health table for persistent circuit breaker
+            await self._migrate_v7_source_health()
+
         await self._set_schema_version(SCHEMA_VERSION)
 
     async def _migrate_v3_normalized_titles(self):
@@ -88,7 +95,7 @@ class JobDatabase:
                 "ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT ''"
             )
             await self._conn.commit()
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # Column may already exist
 
     async def _migrate_v5_match_data(self):
@@ -98,7 +105,7 @@ class JobDatabase:
                 "ALTER TABLE jobs ADD COLUMN match_data TEXT DEFAULT ''"
             )
             await self._conn.commit()
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # Column may already exist
 
     async def _migrate_v6_fts5_and_embeddings(self):
@@ -109,7 +116,7 @@ class JobDatabase:
                 "ALTER TABLE jobs ADD COLUMN embedding TEXT DEFAULT ''"
             )
             await self._conn.commit()
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # Column may already exist
 
         # Create FTS5 virtual table (content-less, synced manually)
@@ -122,9 +129,8 @@ class JobDatabase:
                 )
             """)
             await self._conn.commit()
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("FTS5 creation failed: %s", e)
+        except aiosqlite.OperationalError as e:
+            logger.warning("FTS5 creation failed: %s", e)
 
         # Populate FTS5 index from existing jobs
         try:
@@ -133,8 +139,104 @@ class JobDatabase:
                 SELECT id, title, company, description FROM jobs
             """)
             await self._conn.commit()
-        except Exception:
-            pass
+        except aiosqlite.OperationalError:
+            pass  # FTS5 index may already be populated
+
+    async def _migrate_v7_source_health(self):
+        """Create source_health table for persistent circuit breaker."""
+        try:
+            await self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS source_health (
+                    source_name TEXT PRIMARY KEY,
+                    consecutive_failures INTEGER DEFAULT 0,
+                    last_success TEXT,
+                    last_failure TEXT,
+                    last_error TEXT DEFAULT '',
+                    skip_until TEXT
+                )
+            """)
+            await self._conn.commit()
+        except aiosqlite.OperationalError:
+            pass  # Table may already exist
+
+    # ── Source health methods (persistent circuit breaker) ──────────
+
+    async def get_source_health(self) -> dict[str, dict]:
+        """Load all source health records. Returns {source_name: {...}}."""
+        try:
+            cursor = await self._conn.execute(
+                "SELECT source_name, consecutive_failures, last_success, "
+                "last_failure, last_error, skip_until FROM source_health"
+            )
+            rows = await cursor.fetchall()
+            return {
+                row[0]: {
+                    "consecutive_failures": row[1],
+                    "last_success": row[2],
+                    "last_failure": row[3],
+                    "last_error": row[4],
+                    "skip_until": row[5],
+                }
+                for row in rows
+            }
+        except aiosqlite.Error:
+            return {}
+
+    async def record_source_success(self, source_name: str):
+        """Record a successful fetch — resets failure count."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            """INSERT INTO source_health (source_name, consecutive_failures, last_success, skip_until)
+               VALUES (?, 0, ?, NULL)
+               ON CONFLICT(source_name) DO UPDATE SET
+                 consecutive_failures = 0, last_success = ?, skip_until = NULL""",
+            (source_name, now, now),
+        )
+        await self._conn.commit()
+
+    async def record_source_failure(self, source_name: str, error: str):
+        """Record a fetch failure — increments count and sets skip_until."""
+        now = datetime.now(timezone.utc).isoformat()
+        # Read current failures first
+        cursor = await self._conn.execute(
+            "SELECT consecutive_failures FROM source_health WHERE source_name = ?",
+            (source_name,),
+        )
+        row = await cursor.fetchone()
+        failures = (row[0] + 1) if row else 1
+
+        # Exponential backoff: 3→1hr, 5→6hr, 8+→24hr
+        if failures >= 8:
+            skip_hours = 24
+        elif failures >= 5:
+            skip_hours = 6
+        elif failures >= 3:
+            skip_hours = 1
+        else:
+            skip_hours = 0
+        skip_until = (
+            (datetime.now(timezone.utc) + timedelta(hours=skip_hours)).isoformat()
+            if skip_hours > 0 else None
+        )
+
+        await self._conn.execute(
+            """INSERT INTO source_health
+               (source_name, consecutive_failures, last_failure, last_error, skip_until)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(source_name) DO UPDATE SET
+                 consecutive_failures = ?, last_failure = ?, last_error = ?, skip_until = ?""",
+            (source_name, failures, now, error[:500], skip_until,
+             failures, now, error[:500], skip_until),
+        )
+        await self._conn.commit()
+
+    async def reset_source_health(self, source_name: str):
+        """Manually reset a source's health (e.g., after fixing it)."""
+        await self._conn.execute(
+            "DELETE FROM source_health WHERE source_name = ?",
+            (source_name,),
+        )
+        await self._conn.commit()
 
     async def init_db(self):
         self._conn = await aiosqlite.connect(self._path)
@@ -260,7 +362,7 @@ class JobDatabase:
                     (id_row[0], job.title, job.company, job.description),
                 )
                 await self._conn.commit()
-        except Exception:
+        except aiosqlite.Error:
             pass  # FTS5 may not be available
 
     async def count_jobs(self) -> int:

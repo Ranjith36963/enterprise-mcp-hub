@@ -259,3 +259,192 @@ class TestSalaryExtraction:
         jd = "Salary: £60,000 - £80,000 per annum."
         result = parse_jd(jd)
         assert result.salary_mentioned is True
+
+
+# ── Enhanced salary parsing (daily, hourly, weekly, OTE) ──
+
+
+class TestEnhancedSalaryParsing:
+    """Tests for new UK salary formats: daily, hourly, weekly, OTE."""
+
+    def test_daily_rate_single(self):
+        """£500 per day → annual ~110,000."""
+        jd = "Contract role paying £500 per day, outside IR35."
+        result = parse_jd(jd)
+        assert result.salary_min == 500 * 220
+        assert result.salary_type == "daily"
+
+    def test_daily_rate_slash(self):
+        """£600/day → annual ~132,000."""
+        jd = "Rate: £600/day for experienced contractor."
+        result = parse_jd(jd)
+        assert result.salary_min == 600 * 220
+        assert result.salary_type == "daily"
+
+    def test_daily_rate_pd(self):
+        """£450 p/d → annual ~99,000."""
+        jd = "Paying £450 p/d for 6-month engagement."
+        result = parse_jd(jd)
+        assert result.salary_min == 450 * 220
+        assert result.salary_type == "daily"
+
+    def test_daily_rate_range(self):
+        """£400-£600 per day → annual range."""
+        jd = "Day rate: £400-£600 per day depending on experience."
+        result = parse_jd(jd)
+        assert result.salary_min == 400 * 220
+        assert result.salary_max == 600 * 220
+        assert result.salary_type == "daily"
+
+    def test_hourly_rate_single(self):
+        """£25/hour → annual ~44,000."""
+        jd = "Paying £25/hour for part-time support worker."
+        result = parse_jd(jd)
+        assert result.salary_min == 25 * 1760
+        assert result.salary_type == "hourly"
+
+    def test_hourly_rate_ph(self):
+        """£30 p/h → annual ~52,800."""
+        jd = "Rate: £30 p/h, flexible shifts."
+        result = parse_jd(jd)
+        assert result.salary_min == 30 * 1760
+        assert result.salary_type == "hourly"
+
+    def test_hourly_rate_range(self):
+        """£25-£35 per hour → annual range."""
+        jd = "Hourly rate: £25-£35 per hour based on experience."
+        result = parse_jd(jd)
+        assert result.salary_min == 25 * 1760
+        assert result.salary_max == 35 * 1760
+        assert result.salary_type == "hourly"
+
+    def test_weekly_rate(self):
+        """£2,000 per week → annual ~96,000."""
+        jd = "Offering £2,000 per week for interim CFO."
+        result = parse_jd(jd)
+        assert result.salary_min == 2000 * 48
+        assert result.salary_type == "weekly"
+
+    def test_ote_base_plus(self):
+        """£50k base + £20k OTE → min=50k, max=70k."""
+        jd = "£50k base + £20k OTE for top performers."
+        result = parse_jd(jd)
+        assert result.salary_min == 50000
+        assert result.salary_max == 70000
+        assert result.salary_type == "ote"
+
+    def test_ote_suffix(self):
+        """£80k OTE → max=80k."""
+        jd = "Earnings up to £80k OTE in this sales role."
+        result = parse_jd(jd)
+        assert result.salary_max == 80000
+        assert result.salary_type == "ote"
+
+    def test_annual_still_works(self):
+        """Existing annual patterns still work and return type='annual'."""
+        jd = "Salary: £60,000 - £80,000 per annum."
+        result = parse_jd(jd)
+        assert result.salary_min == 60000
+        assert result.salary_max == 80000
+        assert result.salary_type == "annual"
+
+    def test_k_range_still_works(self):
+        """Existing k notation still works."""
+        jd = "Competitive salary of £50k - £70k depending on experience."
+        result = parse_jd(jd)
+        assert result.salary_min == 50000
+        assert result.salary_max == 70000
+        assert result.salary_type == "annual"
+
+
+# ── Email extraction ──
+
+
+class TestEmailExtraction:
+    """Tests for contact email extraction from JDs."""
+
+    def test_extracts_recruiter_email(self):
+        jd = "Apply by sending your CV to jane.smith@acmecorp.co.uk"
+        result = parse_jd(jd)
+        assert "jane.smith@acmecorp.co.uk" in result.contact_emails
+
+    def test_filters_noreply(self):
+        jd = "Contact noreply@company.com or recruiter@company.com"
+        result = parse_jd(jd)
+        assert "recruiter@company.com" in result.contact_emails
+        assert "noreply@company.com" not in result.contact_emails
+
+    def test_filters_careers(self):
+        jd = "Send applications to careers@bigco.com"
+        result = parse_jd(jd)
+        assert len(result.contact_emails) == 0
+
+    def test_no_emails(self):
+        jd = "Apply via our website. No email applications."
+        result = parse_jd(jd)
+        assert result.contact_emails == []
+
+    def test_deduplicates(self):
+        jd = "Contact bob@firm.com or email bob@firm.com for details."
+        result = parse_jd(jd)
+        assert result.contact_emails.count("bob@firm.com") == 1
+
+
+# ── Enhanced salary edge cases ──
+
+
+class TestSalaryEdgeCases:
+    """Additional salary edge cases: daily outside IR35, from/up-to prefixes."""
+
+    def test_salary_daily_outside_ir35(self):
+        """'£600 per day outside IR35' → daily type, correct annual."""
+        jd = "Contractor rate: £600 per day outside IR35, 6-month engagement."
+        result = parse_jd(jd)
+        assert result.salary_min == 600 * 220
+        assert result.salary_type == "daily"
+
+    def test_salary_from_prefix(self):
+        """'from £50k' → salary_min=50000."""
+        jd = "Salary from £50k depending on experience."
+        result = parse_jd(jd)
+        assert result.salary_min == 50000
+        assert result.salary_type == "annual"
+
+    def test_salary_up_to_prefix(self):
+        """'up to £80k' → salary captured as single k value."""
+        jd = "Paying up to £80k for the right candidate."
+        result = parse_jd(jd)
+        # _SALARY_SINGLE_K_RE matches "£80k" regardless of "up to" prefix
+        assert result.salary_min == 80000
+        assert result.salary_type == "annual"
+
+    def test_salary_backfill_into_job(self):
+        """When source has no salary, JD salary is extracted via parse_jd."""
+        jd = "Competitive salary of £60,000 per annum plus benefits."
+        result = parse_jd(jd)
+        assert result.salary_min == 60000
+        assert result.salary_mentioned is True
+
+    def test_email_multiple_valid(self):
+        """JD with 3 distinct recruiter emails → all extracted."""
+        jd = (
+            "For more info contact alice@recruiting.co.uk, "
+            "bob.jones@talentfirm.com, or carol@agency.io"
+        )
+        result = parse_jd(jd)
+        assert len(result.contact_emails) == 3
+        assert "alice@recruiting.co.uk" in result.contact_emails
+        assert "bob.jones@talentfirm.com" in result.contact_emails
+        assert "carol@agency.io" in result.contact_emails
+
+    def test_email_mixed_valid_invalid(self):
+        """Mix of valid + noreply/blacklisted emails → only valid kept."""
+        jd = (
+            "Enquiries to recruiter@firm.com, noreply@firm.com, "
+            "support@firm.com, or test@example.com"
+        )
+        result = parse_jd(jd)
+        assert "recruiter@firm.com" in result.contact_emails
+        assert "noreply@firm.com" not in result.contact_emails
+        assert "support@firm.com" not in result.contact_emails
+        assert "test@example.com" not in result.contact_emails

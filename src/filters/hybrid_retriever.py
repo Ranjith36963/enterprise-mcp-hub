@@ -14,6 +14,7 @@ import json
 import logging
 from typing import Optional
 
+import aiosqlite
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def deserialize_embedding(data: str) -> Optional[np.ndarray]:
     try:
         raw = base64.b64decode(data)
         return np.frombuffer(raw, dtype=np.float32).copy()
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -80,7 +81,7 @@ class HybridRetriever:
             )
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
-        except Exception as e:
+        except aiosqlite.Error as e:
             logger.debug("FTS5 search failed (table may not exist): %s", e)
             return []
 
@@ -96,7 +97,7 @@ class HybridRetriever:
                 "SELECT id, embedding FROM jobs WHERE embedding != '' AND embedding IS NOT NULL"
             )
             rows = await cursor.fetchall()
-        except Exception as e:
+        except aiosqlite.Error as e:
             logger.debug("Vector search failed: %s", e)
             return []
 

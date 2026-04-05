@@ -14,6 +14,12 @@ asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+# Exclude E2E tests from default runs (they require a running dashboard)
+# Run E2E tests explicitly: python -m pytest tests/e2e/ --no-header
+addopts = "--ignore=tests/e2e"
+markers = [
+    "e2e: End-to-end browser tests requiring running Streamlit dashboard",
+]
 
 [tool.ruff]
 line-length = 120

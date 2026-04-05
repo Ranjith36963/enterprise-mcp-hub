@@ -96,7 +96,7 @@ async def llm_parse_jd(
     except json.JSONDecodeError:
         logger.debug("LLM JD parse: invalid JSON response")
         return None
-    except Exception as exc:
+    except (RuntimeError, ValueError, OSError) as exc:
         logger.debug(f"LLM JD parse failed: {exc}")
         return None
 

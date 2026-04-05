@@ -245,26 +245,26 @@ class TestKeywordGenerator:
         assert "sql" in config.relevance_keywords
 
     def test_source_based_tiers_skills(self):
-        """CV skills become secondary; preferences become primary."""
+        """All user skills (CV + prefs + LinkedIn + GitHub) go to primary.
+        Inferred skills go to secondary."""
         skills = ["Python", "SQL", "Java", "React", "Node", "Docker",
                    "K8s", "AWS", "GCP"]
         profile = self._make_profile(skills=skills)
         config = generate_search_config(profile)
-        # _make_profile puts skills in cv.skills with additional_skills=[],
-        # so primary=[] (from prefs), secondary=cv.skills, tertiary=inferred
+        # All CV skills land in primary (proven skills)
+        assert len(config.primary_skills) >= len(skills)
+        # Inferred skills go to secondary
         assert len(config.secondary_skills) > 0
-        assert len(config.tertiary_skills) > 0
-        total = len(config.primary_skills) + len(config.secondary_skills) + len(config.tertiary_skills)
+        total = len(config.primary_skills) + len(config.secondary_skills)
         assert total >= len(skills)
 
-    def test_single_cv_skill_becomes_secondary(self):
-        """A single CV skill lands in secondary tier (not primary)."""
+    def test_single_cv_skill_becomes_primary(self):
+        """A single CV skill lands in primary tier (proven skill)."""
         profile = self._make_profile(skills=["Python"])
         config = generate_search_config(profile)
-        assert config.primary_skills == []
-        assert "Python" in config.secondary_skills
-        # tertiary may contain inferred skills (e.g. pip, pytest from Python)
-        assert "Python" not in config.tertiary_skills
+        assert "Python" in config.primary_skills
+        # Inferred skills (e.g. pip, pytest from Python) go to secondary
+        assert "Python" not in config.secondary_skills
 
     def test_empty_skills_no_crash(self):
         profile = self._make_profile()

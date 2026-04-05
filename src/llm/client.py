@@ -163,7 +163,7 @@ class ProviderPool:
                 self._call_counts[provider.name] = self._call_counts.get(provider.name, 0) + 1
                 logger.debug("Pool call_counts: %s", self._call_counts)
                 return result
-            except Exception as exc:
+            except (Exception) as exc:  # LLM providers throw varied errors (API, auth, rate limit)
                 exc_str = str(exc).lower()
                 self._failures[provider.name] = self._failures.get(provider.name, 0) + 1
                 if "429" in exc_str or "rate" in exc_str:

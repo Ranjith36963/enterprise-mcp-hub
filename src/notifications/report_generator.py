@@ -41,7 +41,22 @@ def generate_markdown_report(jobs: list[Job], stats: dict, diagnostics=None) -> 
     ]
     per_source = stats.get("per_source", {})
     if per_source:
-        lines.append("- **Per source**: " + ", ".join(f"{k}: {v}" for k, v in per_source.items()))
+        # Format as readable table for sources that returned jobs
+        active = {k: v for k, v in per_source.items()
+                  if isinstance(v, dict) and v.get("fetched", 0) > 0}
+        if active:
+            lines.append("")
+            lines.append("| Source | Fetched | After Filter | Above Threshold | Stored |")
+            lines.append("|--------|---------|-------------|-----------------|--------|")
+            for src, data in sorted(active.items(), key=lambda x: x[1].get("stored", 0), reverse=True):
+                if isinstance(data, dict):
+                    lines.append(
+                        f"| {src} | {data.get('fetched', 0)} | "
+                        f"{data.get('after_foreign_filter', 0)} | "
+                        f"{data.get('above_threshold', 0)} | "
+                        f"{data.get('stored', 0)} |"
+                    )
+            lines.append("")
 
     if not jobs:
         lines.append("")
@@ -253,7 +268,7 @@ def generate_markdown_report(jobs: list[Job], stats: dict, diagnostics=None) -> 
                 lines.append(f"- Avg boost applied: {rr.get('avg_boost', 0):.1f} points")
                 lines.append("")
 
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             lines.append("")
             lines.append("*Diagnostics generation failed — pipeline data may be incomplete.*")
             lines.append("")

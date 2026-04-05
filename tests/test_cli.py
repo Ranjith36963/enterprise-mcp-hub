@@ -42,9 +42,9 @@ def test_sources_command():
         assert name in result.output
 
 
-def test_source_registry_has_48_sources():
-    """SOURCE_REGISTRY should have all 48 sources."""
-    assert len(SOURCE_REGISTRY) == 48
+def test_source_registry_has_50_sources():
+    """SOURCE_REGISTRY should have all 50 sources."""
+    assert len(SOURCE_REGISTRY) == 50
     expected = {"reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
                 "jobicy", "himalayas", "greenhouse", "lever", "workable",
                 "ashby", "findajob", "remotive", "jooble", "linkedin",
@@ -57,7 +57,9 @@ def test_source_registry_has_48_sources():
                 "personio", "workanywhere", "weworkremotely", "realworkfromanywhere",
                 "biospace", "jobtensor", "climatebase", "eightykhours",
                 "bcs_jobs", "uni_jobs", "successfactors", "aijobs_global",
-                "aijobs_ai", "nomis"}
+                "aijobs_ai", "nomis",
+                # Phase 5 new sources
+                "jobspresso", "pythonjobs"}
     assert set(SOURCE_REGISTRY.keys()) == expected
 
 

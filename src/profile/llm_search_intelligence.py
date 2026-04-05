@@ -92,7 +92,7 @@ def generate_search_intelligence(cv_text: str) -> SearchIntelligence:
     except json.JSONDecodeError:
         logger.warning("Failed to parse LLM search intelligence as JSON")
         return SearchIntelligence(success=False, error="JSON parse error")
-    except Exception as e:
+    except (RuntimeError, ValueError, OSError) as e:
         logger.warning(f"LLM search intelligence failed: {e}")
         return SearchIntelligence(success=False, error=str(e))
 

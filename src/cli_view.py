@@ -36,7 +36,7 @@ def _load_jobs_sync(db_path: str | None = None, days: int = 7, min_score: int = 
             (cutoff, min_score),
         )
         return [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except sqlite3.Error:
         return []
     finally:
         conn.close()

@@ -5,6 +5,8 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
+import aiosqlite
+
 
 class ActionType(enum.Enum):
     liked = "liked"
@@ -50,7 +52,7 @@ class UserActionsDB:
                     "VALUES (?, ?, ?, ?, '', ?)",
                     (job_id, "applied", now, next_rem, now),
                 )
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass  # applications table may not exist yet
         await self._conn.commit()
 

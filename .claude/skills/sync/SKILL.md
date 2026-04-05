@@ -1,3 +1,8 @@
+---
+name: sync
+description: Sync code facts with documentation files
+---
+
 # /sync — Code ↔ Documentation Sync
 
 Triggered by: `/sync` or `/sync <specific file or area>`

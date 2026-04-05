@@ -121,7 +121,7 @@ async def _get_json(session: aiohttp.ClientSession, url: str) -> Any:
                 logger.warning(f"GitHub API {resp.status} for {url}")
                 return None
             return await resp.json()
-    except Exception as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, KeyError) as e:
         logger.warning(f"GitHub API error: {e}")
         return None
 

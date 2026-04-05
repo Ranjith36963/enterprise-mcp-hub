@@ -591,17 +591,17 @@ class TestKeywordGeneratorWithEnrichedData:
         assert "Go" in all_skills
 
     def test_empty_enrichment_fields_no_change(self):
-        """When LinkedIn/GitHub fields are empty, CV skills stay in secondary tier (plus inferred)."""
+        """When LinkedIn/GitHub fields are empty, CV skills are in primary (all proven)."""
         profile = UserProfile(
             cv_data=CVData(raw_text="test", skills=["Python", "SQL"]),
             preferences=UserPreferences(target_job_titles=["Engineer"]),
         )
         config = generate_search_config(profile)
-        all_skills = config.primary_skills + config.secondary_skills + config.tertiary_skills
-        # Original CV skills must be present in secondary (source-based tiering)
+        all_skills = config.primary_skills + config.secondary_skills
+        # CV skills are proven → primary tier
         assert "Python" in all_skills
         assert "SQL" in all_skills
-        assert "Python" in config.secondary_skills
+        assert "Python" in config.primary_skills
 
 
 # ---------------------------------------------------------------------------

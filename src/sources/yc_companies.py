@@ -5,7 +5,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
-from src.config.settings import MAX_RESULTS_PER_SOURCE
+from src.config.settings import MAX_RESULTS_PER_SOURCE, MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.yc_companies")
 
@@ -48,7 +48,7 @@ class YCCompaniesSource(BaseJobSource):
                 title=f"{name} - Careers (YC Company)",
                 company=name,
                 location=loc_str.strip() or "Remote",
-                description=desc[:5000],
+                description=desc[:MAX_DESCRIPTION_LENGTH],
                 apply_url=apply_url,
                 source=self.name,
                 date_found=str(date_found),

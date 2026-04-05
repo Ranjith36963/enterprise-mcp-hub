@@ -19,27 +19,30 @@ LOCATION_WEIGHT = 10
 RECENCY_WEIGHT = 10
 
 # ── Multi-dimensional weights (total = 100) ──
-DIM_ROLE = 20          # was 25 — reduced after title-matching precision fix (1E)
-DIM_SKILL = 25
+# Rebalanced: embeddings are the primary domain-understanding signal.
+# Regex skill matching is domain-blind (only knows hardcoded terms).
+# Embeddings understand ALL domains naturally (nursing, legal, finance, etc.).
+DIM_ROLE = 15          # Title word-overlap — useful but domain-blind for generic words
+DIM_SKILL = 20         # Regex/synonym skill match — good for exact hits, weak cross-domain
 DIM_SENIORITY = 10
 DIM_EXPERIENCE = 10
 DIM_CREDENTIALS = 5
 DIM_LOCATION = 10
 DIM_RECENCY = 10
-DIM_SEMANTIC = 10      # was 5 — doubled to leverage embedding infrastructure (1E)
+DIM_SEMANTIC = 20      # Embedding similarity — THE domain-aware signal, works for all professions
 
 
 @dataclass
 class ScoreBreakdown:
     """Per-dimension scoring breakdown for a job match."""
-    role: int = 0           # 0-20: title/role match
-    skill: int = 0          # 0-25: skill overlap
+    role: int = 0           # 0-15: title/role match
+    skill: int = 0          # 0-20: skill overlap
     seniority: int = 0      # 0-10: seniority alignment
     experience: int = 0     # 0-10: experience years match
     credentials: int = 0    # 0-5:  qualification match
     location: int = 0       # 0-10: location match
     recency: int = 0        # 0-10: posting freshness
-    semantic: int = 0       # 0-10: embedding similarity + keyword overlap
+    semantic: int = 0       # 0-20: embedding similarity + keyword overlap
     penalty: int = 0        # subtracted from total (negative titles + excluded skills)
     total: int = 0          # final 0-100 score
 
@@ -49,7 +52,21 @@ class ScoreBreakdown:
     missing_preferred: list[str] = field(default_factory=list)
     transferable_skills: list[str] = field(default_factory=list)
 
+    # Evidence strings — WHY each dimension scored what it did
+    role_reason: str = ""
+    skill_reason: str = ""
+    seniority_reason: str = ""
+    experience_reason: str = ""
+    credentials_reason: str = ""
+    location_reason: str = ""
+    recency_reason: str = ""
+    semantic_reason: str = ""
+    penalty_reason: str = ""
+
 # Points per skill match
+# Primary = ALL proven skills (CV + preferences + LinkedIn + GitHub) — 3 pts
+# Secondary = Inferred by skill graph (system's guess) — 2 pts
+# Tertiary = Reserved (empty) — 1 pt
 PRIMARY_POINTS = 3
 SECONDARY_POINTS = 2
 TERTIARY_POINTS = 1
@@ -334,24 +351,46 @@ class JobScorer:
         bd = ScoreBreakdown()
         text = f"{job.title} {job.description}"
 
-        # 1. Role (0-25)
+        # 1. Role (0-15)
         bd.role = self._dim_role(job.title)
+        _target = ", ".join(self._config.job_titles[:3]) if self._config.job_titles else "none"
+        bd.role_reason = f"'{job.title[:50]}' vs targets [{_target}] → {bd.role}/{DIM_ROLE}"
 
-        # 2. Skill (0-25) + match lists
+        # 2. Skill (0-20) + match lists
         bd.skill, bd.matched_skills, bd.missing_required, bd.missing_preferred = \
             self._dim_skill(text, parsed_jd)
+        _m = len(bd.matched_skills)
+        _mr = len(bd.missing_required)
+        bd.skill_reason = f"{_m} matched, {_mr} missing required → {bd.skill}/{DIM_SKILL}"
 
         # 3. Seniority (0-10)
         bd.seniority = self._dim_seniority(job.title, parsed_jd, cv_data)
+        _user_level = (
+            getattr(self._config, 'target_experience_level', '')
+            or (getattr(cv_data, 'computed_seniority', '') if cv_data else '')
+            or "unknown"
+        )
+        _jd_level = (
+            (getattr(parsed_jd, 'seniority_signal', '') if parsed_jd else '')
+            or detect_experience_level(job.title)
+            or "unknown"
+        )
+        bd.seniority_reason = f"JD={_jd_level}, You={_user_level} → {bd.seniority}/{DIM_SENIORITY}"
 
         # 4. Experience (0-10)
         bd.experience = self._dim_experience(parsed_jd, cv_data)
+        _jd_yrs = getattr(parsed_jd, 'experience_years', None) if parsed_jd else None
+        _cv_yrs = round(getattr(cv_data, 'total_experience_months', 0) / 12, 1) if cv_data else 0
+        bd.experience_reason = f"JD needs {_jd_yrs or '?'}yr, you have {_cv_yrs}yr → {bd.experience}/{DIM_EXPERIENCE}"
 
         # 5. Credentials (0-5)
         bd.credentials = self._dim_credentials(parsed_jd, cv_data)
+        _jd_quals = getattr(parsed_jd, 'qualifications', []) if parsed_jd else []
+        bd.credentials_reason = f"JD: {', '.join(_jd_quals[:3]) or 'none'} → {bd.credentials}/{DIM_CREDENTIALS}"
 
         # 6. Location (0-10) — with work arrangement preference
         bd.location = _location_score(job.location)
+        _loc_note = ""
         if hasattr(self._config, 'work_arrangement') and self._config.work_arrangement:
             loc_lower = job.location.lower() if job.location else ""
             text_lower = text.lower()
@@ -360,31 +399,79 @@ class JobScorer:
                 if any(t in loc_lower or t in text_lower
                        for t in ("remote", "work from home", "wfh")):
                     bd.location = min(bd.location + 2, DIM_LOCATION)
+                    _loc_note = " (+2 remote bonus)"
                 elif "onsite" in loc_lower or "on-site" in loc_lower:
                     bd.location = max(bd.location - 2, 0)
+                    _loc_note = " (-2 onsite penalty)"
             elif pref in ("onsite", "on-site"):
                 if "remote" in loc_lower and "onsite" not in loc_lower:
                     bd.location = max(bd.location - 2, 0)
+                    _loc_note = " (-2 remote penalty)"
+        bd.location_reason = f"'{job.location or 'unknown'}'{_loc_note} → {bd.location}/{DIM_LOCATION}"
 
         # 7. Recency (0-10)
         bd.recency = _recency_score(job.date_found)
+        bd.recency_reason = f"Posted {job.date_found[:10] if job.date_found else '?'} → {bd.recency}/{DIM_RECENCY}"
 
-        # 8. Semantic (0-10) — embedding similarity + keyword overlap
+        # 8. Semantic (0-20) — embedding similarity + keyword overlap
         bd.semantic = self._dim_semantic(text, job_embedding_str=job.embedding)
+        bd.semantic_reason = f"Embedding similarity → {bd.semantic}/{DIM_SEMANTIC}"
 
         # Penalty (negative keywords + excluded skills)
         bd.penalty = self._negative_penalty(job.title, job.description)
+        _neg_pen = bd.penalty
         bd.penalty += self._excluded_penalty(text)
+        _parts = []
+        if _neg_pen:
+            _parts.append(f"negative keyword (-{_neg_pen})")
+        _exc_pen = bd.penalty - _neg_pen
+        if _exc_pen:
+            _parts.append(f"excluded skills (-{_exc_pen})")
+        bd.penalty_reason = ", ".join(_parts) if _parts else "none"
 
         # Transferable skills (from skill graph)
         bd.transferable_skills = self._find_transferable(
             bd.missing_required, parsed_jd, cv_data
         )
 
-        bd.total = min(max(
+        raw_total = (
             bd.role + bd.skill + bd.seniority + bd.experience +
             bd.credentials + bd.location + bd.recency + bd.semantic -
-            bd.penalty, 0), 100)
+            bd.penalty
+        )
+        bd.total = min(max(raw_total, 0), 100)
+
+        # Deal-breaker: zero role match → cap at 25
+        # Title/role match is the strongest domain relevance signal. When
+        # role=0, skill points are often noise (generic words matching across
+        # domains). Cap prevents cross-domain leakage (e.g., tech jobs
+        # appearing for a nurse). Reranker can add +5, so 25 stays below
+        # MIN_MATCH_SCORE=30 for true mismatches.
+        if bd.role == 0 and bd.skill < 10:
+            bd.total = min(bd.total, 20)
+            if not bd.penalty_reason or bd.penalty_reason == "none":
+                bd.penalty_reason = f"no role match R=0 (capped at 20)"
+            else:
+                bd.penalty_reason += f", no role match R=0 (capped at 20)"
+
+        # Deal-breaker: negative keyword in TITLE → hard ceiling at 15
+        neg_title_hit = self._negative_penalty(job.title, "")
+        if neg_title_hit >= 30:
+            bd.total = min(bd.total, 15)
+
+        # Deal-breaker: excluded company → zero-out
+        if hasattr(self._config, 'excluded_companies') and self._config.excluded_companies:
+            from src.models import _COMPANY_SUFFIXES, _COMPANY_REGION_SUFFIXES
+            norm = job.company.strip().lower()
+            norm = _COMPANY_SUFFIXES.sub('', norm).strip()
+            norm = _COMPANY_REGION_SUFFIXES.sub('', norm).strip()
+            for exc in self._config.excluded_companies:
+                exc_norm = exc.strip().lower()
+                exc_norm = _COMPANY_SUFFIXES.sub('', exc_norm).strip()
+                exc_norm = _COMPANY_REGION_SUFFIXES.sub('', exc_norm).strip()
+                if norm == exc_norm:
+                    bd.total = 0
+                    break
 
         logger.debug(
             '"%s @ %s" R=%d S=%d Sen=%d Exp=%d Cred=%d Loc=%d Rec=%d Sem=%d P=%d T=%d',
@@ -397,7 +484,7 @@ class JobScorer:
         return bd
 
     def _dim_role(self, job_title: str) -> int:
-        """Score role/title match (0-20)."""
+        """Score role/title match (0-15)."""
         title_lower = job_title.lower()
         best = 0
         for target in self._config.job_titles:
@@ -413,10 +500,21 @@ class JobScorer:
             max_len = max(len(target_words), len(title_words))
             ratio = len(shared) / max_len if max_len else 0
             core_in_shared = shared & self._config.core_domain_words
+            # Generic title words that exist across ALL domains — not domain signals
+            _generic_words = {
+                "engineer", "manager", "analyst", "consultant", "specialist",
+                "developer", "designer", "coordinator", "associate", "officer",
+                "administrator", "executive", "director", "assistant", "advisor",
+                "lead", "head", "senior", "junior", "principal", "staff",
+            }
             if core_in_shared:
                 score = int(ratio * DIM_ROLE)
-            else:
+            elif shared - _generic_words:
+                # Has non-generic shared words → some domain relevance
                 score = min(int(ratio * DIM_ROLE), DIM_ROLE // 4)
+            else:
+                # ONLY generic words shared (e.g., "engineer" alone) → no domain match
+                score = 0
             best = max(best, score)
         if best > 0:
             return best
@@ -431,7 +529,7 @@ class JobScorer:
     def _dim_skill(self, text: str,
                    parsed_jd: Optional[object] = None,
                    ) -> tuple[int, list[str], list[str], list[str]]:
-        """Score skill match (0-25) and build match lists."""
+        """Score skill match (0-20) and build match lists."""
         all_user_skills = set()
         for s in self._config.primary_skills:
             all_user_skills.add(s.lower())
@@ -583,6 +681,15 @@ class JobScorer:
             return DIM_EXPERIENCE // 4
         return 0
 
+    # Degree full-name → abbreviation mapping for credential matching
+    _DEGREE_ABBREVS: dict[str, str] = {
+        "master of science": "msc", "master of arts": "ma",
+        "master of engineering": "meng", "master of business administration": "mba",
+        "bachelor of science": "bsc", "bachelor of arts": "ba",
+        "bachelor of engineering": "beng", "bachelor of laws": "llb",
+        "doctor of philosophy": "phd",
+    }
+
     def _dim_credentials(self, parsed_jd: Optional[object] = None,
                          cv_data: Optional[object] = None) -> int:
         """Score qualification/credential match (0-5)."""
@@ -599,7 +706,12 @@ class JobScorer:
             if hasattr(cv_data, 'structured_education'):
                 for edu in (cv_data.structured_education or []):
                     if hasattr(edu, 'degree') and edu.degree:
-                        cv_quals.add(edu.degree.lower())
+                        deg = edu.degree.lower()
+                        cv_quals.add(deg)
+                        # Also add abbreviation so "Master of Science" matches "MSc"
+                        abbrev = self._DEGREE_ABBREVS.get(deg)
+                        if abbrev:
+                            cv_quals.add(abbrev)
 
         if not cv_quals:
             return 0
@@ -627,11 +739,11 @@ class JobScorer:
                     relevance_keywords=self._config.relevance_keywords,
                     about_me=about_me,
                 )
-        except Exception:
+        except (ImportError, RuntimeError, ValueError):
             self._profile_embedding = None
 
     def _dim_semantic(self, text: str, job_embedding_str: str = "") -> int:
-        """Score semantic relevance (0-10) using embeddings or keyword fallback."""
+        """Score semantic relevance (0-20) using embeddings or keyword fallback."""
         # Try embeddings first
         self._ensure_profile_embedding()
         base_score = 0
@@ -644,7 +756,7 @@ class JobScorer:
                     self._profile_embedding, text, max_points=DIM_SEMANTIC,
                     job_embedding=pre_emb,
                 )
-            except Exception:
+            except (ImportError, RuntimeError, ValueError):
                 pass  # Fall through to keyword overlap
 
         if base_score == 0:

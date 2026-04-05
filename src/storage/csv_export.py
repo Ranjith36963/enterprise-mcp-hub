@@ -4,12 +4,13 @@ from src.models import Job
 
 
 HEADERS = [
-    "job_title", "company", "location", "salary",
+    "job_title", "company", "location", "salary", "salary_type",
     "match_score", "role", "skill", "seniority", "experience",
     "credentials", "location_score", "recency", "semantic", "penalty",
     "apply_url", "source", "date_found", "visa_flag",
     "matched_skills", "missing_required", "missing_preferred",
     "transferable_skills", "job_type", "experience_level",
+    "contact_emails",
 ]
 
 
@@ -44,6 +45,7 @@ def export_to_csv(jobs: list[Job], filepath: str) -> str:
                 job.company,
                 job.location,
                 _format_salary(job),
+                md.get("salary_type", ""),
                 job.match_score,
                 md.get("role", ""),
                 md.get("skill", ""),
@@ -64,5 +66,6 @@ def export_to_csv(jobs: list[Job], filepath: str) -> str:
                 ";".join(md.get("transferable", [])),
                 getattr(job, "job_type", ""),
                 getattr(job, "experience_level", ""),
+                ";".join(md.get("contact_emails", [])),
             ])
     return filepath

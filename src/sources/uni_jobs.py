@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _sanitize_xml
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.uni_jobs")
 
@@ -61,7 +62,7 @@ class UniJobsSource(BaseJobSource):
                 title=title,
                 company=company,
                 location="UK",
-                description=description[:5000],
+                description=description[:MAX_DESCRIPTION_LENGTH],
                 apply_url=link,
                 source=self.name,
                 date_found=date_found,

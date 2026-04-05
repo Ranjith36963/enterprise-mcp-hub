@@ -52,7 +52,7 @@ class ReedSource(BaseJobSource):
                     salary_min=item.get("minimumSalary"),
                     salary_max=item.get("maximumSalary"),
                     description=item.get("jobDescription", ""),
-                    apply_url=f"https://www.reed.co.uk/jobs/{item.get('jobId', '')}",
+                    apply_url=item.get("jobUrl") or f"https://www.reed.co.uk/jobs/{item.get('jobId', '')}",
                     source=self.name,
                     date_found=date_found,
                 ))

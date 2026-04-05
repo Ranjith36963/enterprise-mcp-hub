@@ -79,6 +79,47 @@ _DOMAIN_SIGNALS: dict[str, tuple[set[str], set[str]]] = {
         {"pmp", "prince2", "agile", "scrum", "kanban", "jira", "itil",
          "stakeholder management", "risk management", "governance"},
     ),
+    "Cybersecurity": (
+        {"cybersecurity", "security", "infosec", "soc", "penetration",
+         "threat", "incident", "forensic"},
+        {"cissp", "cism", "ceh", "siem", "splunk", "nist", "iso 27001",
+         "penetration testing", "vulnerability", "firewall", "ids",
+         "soc", "incident response", "threat intelligence", "oscp"},
+    ),
+    "Product Management": (
+        {"product", "product manager", "product owner", "product lead"},
+        {"roadmap", "user research", "a/b testing", "mvp", "product strategy",
+         "backlog", "prioritization", "product-market fit", "okr",
+         "customer discovery", "sprint planning"},
+    ),
+    "Design": (
+        {"designer", "ux", "ui", "design", "creative", "visual",
+         "interaction", "graphic"},
+        {"figma", "sketch", "adobe xd", "invision", "prototyping",
+         "wireframing", "user research", "accessibility", "design systems",
+         "typography", "illustrator", "photoshop"},
+    ),
+    "Supply Chain": (
+        {"supply chain", "logistics", "procurement", "warehouse",
+         "operations", "inventory", "distribution", "transport"},
+        {"erp", "sap", "oracle", "lean", "six sigma", "wms", "tms",
+         "demand planning", "forecasting", "s&op", "procurement",
+         "inventory management", "supply chain management"},
+    ),
+    "Environmental": (
+        {"environmental", "sustainability", "climate", "carbon", "green",
+         "ecology", "conservation", "esg"},
+        {"esg", "carbon footprint", "iso 14001", "lca", "eia",
+         "sustainability reporting", "ghg", "net zero", "circular economy",
+         "environmental impact", "renewable", "biodiversity"},
+    ),
+    "Biomedical Science": (
+        {"biomedical", "laboratory", "lab", "pathology", "haematology",
+         "microbiology", "histology", "cytology", "biochemistry"},
+        {"hcpc", "ibms", "pcr", "elisa", "flow cytometry", "gmp", "gcp",
+         "good laboratory practice", "specimen", "immunology",
+         "blood sciences", "clinical pathology"},
+    ),
 }
 
 # Minimum signals needed to detect a domain

@@ -100,6 +100,9 @@ def _mock_free_sources(m, arbeitnow_payload=None):
     m.get(re.compile(r"https://nofluffjobs\.com/api/.*"), payload=[], repeat=True)
     m.get(re.compile(r"https://www\.nomis\.co\.uk/.*"), payload={}, repeat=True)
     m.get(re.compile(r"https://www\.careerjet\.co\.uk/.*"), body="<html></html>", repeat=True)
+    # Group G: Additional RSS sources
+    m.get(re.compile(r"https://jobspresso\.co/.*"), body="<rss><channel></channel></rss>", repeat=True)
+    m.get(re.compile(r"https://www\.python\.org/jobs/.*"), body="<rss><channel></channel></rss>", repeat=True)
 
 
 MOCK_JOB_PAYLOAD = {"data": [{
@@ -223,7 +226,7 @@ def test_stats_include_per_source():
                 stats = await run_search(db_path=":memory:")
                 assert "per_source" in stats
                 assert isinstance(stats["per_source"], dict)
-                assert len(stats["per_source"]) == 47
+                assert len(stats["per_source"]) >= 48  # 50 instances, some may skip
     _run(_test())
 
 

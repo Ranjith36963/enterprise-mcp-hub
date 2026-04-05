@@ -7,6 +7,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote, _sanitize_xml
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 from src.config.companies import PERSONIO_COMPANIES, COMPANY_NAME_OVERRIDES
 
 logger = logging.getLogger("job360.sources.personio")
@@ -80,7 +81,7 @@ class PersonioSource(BaseJobSource):
                 title=title,
                 company=company_name,
                 location=office or "Remote",
-                description=description[:5000],
+                description=description[:MAX_DESCRIPTION_LENGTH],
                 apply_url=apply_url,
                 source=self.name,
                 date_found=datetime.now(timezone.utc).isoformat(),

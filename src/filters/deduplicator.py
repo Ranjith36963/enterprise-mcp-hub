@@ -134,11 +134,15 @@ def deduplicate(jobs: list[Job], stats_out: dict | None = None) -> list[Job]:
         return []
 
     # Pass 1: Group by normalized (company, title)
+    # When company is unknown, include source to prevent cross-source false merges
     groups: dict[tuple[str, str], list[Job]] = {}
     for job in jobs:
         company, _ = job.normalized_key()
         title = _normalize_title(job.title)
-        key = (company, title)
+        if company in ("unknown", ""):
+            key = (f"unknown_{job.source}", title)
+        else:
+            key = (company, title)
         groups.setdefault(key, []).append(job)
     pass1: list[Job] = []
     for group in groups.values():

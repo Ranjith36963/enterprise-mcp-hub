@@ -58,6 +58,8 @@ class ParsedJD:
     seniority_signal: str = ""  # "entry", "mid", "senior", "lead", "executive"
     salary_min: Optional[float] = None     # extracted from JD text (GBP annual)
     salary_max: Optional[float] = None     # extracted from JD text (GBP annual)
+    salary_type: str = ""                  # "annual", "daily", "hourly", "weekly", "ote"
+    contact_emails: list[str] = field(default_factory=list)
 
 
 # ── JD section detection ─────────────────────────────────────────────
@@ -110,7 +112,64 @@ _SALARY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Salary range extraction: "£60,000 - £80,000" or "£50k-£70k"
+# Conversion constants for non-annual salary types
+_WORKING_DAYS_PER_YEAR = 220
+_WORKING_HOURS_PER_YEAR = 1760   # 220 days × 8 hours
+_WORKING_WEEKS_PER_YEAR = 48
+
+# ── OTE (On-Target Earnings) — must match before other patterns ──
+# "£50k base + £20k OTE" → captures OTE portion as max
+_SALARY_OTE_BASE_RE = re.compile(
+    r'£\s*(\d{2,3})\s*k\s*(?:base|basic)\s*.*?£\s*(\d{2,3})\s*k\s*(?:OTE|ote|on[\s-]?target)',
+    re.IGNORECASE,
+)
+# "OTE £80,000" or "up to £80k OTE" or "£80k OTE"
+_SALARY_OTE_RE = re.compile(
+    r'(?:OTE|on[\s-]?target[\s-]?earnings?)\s*(?:of\s+)?£\s*(\d{2,3}[,.]?\d{3}|\d{2,3}\s*k)',
+    re.IGNORECASE,
+)
+_SALARY_OTE_SUFFIX_RE = re.compile(
+    r'£\s*(\d{2,3}[,.]?\d{3}|\d{2,3}\s*k)\s*(?:OTE|on[\s-]?target)',
+    re.IGNORECASE,
+)
+
+# ── Daily contractor rates ──
+# "£400-£600 per day", "£400-£600 p/d"
+_SALARY_DAILY_RANGE_RE = re.compile(
+    r'£\s*(\d{2,4})\s*[-–to]+\s*£?\s*(\d{2,4})\s*(?:per\s+day|p/?d|daily|/day)',
+    re.IGNORECASE,
+)
+# "£500 per day", "£500/day", "£500 p/d", "£500 daily"
+_SALARY_DAILY_RE = re.compile(
+    r'£\s*(\d{2,4})\s*(?:per\s+day|p/?d|daily|/day)',
+    re.IGNORECASE,
+)
+
+# ── Hourly rates ──
+# "£25-£35 per hour", "£25-£35/hr"
+_SALARY_HOURLY_RANGE_RE = re.compile(
+    r'£\s*(\d{1,3}(?:\.\d{1,2})?)\s*[-–to]+\s*£?\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:per\s+hour|p/?h|/hour|/hr|hourly)',
+    re.IGNORECASE,
+)
+# "£25/hour", "£30 p/h", "£25 per hour"
+_SALARY_HOURLY_RE = re.compile(
+    r'£\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:per\s+hour|p/?h|/hour|/hr|hourly)',
+    re.IGNORECASE,
+)
+
+# ── Weekly rates ──
+# "£2,000 per week", "£2k/week", "£2,000 pw"
+_SALARY_WEEKLY_RANGE_RE = re.compile(
+    r'£\s*(\d{1,2}[,.]?\d{3}|\d{1,2}\s*k)\s*[-–to]+\s*£?\s*(\d{1,2}[,.]?\d{3}|\d{1,2}\s*k)\s*(?:per\s+week|p/?w|/week|weekly|pw)',
+    re.IGNORECASE,
+)
+_SALARY_WEEKLY_RE = re.compile(
+    r'£\s*(\d{1,2}[,.]?\d{3}|\d{1,2}\s*k)\s*(?:per\s+week|p/?w|/week|weekly|pw)',
+    re.IGNORECASE,
+)
+
+# ── Annual salary patterns (existing, kept in order) ──
+# Salary range extraction: "£60,000 - £80,000"
 _SALARY_RANGE_RE = re.compile(
     r'£\s*(\d{2,3}[,.]?\d{3})\s*[-–to]+\s*£?\s*(\d{2,3}[,.]?\d{3})',
     re.IGNORECASE,
@@ -171,9 +230,11 @@ _QUAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Skill-like items in bullet points (capitalized terms, tech names)
+# Skill-like items in bullet points — covers ALL professional domains
 _SKILL_ITEM_RE = re.compile(
-    r'\b(?:Python|Java|JavaScript|TypeScript|React|Angular|Vue|Node\.?js|'
+    r'\b(?:'
+    # ── Technology & Software ──
+    r'Python|Java|JavaScript|TypeScript|React|Angular|Vue|Node\.?js|'
     r'Docker|Kubernetes|AWS|Azure|GCP|SQL|PostgreSQL|MySQL|MongoDB|Redis|'
     r'TensorFlow|PyTorch|Spark|Airflow|Snowflake|dbt|Kafka|'
     r'Git|CI/CD|REST|GraphQL|Agile|Scrum|Jira|'
@@ -182,8 +243,56 @@ _SKILL_ITEM_RE = re.compile(
     r'HTML|CSS|SASS|Webpack|Vite|'
     r'Machine Learning|Deep Learning|NLP|Computer Vision|'
     r'Data Analysis|Data Engineering|DevOps|SRE|'
-    r'NHS|CQC|ACCA|CIMA|CIPD|PRINCE2|Six\s*Sigma|Lean|'
-    r'GDPR|Compliance|Risk Management|Audit)\b',
+    # ── Healthcare & Nursing ──
+    r'NHS|CQC|Patient Care|Clinical Assessment|Wound Management|'
+    r'Medication Administration|Triage|Safeguarding|NMC|BLS|ALS|ILS|'
+    r'Infection Control|Care Planning|Palliative Care|Mental Health|'
+    r'Phlebotomy|Cannulation|ECG|Catheterisation|Tracheostomy|'
+    r'Health and Safety|Manual Handling|Nursing|Midwifery|'
+    # ── Finance & Accounting ──
+    r'ACCA|CIMA|CFA|IFRS|GAAP|FP&A|AML|KYC|'
+    r'Financial Modelling|Financial Analysis|Budgeting|Forecasting|'
+    r'Treasury|Tax|VAT|PAYE|Bookkeeping|Xero|Sage|QuickBooks|'
+    r'Investment Banking|Portfolio Management|Risk Analysis|'
+    r'Corporate Finance|Mergers and Acquisitions|Due Diligence|'
+    r'Credit Risk|Market Risk|Basel|Solvency|'
+    # ── Legal ──
+    r'Conveyancing|Litigation|Contract Law|Employment Law|'
+    r'Corporate Law|Intellectual Property|Family Law|Criminal Law|'
+    r'Legal Research|Case Management|SRA|LPC|BPTC|'
+    r'Dispute Resolution|Arbitration|Mediation|Regulatory Compliance|'
+    # ── Engineering (Civil/Structural/Mechanical) ──
+    r'AutoCAD|SolidWorks|Revit|BIM|Tekla|ETABS|SAP2000|STAAD|'
+    r'Structural Analysis|Finite Element|Geotechnical|Surveying|'
+    r'Construction Management|NEC|JCT|CDM|Building Regulations|'
+    r'HVAC|PLC|SCADA|CAD|PCB|P&ID|'
+    # ── Marketing & Digital ──
+    r'SEO|SEM|PPC|Google Analytics|Google Ads|Meta Ads|'
+    r'Content Marketing|Social Media Marketing|Email Marketing|'
+    r'CRM|Marketing Automation|A/B Testing|Conversion Rate|'
+    r'Brand Strategy|Copywriting|Digital Strategy|'
+    # ── HR & People ──
+    r'CIPD|Recruitment|Talent Acquisition|ATS|Payroll|'
+    r'Employee Relations|L&D|DEI|Onboarding|HRIS|Workday|'
+    r'Performance Management|Compensation|Benefits Administration|'
+    # ── Project Management ──
+    r'PRINCE2|PMP|Six\s*Sigma|Lean|'
+    r'Stakeholder Management|Change Management|Benefits Realisation|'
+    r'Programme Management|PMO|Earned Value|'
+    # ── Cybersecurity ──
+    r'CISSP|CISM|CEH|OSCP|SIEM|Splunk|'
+    r'Penetration Testing|Vulnerability Assessment|Incident Response|'
+    r'Threat Intelligence|SOC|NIST|ISO\s*27001|Firewall|IDS|IPS|'
+    # ── Environmental & Sustainability ──
+    r'ESG|Carbon Footprint|Lifecycle Assessment|ISO\s*14001|'
+    r'Environmental Impact Assessment|BREEAM|Sustainability Reporting|'
+    r'Net Zero|Circular Economy|Renewable Energy|'
+    # ── General Professional ──
+    r'GDPR|Compliance|Risk Management|Audit|'
+    r'Stakeholder Engagement|Report Writing|Presentation Skills|'
+    r'Leadership|Team Management|Strategic Planning|'
+    r'Business Development|Account Management|Negotiation'
+    r')\b',
     re.IGNORECASE,
 )
 
@@ -234,40 +343,102 @@ def _extract_experience_years(text: str) -> Optional[int]:
     return None
 
 
-def _extract_salary(text: str) -> tuple[Optional[float], Optional[float]]:
-    """Extract salary range from JD text (GBP annual).
+def _parse_k_or_full(raw: str) -> float:
+    """Parse a value like '50k', '50,000', or '50.000' into a float."""
+    raw = raw.strip()
+    if raw.lower().endswith("k"):
+        return float(raw[:-1].strip()) * 1000
+    return float(raw.replace(",", "").replace(".", ""))
 
-    Tries multiple patterns in order of specificity:
-    1. Range: £60,000-£80,000
-    2. K range: £50k-£70k
-    3. Single: £45,000 per annum
-    4. Single k: £45k
+
+def _extract_salary(text: str) -> tuple[Optional[float], Optional[float], str]:
+    """Extract salary from JD text, converting to GBP annual equivalent.
+
+    Tries patterns in priority order (most-specific first):
+    OTE → daily → hourly → weekly → annual range → annual k range → annual single
+
+    Returns:
+        (salary_min, salary_max, salary_type)
+        salary_type: "ote", "daily", "hourly", "weekly", "annual", or ""
     """
-    # Try range first
+    # ── OTE patterns ──
+    m = _SALARY_OTE_BASE_RE.search(text)
+    if m:
+        base = float(m.group(1)) * 1000
+        ote = float(m.group(2)) * 1000
+        return base, base + ote, "ote"
+
+    m = _SALARY_OTE_RE.search(text)
+    if m:
+        val = _parse_k_or_full(m.group(1))
+        return None, val, "ote"
+
+    m = _SALARY_OTE_SUFFIX_RE.search(text)
+    if m:
+        val = _parse_k_or_full(m.group(1))
+        return None, val, "ote"
+
+    # ── Daily rates → convert to annual ──
+    m = _SALARY_DAILY_RANGE_RE.search(text)
+    if m:
+        lo = float(m.group(1)) * _WORKING_DAYS_PER_YEAR
+        hi = float(m.group(2)) * _WORKING_DAYS_PER_YEAR
+        return lo, hi, "daily"
+
+    m = _SALARY_DAILY_RE.search(text)
+    if m:
+        val = float(m.group(1)) * _WORKING_DAYS_PER_YEAR
+        return val, None, "daily"
+
+    # ── Hourly rates → convert to annual ──
+    m = _SALARY_HOURLY_RANGE_RE.search(text)
+    if m:
+        lo = float(m.group(1)) * _WORKING_HOURS_PER_YEAR
+        hi = float(m.group(2)) * _WORKING_HOURS_PER_YEAR
+        return lo, hi, "hourly"
+
+    m = _SALARY_HOURLY_RE.search(text)
+    if m:
+        val = float(m.group(1)) * _WORKING_HOURS_PER_YEAR
+        return val, None, "hourly"
+
+    # ── Weekly rates → convert to annual ──
+    m = _SALARY_WEEKLY_RANGE_RE.search(text)
+    if m:
+        lo = _parse_k_or_full(m.group(1)) * _WORKING_WEEKS_PER_YEAR
+        hi = _parse_k_or_full(m.group(2)) * _WORKING_WEEKS_PER_YEAR
+        return lo, hi, "weekly"
+
+    m = _SALARY_WEEKLY_RE.search(text)
+    if m:
+        val = _parse_k_or_full(m.group(1)) * _WORKING_WEEKS_PER_YEAR
+        return val, None, "weekly"
+
+    # ── Annual patterns (existing) ──
     m = _SALARY_RANGE_RE.search(text)
     if m:
         lo = float(m.group(1).replace(",", "").replace(".", ""))
         hi = float(m.group(2).replace(",", "").replace(".", ""))
-        return lo, hi
+        return lo, hi, "annual"
 
     m = _SALARY_K_RANGE_RE.search(text)
     if m:
         lo = float(m.group(1)) * 1000
         hi = float(m.group(2)) * 1000
-        return lo, hi
+        return lo, hi, "annual"
 
-    # Single value
+    # Single annual value
     m = _SALARY_SINGLE_RE.search(text)
     if m:
         val = float(m.group(1).replace(",", "").replace(".", ""))
-        return val, None
+        return val, None, "annual"
 
     m = _SALARY_SINGLE_K_RE.search(text)
     if m:
         val = float(m.group(1)) * 1000
-        return val, None
+        return val, None, "annual"
 
-    return None, None
+    return None, None, ""
 
 
 def _detect_seniority(text: str) -> str:
@@ -308,6 +479,42 @@ def _classify_inline_skills(text: str) -> tuple[list[str], list[str]]:
             required.update(skills)
 
     return sorted(required), sorted(preferred)
+
+
+# ── Email extraction ────────────────────────────────────────────────
+
+_EMAIL_RE = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+
+_EMAIL_BLACKLIST_PREFIXES = frozenset({
+    "noreply", "no-reply", "donotreply", "do-not-reply",
+    "info", "privacy", "support", "help", "admin",
+    "careers", "jobs", "recruitment", "hr",
+    "webmaster", "postmaster", "mailer-daemon",
+})
+
+_EMAIL_BLACKLIST_DOMAINS = frozenset({
+    "example.com", "example.org", "test.com", "sentry.io",
+    "wixpress.com", "googleusercontent.com",
+})
+
+
+def _extract_emails(text: str) -> list[str]:
+    """Extract likely recruiter/contact emails, filtering false positives."""
+    raw = _EMAIL_RE.findall(text)
+    seen: set[str] = set()
+    result: list[str] = []
+    for email in raw:
+        email_lower = email.lower()
+        if email_lower in seen:
+            continue
+        seen.add(email_lower)
+        local, _, domain = email_lower.partition("@")
+        if local in _EMAIL_BLACKLIST_PREFIXES:
+            continue
+        if domain in _EMAIL_BLACKLIST_DOMAINS:
+            continue
+        result.append(email)
+    return result
 
 
 def parse_jd(description: str, user_skills: list[str] | None = None) -> ParsedJD:
@@ -369,11 +576,14 @@ def parse_jd(description: str, user_skills: list[str] | None = None) -> ParsedJD
     result.experience_years = _extract_experience_years(description)
 
     # Salary extraction + mention flag
-    result.salary_min, result.salary_max = _extract_salary(description)
+    result.salary_min, result.salary_max, result.salary_type = _extract_salary(description)
     result.salary_mentioned = result.salary_min is not None or bool(_SALARY_RE.search(description))
 
     # Seniority signal
     result.seniority_signal = _detect_seniority(description)
+
+    # Email extraction (filter common false positives)
+    result.contact_emails = _extract_emails(description)
 
     return result
 

@@ -1,3 +1,8 @@
+---
+name: implement
+description: Feature implementation workflow
+---
+
 # /implement — Feature Implementation
 
 Triggered by: `/implement <what to add or change>`

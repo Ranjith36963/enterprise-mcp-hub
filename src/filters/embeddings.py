@@ -39,7 +39,7 @@ def _load_model():
         _model = None
         _available = False
         logger.info("sentence-transformers not installed — semantic scoring disabled")
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         _model = None
         _available = False
         logger.warning("Failed to load embedding model: %s", e)
@@ -61,7 +61,7 @@ def encode(text: str) -> Optional[np.ndarray]:
     try:
         vec = model.encode(text, convert_to_numpy=True, show_progress_bar=False)
         return vec / (np.linalg.norm(vec) + 1e-10)  # L2-normalize
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.warning("Embedding encode failed: %s", e)
         return None
 
@@ -78,7 +78,7 @@ def encode_batch(texts: list[str]) -> Optional[np.ndarray]:
         normalized = vecs / norms
         logger.debug("encode_batch: %d texts → shape %s", len(texts), normalized.shape)
         return normalized
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.warning("Batch embedding failed: %s", e)
         return None
 

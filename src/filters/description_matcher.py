@@ -468,6 +468,68 @@ SYNONYM_GROUPS: list[set[str]] = [
     {"Failure Modes Effects and Criticality Analysis", "FMECA"},
     {"Design for Manufacture", "DFM"},
     {"Design for Assembly", "DFA"},
+
+    # ── Healthcare & Nursing ──
+    {"Nursing", "Registered Nurse", "RN"},
+    {"Patient Care", "Patient Management", "Patient Support"},
+    {"Clinical Assessment", "Clinical Evaluation", "Patient Assessment"},
+    {"Wound Management", "Wound Care", "Wound Dressing"},
+    {"Basic Life Support", "BLS"},
+    {"Advanced Life Support", "ALS"},
+    {"Immediate Life Support", "ILS"},
+    {"Nursing and Midwifery Council", "NMC"},
+    {"Electronic Health Records", "EHR", "EMR"},
+    {"Care Quality Commission", "CQC"},
+    {"National Health Service", "NHS"},
+    {"Palliative Care", "End of Life Care"},
+    {"Mental Health", "Psychiatric Nursing", "CAMHS"},
+
+    # ── Finance & Accounting ──
+    {"Financial Modelling", "Financial Modeling"},
+    {"Mergers and Acquisitions", "M&A"},
+    {"Due Diligence", "DD"},
+    {"Financial Planning and Analysis", "FP&A"},
+    {"Anti Money Laundering", "AML"},
+    {"Know Your Customer", "KYC"},
+    {"International Financial Reporting Standards", "IFRS"},
+    {"Generally Accepted Accounting Principles", "GAAP"},
+    {"Value at Risk", "VaR"},
+    {"Profit and Loss", "P&L", "PnL"},
+    {"Return on Investment", "ROI"},
+
+    # ── Legal ──
+    {"Solicitors Regulation Authority", "SRA"},
+    {"Legal Practice Course", "LPC"},
+    {"Bar Professional Training Course", "BPTC"},
+    {"Alternative Dispute Resolution", "ADR"},
+    {"Intellectual Property", "IP"},
+    {"Mergers and Acquisitions", "M&A"},
+    {"Corporate Law", "Company Law"},
+
+    # ── Construction & Civil Engineering ──
+    {"Building Information Modelling", "BIM"},
+    {"New Engineering Contract", "NEC"},
+    {"Joint Contracts Tribunal", "JCT"},
+    {"Construction Design and Management", "CDM"},
+    {"Structural Analysis", "Structural Design"},
+    {"Geotechnical Engineering", "Geotechnics"},
+    {"Health and Safety Executive", "HSE"},
+
+    # ── Marketing ──
+    {"Search Engine Optimisation", "Search Engine Optimization", "SEO"},
+    {"Pay Per Click", "PPC"},
+    {"Search Engine Marketing", "SEM"},
+    {"Conversion Rate Optimisation", "CRO"},
+    {"Customer Relationship Management", "CRM"},
+    {"Key Performance Indicator", "KPI", "KPIs"},
+
+    # ── Cybersecurity ──
+    {"Security Information and Event Management", "SIEM"},
+    {"Intrusion Detection System", "IDS"},
+    {"Intrusion Prevention System", "IPS"},
+    {"Security Operations Centre", "Security Operations Center", "SOC"},
+    {"Certified Information Systems Security Professional", "CISSP"},
+    {"Certified Ethical Hacker", "CEH"},
 ]
 
 

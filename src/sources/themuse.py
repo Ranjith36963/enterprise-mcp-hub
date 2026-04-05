@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.themuse")
 
@@ -42,7 +43,7 @@ class TheMuseSource(BaseJobSource):
                 company_obj = item.get("company", {})
                 company = company_obj.get("name", "") if isinstance(company_obj, dict) else ""
                 contents = item.get("contents", "")
-                description = _HTML_TAG_RE.sub("", contents)[:5000]
+                description = _HTML_TAG_RE.sub("", contents)[:MAX_DESCRIPTION_LENGTH]
                 text = f"{title} {description}".lower()
 
                 if not self._relevance_match(text):

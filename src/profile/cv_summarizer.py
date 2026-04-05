@@ -80,7 +80,7 @@ def extract_from_cv_text(text: str) -> LLMExtraction:
         )
     except json.JSONDecodeError:
         return LLMExtraction(success=False, error="Failed to parse LLM response as JSON")
-    except Exception as e:
+    except (RuntimeError, ValueError, OSError) as e:
         logger.warning(f"LLM extraction failed: {e}")
         return LLMExtraction(success=False, error=str(e))
 

@@ -14,6 +14,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from src.filters.skill_matcher import (
+    DIM_ROLE, DIM_SKILL, DIM_SENIORITY, DIM_EXPERIENCE,
+    DIM_CREDENTIALS, DIM_LOCATION, DIM_RECENCY, DIM_SEMANTIC,
+)
+
 logger = logging.getLogger("job360.diagnostics")
 
 # Score histogram bucket boundaries (inclusive lower, exclusive upper except last)
@@ -25,8 +30,9 @@ _BUCKET_LABELS = ["0-9", "10-19", "20-29", "30-39", "40-49",
 _DIMENSIONS = ["role", "skill", "seniority", "experience",
                "credentials", "location", "recency", "semantic"]
 
-_DIM_MAXES = {"role": 20, "skill": 25, "seniority": 10, "experience": 10,
-              "credentials": 5, "location": 10, "recency": 10, "semantic": 10}
+_DIM_MAXES = {"role": DIM_ROLE, "skill": DIM_SKILL, "seniority": DIM_SENIORITY,
+              "experience": DIM_EXPERIENCE, "credentials": DIM_CREDENTIALS,
+              "location": DIM_LOCATION, "recency": DIM_RECENCY, "semantic": DIM_SEMANTIC}
 
 
 @dataclass
@@ -112,7 +118,7 @@ class PipelineDiagnostics:
         """Record the start of a pipeline phase."""
         try:
             self._phase_starts[phase] = time.time()
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     def end_phase(self, phase: str) -> None:
@@ -121,7 +127,7 @@ class PipelineDiagnostics:
             start = self._phase_starts.pop(phase, None)
             if start is not None:
                 self.timings[phase] = round(time.time() - start, 2)
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -179,7 +185,7 @@ class PipelineDiagnostics:
                 stats.max_val = dim_maxes[dim]
                 stats.zero_count = dim_zeros[dim]
                 stats.total_count = count
-        except Exception as exc:
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
             logger.debug("record_scores failed: %s", exc)
 
     # ------------------------------------------------------------------
@@ -190,7 +196,7 @@ class PipelineDiagnostics:
         """Add a pipeline funnel stage with its job count."""
         try:
             self.funnel.append((stage, count))
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -206,7 +212,7 @@ class PipelineDiagnostics:
             self.dedup_after = after
             self.dedup_removed_by_key = removed_by_key
             self.dedup_removed_by_similarity = removed_by_similarity
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -226,7 +232,7 @@ class PipelineDiagnostics:
             self.llm_score_deltas = score_deltas or []
             self.llm_provider_call_counts = call_counts or {}
             self.llm_provider_failures = failures or {}
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -241,7 +247,7 @@ class PipelineDiagnostics:
             self.feedback_rejected_count = rejected_count
             self.feedback_adjustments_made = adjustments_made
             self.feedback_total_adj = total_adj
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -256,7 +262,7 @@ class PipelineDiagnostics:
             self.rerank_count = reranked_count
             self.rerank_avg_score = round(avg_score, 2)
             self.rerank_avg_boost = round(avg_boost, 2)
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             pass
 
     # ------------------------------------------------------------------
@@ -281,7 +287,7 @@ class PipelineDiagnostics:
             self.quality_pct_description = round(has_desc / n * 100, 1)
             self.quality_pct_location = round(has_loc / n * 100, 1)
             self.quality_pct_visa = round(has_visa / n * 100, 1)
-        except Exception as exc:
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
             logger.debug("record_data_quality failed: %s", exc)
 
     # ------------------------------------------------------------------
@@ -303,7 +309,7 @@ class PipelineDiagnostics:
                 for skill in md.get("missing_required", []):
                     counter[skill.lower()] += 1
             self.skill_gaps = counter.most_common(top_n)
-        except Exception as exc:
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
             logger.debug("record_skill_gaps failed: %s", exc)
 
     # ------------------------------------------------------------------
@@ -368,12 +374,12 @@ class PipelineDiagnostics:
                 },
                 "skill_gaps": self.skill_gaps,
             }
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             return {"error": "diagnostics serialization failed"}
 
     def to_json_line(self) -> str:
         """Serialize to a single JSON string for log output."""
         try:
             return json.dumps(self.to_dict(), separators=(",", ":"))
-        except Exception:
+        except (TypeError, ValueError, KeyError, AttributeError):
             return "{}"

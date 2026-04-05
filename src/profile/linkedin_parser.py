@@ -31,7 +31,7 @@ def _read_csv(zf: zipfile.ZipFile, filename: str) -> list[dict]:
         raw = zf.read(path).decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(raw))
         return list(reader)
-    except Exception as e:
+    except (ValueError, KeyError, OSError) as e:
         logger.warning(f"Failed to read {filename}: {e}")
         return []
 

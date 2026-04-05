@@ -50,7 +50,7 @@ def load_profile() -> UserProfile | None:
         pref_data = {k: v for k, v in data.get("preferences", {}).items() if k in pref_fields}
         prefs = UserPreferences(**pref_data)
         return UserProfile(cv_data=cv, preferences=prefs)
-    except Exception as e:
+    except (json.JSONDecodeError, OSError, ValueError) as e:
         logger.warning(f"Failed to load profile: {e}")
         return None
 

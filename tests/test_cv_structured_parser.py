@@ -244,11 +244,16 @@ class TestSeniority:
         """Even with 10 years, a 'Junior' title signals entry level."""
         assert _compute_seniority(120, ["Junior Analyst"]) == "entry"
 
-    def test_highest_seniority_wins(self):
-        """Multiple titles — highest seniority wins."""
+    def test_most_recent_title_wins(self):
+        """Multiple titles — most recent (first in list) wins."""
+        # Most recent title is first — "Senior Engineer" as current role
+        assert _compute_seniority(
+            60, ["Senior Engineer", "Junior Developer"]
+        ) == "senior"
+        # If current role is junior, that's what we report
         assert _compute_seniority(
             60, ["Junior Developer", "Senior Engineer"]
-        ) == "senior"
+        ) == "entry"
 
 
 # ── Inline skill extraction ──────────────────────────────────────────

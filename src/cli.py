@@ -43,7 +43,8 @@ def _validate_db_path(ctx, param, value):
 @click.option("--db-path", default=None, callback=_validate_db_path, help="Override database file path.")
 @click.option("--no-email", is_flag=True, help="Skip all notifications (email, Slack, Discord).")
 @click.option("--dashboard", is_flag=True, help="Launch Streamlit dashboard after the run.")
-def run(source, dry_run, log_level, db_path, no_email, dashboard):
+@click.option("--safe", is_flag=True, help="Safe mode: skip HTML scraper sources (API + RSS only).")
+def run(source, dry_run, log_level, db_path, no_email, dashboard, safe):
     """Run the job search pipeline."""
     try:
         stats = asyncio.run(run_search(
@@ -53,6 +54,7 @@ def run(source, dry_run, log_level, db_path, no_email, dashboard):
             log_level=log_level,
             no_notify=no_email,
             launch_dashboard=dashboard,
+            safe_mode=safe,
         ))
         click.echo(f"Done: {stats['total_found']} found, {stats['new_jobs']} new, {stats['sources_queried']} sources.")
     except KeyboardInterrupt:
@@ -329,6 +331,7 @@ def validate(days, per_source, source_filter, min_score, db_path):
         async with aiohttp.ClientSession() as session:
             async def _check(job):
                 async with sem:
+                    await asyncio.sleep(0.5)  # Avoid rate-limiting during validation
                     return await validate_job(session, job)
 
             results = await asyncio.gather(*[_check(j) for j in jobs])

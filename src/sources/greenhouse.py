@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 from src.config.companies import GREENHOUSE_COMPANIES, COMPANY_NAME_OVERRIDES
 
 logger = logging.getLogger("job360.sources.greenhouse")
@@ -44,7 +45,7 @@ class GreenhouseSource(BaseJobSource):
                     title=title,
                     company=company_name,
                     location=location,
-                    description=plain[:5000],
+                    description=plain[:MAX_DESCRIPTION_LENGTH],
                     apply_url=item.get("absolute_url", ""),
                     source=self.name,
                     date_found=date_found,

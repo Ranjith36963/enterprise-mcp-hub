@@ -1,0 +1,1064 @@
+- generic [ref=e1]:
+  - alert [ref=e2]:
+    - generic [ref=e4]:
+      - img [ref=e7]
+      - generic [ref=e9]:
+        - heading [level=2] [ref=e10]: LinkedIn respects your privacy
+        - generic [ref=e12]:
+          - paragraph [ref=e13]:
+            - text: LinkedIn and 3rd parties use essential and non-essential cookies to provide, secure, analyze and improve our Services, and to show you relevant ads (including professional and job ads) on and off LinkedIn. Learn more in our
+            - link [ref=e14] [cursor=pointer]:
+              - /url: https://www.linkedin.com/legal/cookie-policy
+              - text: Cookie Policy
+            - text: .
+          - paragraph [ref=e15]:
+            - text: Select Accept to consent or Reject to decline non-essential cookies for this use. You can update your choices at any time in your
+            - link [ref=e16] [cursor=pointer]:
+              - /url: https://www.linkedin.com/mypreferences/g/guest-cookies
+              - text: settings
+            - text: .
+        - generic [ref=e17]:
+          - button [ref=e18] [cursor=pointer]: Accept
+          - button [ref=e19] [cursor=pointer]: Reject
+  - generic [ref=e20]:
+    - link [ref=e21] [cursor=pointer]:
+      - /url: "#main-content"
+      - text: Skip to main content
+    - banner [ref=e22]:
+      - navigation [ref=e23]:
+        - link [ref=e24] [cursor=pointer]:
+          - /url: /?trk=public_jobs_nav-header-logo
+          - generic [ref=e25]: LinkedIn
+          - img [ref=e27]
+        - generic [ref=e38]:
+          - button [ref=e40] [cursor=pointer]:
+            - generic:
+              - img
+          - tabpanel [ref=e41]:
+            - search [ref=e42]:
+              - generic [ref=e43]:
+                - combobox [ref=e44]: AI Engineer
+                - button [ref=e45]:
+                  - generic [ref=e46]: Clear text
+                  - img [ref=e48]
+              - generic [ref=e52]:
+                - combobox [ref=e53]: United Kingdom
+                - button [ref=e54]:
+                  - generic [ref=e55]: Clear text
+                  - img [ref=e57]
+              - button [ref=e61] [cursor=pointer]:
+                - img [ref=e63]
+          - status [ref=e65]
+        - generic [ref=e66]:
+          - link [ref=e67] [cursor=pointer]:
+            - /url: https://www.linkedin.com/login?emailAddress=&fromSignIn=&fromSignIn=true&session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fjobs%2Fsearch%2F%3Fkeywords%3DAI%2520Engineer%26location%3DUnited%2520Kingdom%26f_TPR%3Dr86400%26position%3D1%26pageNum%3D0&trk=public_jobs_nav-header-signin
+            - text: Sign in
+          - link [ref=e68] [cursor=pointer]:
+            - /url: https://www.linkedin.com/signup/cold-join?source=jobs_registration&session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fjobs%2Fsearch%2F%3Fkeywords%3DAI%2520Engineer%26location%3DUnited%2520Kingdom%26f_TPR%3Dr86400%26position%3D1%26pageNum%3D0&trk=public_jobs_nav-header-join
+            - text: Join now
+    - list [ref=e74]:
+      - listitem [ref=e75]:
+        - button [ref=e78] [cursor=pointer]:
+          - text: Past 24 hours
+          - img [ref=e80]
+      - listitem [ref=e82]:
+        - button [ref=e85] [cursor=pointer]:
+          - text: Company
+          - img [ref=e87]
+      - listitem [ref=e89]:
+        - button [ref=e92] [cursor=pointer]:
+          - text: Job type
+          - img [ref=e94]
+      - listitem [ref=e96]:
+        - button [ref=e99] [cursor=pointer]:
+          - text: Experience level
+          - img [ref=e101]
+      - listitem [ref=e103]:
+        - button [ref=e106] [cursor=pointer]:
+          - text: Location
+          - img [ref=e108]
+      - listitem [ref=e110]:
+        - button [ref=e113] [cursor=pointer]:
+          - text: Salary
+          - img [ref=e115]
+      - listitem [ref=e117]:
+        - button [ref=e120] [cursor=pointer]:
+          - text: Remote
+          - img [ref=e122]
+    - main [ref=e125]:
+      - generic [ref=e127]:
+        - img [ref=e129]
+        - generic [ref=e132]:
+          - paragraph [ref=e133]:
+            - text: Get notified about new AI Engineer jobs in
+            - strong [ref=e134]: United Kingdom
+            - text: .
+          - link [ref=e135] [cursor=pointer]:
+            - /url: https://www.linkedin.com/login?emailAddress=&fromSignIn=&session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fjobs%2Fsearch%2F%3Fkeywords%3DAI%2520Engineer%26location%3DUnited%2520Kingdom%26f_TPR%3Dr86400%26position%3D1%26pageNum%3D0&trk=public_jobs_job-alert-guest-redirect-cta
+            - text: Sign in to create job alert
+      - heading [level=1] [ref=e137]: 278 AI Engineer Jobs in United Kingdom
+      - list [ref=e139]:
+        - listitem [ref=e140]:
+          - generic [ref=e141]:
+            - link [ref=e142] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-hackajob-4382422337?position=1&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=5mjfYn%2BXOEEzCVkfTJQUzQ%3D%3D
+              - generic [ref=e143]: Data Scientist
+            - img [ref=e145]
+            - generic [ref=e146]:
+              - heading [level=3] [ref=e147]: Data Scientist
+              - heading [level=4] [ref=e148]:
+                - link [ref=e149] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e150]:
+                - generic [ref=e151]: Birmingham, England, United Kingdom
+                - generic [ref=e152]:
+                  - img [ref=e154]
+                  - generic [ref=e156]: Be an early applicant
+                - time [ref=e157]: 23 hours ago
+        - listitem [ref=e158]:
+          - generic [ref=e159]:
+            - link [ref=e160] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/trainee-ai-engineer-at-tiptopjob-4397419065?position=2&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=JZgGlyKP9plOfmpUmozaEw%3D%3D
+              - generic [ref=e161]: Trainee AI Engineer
+            - img [ref=e163]
+            - generic [ref=e164]:
+              - heading [level=3] [ref=e165]: Trainee AI Engineer
+              - heading [level=4] [ref=e166]:
+                - link [ref=e167] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/tiptopjob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: TipTopJob
+              - generic [ref=e168]:
+                - generic [ref=e169]: Hackney, England, United Kingdom
+                - generic [ref=e170]:
+                  - img [ref=e172]
+                  - generic [ref=e174]: Be an early applicant
+                - time [ref=e175]: 10 hours ago
+        - listitem [ref=e176]:
+          - generic [ref=e177]:
+            - link [ref=e178] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-hackajob-4384219065?position=3&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=j8jTBb8UywQSLH%2Bfb5ZbeA%3D%3D
+              - generic [ref=e179]: Data Scientist
+            - img [ref=e181]
+            - generic [ref=e182]:
+              - heading [level=3] [ref=e183]: Data Scientist
+              - heading [level=4] [ref=e184]:
+                - link [ref=e185] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e186]:
+                - generic [ref=e187]: London, England, United Kingdom
+                - generic [ref=e190]: Be an early applicant
+                - time [ref=e191]: 22 hours ago
+        - listitem [ref=e192]:
+          - generic [ref=e193]:
+            - link [ref=e194] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-intern-100%25-remote-at-tether-io-4397365433?position=4&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=BwEynjKEE1NxuBACykvsJw%3D%3D
+              - generic [ref=e195]: Machine Learning Engineer Intern (100% Remote)
+            - generic [ref=e197]:
+              - heading [level=3] [ref=e198]: Machine Learning Engineer Intern (100% Remote)
+              - heading [level=4] [ref=e199]:
+                - link [ref=e200] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/tether?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Tether.io
+              - generic [ref=e201]:
+                - generic [ref=e202]: United Kingdom
+                - time [ref=e203]: 14 hours ago
+        - listitem [ref=e204]:
+          - generic [ref=e205]:
+            - link [ref=e206] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-algo1-4375697123?position=5&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=GtW8q9VwH78tc7iGAHMHPA%3D%3D
+              - generic [ref=e207]: Machine Learning Engineer
+            - generic [ref=e209]:
+              - heading [level=3] [ref=e210]: Machine Learning Engineer
+              - heading [level=4] [ref=e211]:
+                - link [ref=e212] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/algo1?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: algo1
+              - generic [ref=e213]:
+                - generic [ref=e214]: London, England, United Kingdom
+                - time [ref=e215]: 27 minutes ago
+        - listitem [ref=e216]:
+          - generic [ref=e217]:
+            - link [ref=e218] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-haystack-4397368144?position=6&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=dmshJq8rT87LcH%2FCRYjVXQ%3D%3D
+              - generic [ref=e219]: Machine Learning Engineer
+            - generic [ref=e221]:
+              - heading [level=3] [ref=e222]: Machine Learning Engineer
+              - heading [level=4] [ref=e223]:
+                - link [ref=e224] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/wearehaystack?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Haystack
+              - generic [ref=e225]:
+                - generic [ref=e226]: London, England, United Kingdom
+                - generic [ref=e229]: Be an early applicant
+                - time [ref=e230]: 15 hours ago
+        - listitem [ref=e231]:
+          - generic [ref=e232]:
+            - link [ref=e233] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-engineer-at-arrows-4393897216?position=7&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=%2Fl9TM2i0GuthZG3uRx2%2B6A%3D%3D
+              - generic [ref=e234]: AI Engineer
+            - generic [ref=e236]:
+              - heading [level=3] [ref=e237]: AI Engineer
+              - heading [level=4] [ref=e238]:
+                - link [ref=e239] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/arrows-group?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Arrows
+              - generic [ref=e240]:
+                - generic [ref=e241]: London Area, United Kingdom
+                - time [ref=e242]: 17 hours ago
+        - listitem [ref=e243]:
+          - generic [ref=e244]:
+            - link [ref=e245] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-alignerr-4397420711?position=8&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=Nfb4926nwnZc74FeDGhVBg%3D%3D
+              - generic [ref=e246]: Machine Learning Engineer
+            - generic [ref=e248]:
+              - heading [level=3] [ref=e249]: Machine Learning Engineer
+              - heading [level=4] [ref=e250]:
+                - link [ref=e251] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e252]:
+                - generic [ref=e253]: United Kingdom
+                - generic [ref=e256]: Be an early applicant
+                - time [ref=e257]: 6 hours ago
+        - listitem [ref=e258]:
+          - generic [ref=e259]:
+            - link [ref=e260] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/senior-machine-learning-engineer-at-enso-recruitment-4397557486?position=9&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=Lv3OLSiDv0VGxjmrRzTXQA%3D%3D
+              - generic [ref=e261]: Senior Machine Learning Engineer
+            - generic [ref=e263]:
+              - heading [level=3] [ref=e264]: Senior Machine Learning Engineer
+              - heading [level=4] [ref=e265]:
+                - link [ref=e266] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/enso-recruitment?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Enso Recruitment
+              - generic [ref=e267]:
+                - generic [ref=e268]: Belfast, Northern Ireland, United Kingdom
+                - generic [ref=e271]: Be an early applicant
+                - time [ref=e272]: 23 hours ago
+        - listitem [ref=e273]:
+          - generic [ref=e274]:
+            - link [ref=e275] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-alignerr-4397415846?position=10&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=etukl8YfGK%2FqwzMPH3LYKA%3D%3D
+              - generic [ref=e276]: Machine Learning Engineer
+            - generic [ref=e278]:
+              - heading [level=3] [ref=e279]: Machine Learning Engineer
+              - heading [level=4] [ref=e280]:
+                - link [ref=e281] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e282]:
+                - generic [ref=e283]: Edinburgh, Scotland, United Kingdom
+                - generic [ref=e286]: Be an early applicant
+                - time [ref=e287]: 6 hours ago
+        - listitem [ref=e288]:
+          - generic [ref=e289]:
+            - link [ref=e290] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-hackajob-4378296922?position=11&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=3Fh8RZuwz3xAjQek0C4UaA%3D%3D
+              - generic [ref=e291]: Data Scientist
+            - generic [ref=e293]:
+              - heading [level=3] [ref=e294]: Data Scientist
+              - heading [level=4] [ref=e295]:
+                - link [ref=e296] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e297]:
+                - generic [ref=e298]: London, England, United Kingdom
+                - time [ref=e299]: 9 hours ago
+        - listitem [ref=e300]:
+          - generic [ref=e301]:
+            - link [ref=e302] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/generative-ai-engineer-at-hackajob-4377926081?position=12&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=ECPBFWNKQLWx8724X6XKAQ%3D%3D
+              - generic [ref=e303]: Generative AI Engineer
+            - generic [ref=e305]:
+              - heading [level=3] [ref=e306]: Generative AI Engineer
+              - heading [level=4] [ref=e307]:
+                - link [ref=e308] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e309]:
+                - generic [ref=e310]: United Kingdom
+                - time [ref=e311]: 9 hours ago
+        - listitem [ref=e312]:
+          - generic [ref=e313]:
+            - link [ref=e314] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-alignerr-4397430274?position=13&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=x6iXDJprQzIw0o5oLLObsA%3D%3D
+              - generic [ref=e315]: Machine Learning Engineer
+            - generic [ref=e317]:
+              - heading [level=3] [ref=e318]: Machine Learning Engineer
+              - heading [level=4] [ref=e319]:
+                - link [ref=e320] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e321]:
+                - generic [ref=e322]: Glasgow, Scotland, United Kingdom
+                - generic [ref=e325]: Be an early applicant
+                - time [ref=e326]: 6 hours ago
+        - listitem [ref=e327]:
+          - generic [ref=e328]:
+            - link [ref=e329] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-at-alignerr-4397421699?position=14&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=wjP4hFpTX%2BNIlZRBJeACgA%3D%3D
+              - generic [ref=e330]: Machine Learning Engineer
+            - generic [ref=e332]:
+              - heading [level=3] [ref=e333]: Machine Learning Engineer
+              - heading [level=4] [ref=e334]:
+                - link [ref=e335] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e336]:
+                - generic [ref=e337]: Glasgow, Scotland, United Kingdom
+                - generic [ref=e340]: Be an early applicant
+                - time [ref=e341]: 6 hours ago
+        - listitem [ref=e342]:
+          - generic [ref=e343]:
+            - link [ref=e344] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-lendable-4324544403?position=15&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=ODa%2Bhj761mXJC5zQG4%2Fqpw%3D%3D
+              - generic [ref=e345]: Data Scientist
+            - generic [ref=e347]:
+              - heading [level=3] [ref=e348]: Data Scientist
+              - heading [level=4] [ref=e349]:
+                - link [ref=e350] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/lendable?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Lendable
+              - generic [ref=e351]:
+                - generic [ref=e352]: London, England, United Kingdom
+                - time [ref=e353]: 1 hour ago
+        - listitem [ref=e354]:
+          - generic [ref=e355]:
+            - link [ref=e356] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/senior-software-engineer-in-test-python-at-roku-4385517260?position=16&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=7ArtT2HlfrT9%2F4DcW%2BZK5Q%3D%3D
+              - generic [ref=e357]: Senior Software Engineer in Test, Python
+            - generic [ref=e359]:
+              - heading [level=3] [ref=e360]: Senior Software Engineer in Test, Python
+              - heading [level=4] [ref=e361]:
+                - link [ref=e362] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/roku?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Roku
+              - generic [ref=e363]:
+                - generic [ref=e364]: Cambridge, England, United Kingdom
+                - generic [ref=e367]: Be an early applicant
+                - time [ref=e368]: 3 hours ago
+        - listitem [ref=e369]:
+          - generic [ref=e370]:
+            - link [ref=e371] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-ml-engineer-at-hackajob-4394257093?position=17&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=SVRlPu2Ns7EyGjpsGYZQ%2BA%3D%3D
+              - generic [ref=e372]: Data & ML Engineer
+            - generic [ref=e374]:
+              - heading [level=3] [ref=e375]: Data & ML Engineer
+              - heading [level=4] [ref=e376]:
+                - link [ref=e377] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e378]:
+                - generic [ref=e379]: Newcastle Upon Tyne, England, United Kingdom
+                - generic [ref=e382]: Be an early applicant
+                - time [ref=e383]: 2 hours ago
+        - listitem [ref=e384]:
+          - generic [ref=e385]:
+            - link [ref=e386] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-thrive-ai-4397452060?position=18&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=hU5P8ZT7yr6q5m257WFVOg%3D%3D
+              - generic [ref=e387]: Data Scientist
+            - generic [ref=e389]:
+              - heading [level=3] [ref=e390]: Data Scientist
+              - heading [level=4] [ref=e391]:
+                - link [ref=e392] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/thrive-ai-ltd?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Thrive AI
+              - generic [ref=e393]:
+                - generic [ref=e394]: London Area, United Kingdom
+                - time [ref=e395]: 2 hours ago
+        - listitem [ref=e396]:
+          - generic [ref=e397]:
+            - link [ref=e398] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ml-engineer-ai-trainer-freelance-8-20-hrs-week-remote-at-10x-team-4397309176?position=19&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=ql2eP2sbiqSGroNxq9yk%2FQ%3D%3D
+              - generic [ref=e399]: ML Engineer - AI Trainer - Freelance - 8-20 hrs/week - Remote
+            - generic [ref=e401]:
+              - heading [level=3] [ref=e402]: ML Engineer - AI Trainer - Freelance - 8-20 hrs/week - Remote
+              - heading [level=4] [ref=e403]:
+                - link [ref=e404] [cursor=pointer]:
+                  - /url: https://nl.linkedin.com/company/10xteam?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: 10x.Team
+              - generic [ref=e405]:
+                - generic [ref=e406]: London, England, United Kingdom
+                - time [ref=e407]: 22 hours ago
+        - listitem [ref=e408]:
+          - generic [ref=e409]:
+            - link [ref=e410] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-integrity-measurement-at-openai-4373142090?position=20&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=QnWHb%2BCIar7WvvCIJ347XQ%3D%3D
+              - generic [ref=e411]: Data Scientist, Integrity Measurement
+            - generic [ref=e413]:
+              - heading [level=3] [ref=e414]: Data Scientist, Integrity Measurement
+              - heading [level=4] [ref=e415]:
+                - link [ref=e416] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/openai?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: OpenAI
+              - generic [ref=e417]:
+                - generic [ref=e418]: London, England, United Kingdom
+                - time [ref=e419]: 22 hours ago
+        - listitem [ref=e420]:
+          - generic [ref=e421]:
+            - link [ref=e422] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-ai-engineer-at-fletchers-group-4385355425?position=21&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=Yfkadh%2BNK%2FsBaHfipcUsMQ%3D%3D
+              - generic [ref=e423]: Data Scientist/ AI Engineer
+            - generic [ref=e425]:
+              - heading [level=3] [ref=e426]: Data Scientist/ AI Engineer
+              - heading [level=4] [ref=e427]:
+                - link [ref=e428] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/fletchers-group?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Fletchers Group
+              - generic [ref=e429]:
+                - generic [ref=e430]: Manchester, England, United Kingdom
+                - time [ref=e431]: 3 hours ago
+        - listitem [ref=e432]:
+          - generic [ref=e433]:
+            - link [ref=e434] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-developer-at-fetchjobs-co-4394261234?position=22&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=9KT4rIxphsX1w3QmUxlIgQ%3D%3D
+              - generic [ref=e435]: AI Developer
+            - generic [ref=e437]:
+              - heading [level=3] [ref=e438]: AI Developer
+              - heading [level=4] [ref=e439]:
+                - link [ref=e440] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/fetchjobs-co?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: FetchJobs.co
+              - generic [ref=e441]:
+                - generic [ref=e442]: London, England, United Kingdom
+                - generic [ref=e445]: Be an early applicant
+                - time [ref=e446]: 1 hour ago
+        - listitem [ref=e447]:
+          - generic [ref=e448]:
+            - link [ref=e449] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-engineer-at-hyra-4397349724?position=23&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=96j8ximOMXcY8KLAj8Ed5A%3D%3D
+              - generic [ref=e450]: AI Engineer
+            - generic [ref=e452]:
+              - heading [level=3] [ref=e453]: AI Engineer
+              - heading [level=4] [ref=e454]:
+                - link [ref=e455] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/joinhyra?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Hyra
+              - generic [ref=e456]:
+                - generic [ref=e457]: North Yorkshire, England, United Kingdom
+                - time [ref=e458]: 16 hours ago
+        - listitem [ref=e459]:
+          - generic [ref=e460]:
+            - link [ref=e461] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/generative-ai-engineer-at-hackajob-4377908636?position=24&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=acwsV4JmFrg81dAqnyGnVg%3D%3D
+              - generic [ref=e462]: Generative AI Engineer
+            - generic [ref=e464]:
+              - heading [level=3] [ref=e465]: Generative AI Engineer
+              - heading [level=4] [ref=e466]:
+                - link [ref=e467] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e468]:
+                - generic [ref=e469]: London, England, United Kingdom
+                - generic [ref=e472]: Be an early applicant
+                - time [ref=e473]: 9 hours ago
+        - listitem [ref=e474]:
+          - generic [ref=e475]:
+            - link [ref=e476] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-engineer-ai-trainer-at-dataannotation-4397385834?position=25&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=XUTtfx840puiLm7XF%2BNNag%3D%3D
+              - generic [ref=e477]: Machine Learning Engineer - AI Trainer
+            - generic [ref=e479]:
+              - heading [level=3] [ref=e480]: Machine Learning Engineer - AI Trainer
+              - heading [level=4] [ref=e481]:
+                - link [ref=e482] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e483]:
+                - generic [ref=e484]: United Kingdom
+                - generic [ref=e487]: Be an early applicant
+                - time [ref=e488]: 11 hours ago
+        - listitem [ref=e489]:
+          - generic [ref=e490]:
+            - link [ref=e491] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-software-engineer-multi-strat-hedge-fund-%C2%A3400k-at-paragon-alpha-hedge-fund-talent-business-4386559104?position=26&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=5LlIPemKRXgMxeaUG3rQ8w%3D%3D
+              - generic [ref=e492]: AI Software Engineer - Multi-Strat Hedge Fund - £400k
+            - generic [ref=e494]:
+              - heading [level=3] [ref=e495]: AI Software Engineer - Multi-Strat Hedge Fund - £400k
+              - heading [level=4] [ref=e496]:
+                - link [ref=e497] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/paragonalpha?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Paragon Alpha - Hedge Fund Talent Business
+              - generic [ref=e498]:
+                - generic [ref=e499]: London Area, United Kingdom
+                - time [ref=e500]: 1 hour ago
+        - listitem [ref=e501]:
+          - generic [ref=e502]:
+            - link [ref=e503] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-engineer-placement-programme-at-tiptopjob-4397417178?position=27&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=%2FFqXpuQ0JRo%2FyrLXXLQd0A%3D%3D
+              - generic [ref=e504]: AI Engineer Placement Programme
+            - generic [ref=e506]:
+              - heading [level=3] [ref=e507]: AI Engineer Placement Programme
+              - heading [level=4] [ref=e508]:
+                - link [ref=e509] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/tiptopjob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: TipTopJob
+              - generic [ref=e510]:
+                - generic [ref=e511]: Merseyside, England, United Kingdom
+                - generic [ref=e514]: Be an early applicant
+                - time [ref=e515]: 10 hours ago
+        - listitem [ref=e516]:
+          - generic [ref=e517]:
+            - link [ref=e518] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-platform-engineer-at-haystack-4397354810?position=28&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=rMewZHqAIaZ0vk%2Fe0usOGA%3D%3D
+              - generic [ref=e519]: AI Platform Engineer
+            - generic [ref=e521]:
+              - heading [level=3] [ref=e522]: AI Platform Engineer
+              - heading [level=4] [ref=e523]:
+                - link [ref=e524] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/wearehaystack?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Haystack
+              - generic [ref=e525]:
+                - generic [ref=e526]: London, England, United Kingdom
+                - generic [ref=e529]: Be an early applicant
+                - time [ref=e530]: 15 hours ago
+        - listitem [ref=e531]:
+          - generic [ref=e532]:
+            - link [ref=e533] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-software-engineer-at-version-1-4352170095?position=29&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=ztVlYvNXjFhSpJ6fesVlsA%3D%3D
+              - generic [ref=e534]: AI Software Engineer
+            - generic [ref=e536]:
+              - heading [level=3] [ref=e537]: AI Software Engineer
+              - heading [level=4] [ref=e538]:
+                - link [ref=e539] [cursor=pointer]:
+                  - /url: https://ie.linkedin.com/company/version-1?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Version 1
+              - generic [ref=e540]:
+                - generic [ref=e541]: London, England, United Kingdom
+                - time [ref=e542]: 1 hour ago
+        - listitem [ref=e543]:
+          - generic [ref=e544]:
+            - link [ref=e545] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-platform-engineer-at-haystack-4397370138?position=30&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=jCEioLRQ5whrCDvOOcedIA%3D%3D
+              - generic [ref=e546]: AI Platform Engineer
+            - generic [ref=e548]:
+              - heading [level=3] [ref=e549]: AI Platform Engineer
+              - heading [level=4] [ref=e550]:
+                - link [ref=e551] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/wearehaystack?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Haystack
+              - generic [ref=e552]:
+                - generic [ref=e553]: London, England, United Kingdom
+                - generic [ref=e556]: Be an early applicant
+                - time [ref=e557]: 15 hours ago
+        - listitem [ref=e558]:
+          - generic [ref=e559]:
+            - link [ref=e560] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/software-engineer-ai-team-at-hunter-bond-4397554532?position=31&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=eurswouS56dZ6jTublBezQ%3D%3D
+              - generic [ref=e561]: Software Engineer (AI Team)
+            - generic [ref=e563]:
+              - heading [level=3] [ref=e564]: Software Engineer (AI Team)
+              - heading [level=4] [ref=e565]:
+                - link [ref=e566] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hunter-bond?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Hunter Bond
+              - generic [ref=e567]:
+                - generic [ref=e568]: United Kingdom
+                - time [ref=e569]: 23 hours ago
+        - listitem [ref=e570]:
+          - generic [ref=e571]:
+            - link [ref=e572] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/freelance-python-developer-ai-trainer-at-dataannotation-4397404072?position=32&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=hkqhrf4JIMNgmwzzSn6Scw%3D%3D
+              - generic [ref=e573]: Freelance Python Developer - AI Trainer
+            - generic [ref=e575]:
+              - heading [level=3] [ref=e576]: Freelance Python Developer - AI Trainer
+              - heading [level=4] [ref=e577]:
+                - link [ref=e578] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e579]:
+                - generic [ref=e580]: United Kingdom
+                - generic [ref=e583]: Be an early applicant
+                - time [ref=e584]: 11 hours ago
+        - listitem [ref=e585]:
+          - generic [ref=e586]:
+            - link [ref=e587] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/senior-software-engineer-%E2%80%93-ai-platform-python-go-at-atarus-4391705002?position=33&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=H44RVJ%2FuXDgSkMq50ykunA%3D%3D
+              - generic [ref=e588]: Senior Software Engineer – AI Platform (Python / Go)
+            - generic [ref=e590]:
+              - heading [level=3] [ref=e591]: Senior Software Engineer – AI Platform (Python / Go)
+              - heading [level=4] [ref=e592]:
+                - link [ref=e593] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/atarusgroup?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Atarus
+              - generic [ref=e594]:
+                - generic [ref=e595]: United Kingdom
+                - time [ref=e596]: 22 hours ago
+        - listitem [ref=e597]:
+          - generic [ref=e598]:
+            - link [ref=e599] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/machine-learning-ops-engineer-at-dxc-technology-4324129940?position=34&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=2aKS2vLsKRro1NGyTe72%2BA%3D%3D
+              - generic [ref=e600]: Machine Learning Ops Engineer
+            - generic [ref=e602]:
+              - heading [level=3] [ref=e603]: Machine Learning Ops Engineer
+              - heading [level=4] [ref=e604]:
+                - link [ref=e605] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dxctechnology?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DXC Technology
+              - generic [ref=e606]:
+                - generic [ref=e607]: Erskine, Scotland, United Kingdom
+                - time [ref=e608]: 23 hours ago
+        - listitem [ref=e609]:
+          - generic [ref=e610]:
+            - link [ref=e611] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/mlops-engineer-ai-trainer-freelance-8-20hrs-week-remote-at-10x-team-4397307262?position=35&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=%2FH4NoAhZvlLdTV2o9qYAgg%3D%3D
+              - generic [ref=e612]: MLOps Engineer - AI Trainer - Freelance - 8-20hrs/week - Remote
+            - generic [ref=e614]:
+              - heading [level=3] [ref=e615]: MLOps Engineer - AI Trainer - Freelance - 8-20hrs/week - Remote
+              - heading [level=4] [ref=e616]:
+                - link [ref=e617] [cursor=pointer]:
+                  - /url: https://nl.linkedin.com/company/10xteam?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: 10x.Team
+              - generic [ref=e618]:
+                - generic [ref=e619]: London, England, United Kingdom
+                - generic [ref=e622]: Be an early applicant
+                - time [ref=e623]: 22 hours ago
+        - listitem [ref=e624]:
+          - generic [ref=e625]:
+            - link [ref=e626] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/python-developer-ai-trainer-at-dataannotation-4397385843?position=36&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=Syw7NqebeZRTSf4A%2FiZn4Q%3D%3D
+              - generic [ref=e627]: Python Developer - AI Trainer
+            - generic [ref=e629]:
+              - heading [level=3] [ref=e630]: Python Developer - AI Trainer
+              - heading [level=4] [ref=e631]:
+                - link [ref=e632] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e633]:
+                - generic [ref=e634]: United Kingdom
+                - generic [ref=e637]: Be an early applicant
+                - time [ref=e638]: 11 hours ago
+        - listitem [ref=e639]:
+          - generic [ref=e640]:
+            - link [ref=e641] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/python-engineer-ai-trainer-at-dataannotation-4397382939?position=37&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=pboblvIcVPMsk5RfYjrK%2Fg%3D%3D
+              - generic [ref=e642]: Python Engineer - AI Trainer
+            - generic [ref=e644]:
+              - heading [level=3] [ref=e645]: Python Engineer - AI Trainer
+              - heading [level=4] [ref=e646]:
+                - link [ref=e647] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e648]:
+                - generic [ref=e649]: United Kingdom
+                - generic [ref=e652]: Be an early applicant
+                - time [ref=e653]: 11 hours ago
+        - listitem [ref=e654]:
+          - generic [ref=e655]:
+            - link [ref=e656] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-software-engineer-at-version-1-4352160234?position=38&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=kymFEbSAb0vjGQuUkFsT5A%3D%3D
+              - generic [ref=e657]: AI Software Engineer
+            - generic [ref=e659]:
+              - heading [level=3] [ref=e660]: AI Software Engineer
+              - heading [level=4] [ref=e661]:
+                - link [ref=e662] [cursor=pointer]:
+                  - /url: https://ie.linkedin.com/company/version-1?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Version 1
+              - generic [ref=e663]:
+                - generic [ref=e664]: Manchester, England, United Kingdom
+                - time [ref=e665]: 1 hour ago
+        - listitem [ref=e666]:
+          - generic [ref=e667]:
+            - link [ref=e668] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-software-engineer-at-version-1-4352002468?position=39&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=Ia9lhb617Trdk0EkbcbdYw%3D%3D
+              - generic [ref=e669]: AI Software Engineer
+            - generic [ref=e671]:
+              - heading [level=3] [ref=e672]: AI Software Engineer
+              - heading [level=4] [ref=e673]:
+                - link [ref=e674] [cursor=pointer]:
+                  - /url: https://ie.linkedin.com/company/version-1?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Version 1
+              - generic [ref=e675]:
+                - generic [ref=e676]: Birmingham, England, United Kingdom
+                - time [ref=e677]: 1 hour ago
+        - listitem [ref=e678]:
+          - generic [ref=e679]:
+            - link [ref=e680] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-full-stack-engineer-at-atarus-4384140957?position=40&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=PHg2wobALOM%2F%2BSpTa5DEYw%3D%3D
+              - generic [ref=e681]: AI Full Stack Engineer
+            - generic [ref=e683]:
+              - heading [level=3] [ref=e684]: AI Full Stack Engineer
+              - heading [level=4] [ref=e685]:
+                - link [ref=e686] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/atarusgroup?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Atarus
+              - generic [ref=e687]:
+                - generic [ref=e688]: London Area, United Kingdom
+                - time [ref=e689]: 22 hours ago
+        - listitem [ref=e690]:
+          - generic [ref=e691]:
+            - link [ref=e692] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-at-stats-perform-4391854618?position=41&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=dgw974ZnDR4R8Ud7mR%2BuXw%3D%3D
+              - generic [ref=e693]: Data Scientist
+            - generic [ref=e695]:
+              - heading [level=3] [ref=e696]: Data Scientist
+              - heading [level=4] [ref=e697]:
+                - link [ref=e698] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/stats-perform?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Stats Perform
+              - generic [ref=e699]:
+                - generic [ref=e700]: London, England, United Kingdom
+                - generic [ref=e703]: Be an early applicant
+                - time [ref=e704]: 15 hours ago
+        - listitem [ref=e705]:
+          - generic [ref=e706]:
+            - link [ref=e707] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-engineer-ai-trainer-at-dataannotation-4397406121?position=42&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=gRLfruq6YWsQXnP1M4Ie3Q%3D%3D
+              - generic [ref=e708]: Data Engineer - AI Trainer
+            - generic [ref=e710]:
+              - heading [level=3] [ref=e711]: Data Engineer - AI Trainer
+              - heading [level=4] [ref=e712]:
+                - link [ref=e713] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e714]:
+                - generic [ref=e715]: United Kingdom
+                - generic [ref=e718]: Be an early applicant
+                - time [ref=e719]: 11 hours ago
+        - listitem [ref=e720]:
+          - generic [ref=e721]:
+            - link [ref=e722] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-training-engineer-ai-trainer-at-dataannotation-4397399454?position=43&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=05CWVACMm8XPgAEGd2F9Dw%3D%3D
+              - generic [ref=e723]: AI Training Engineer - AI Trainer
+            - generic [ref=e725]:
+              - heading [level=3] [ref=e726]: AI Training Engineer - AI Trainer
+              - heading [level=4] [ref=e727]:
+                - link [ref=e728] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e729]:
+                - generic [ref=e730]: United Kingdom
+                - generic [ref=e733]: Be an early applicant
+                - time [ref=e734]: 11 hours ago
+        - listitem [ref=e735]:
+          - generic [ref=e736]:
+            - link [ref=e737] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/ai-machine-learning-engineer-3-month-contract-at-hackajob-4394245935?position=44&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=xDnKYZSyRvpj8qrl8QOJtw%3D%3D
+              - generic [ref=e738]: AI/Machine Learning Engineer (3 month contract)
+            - generic [ref=e740]:
+              - heading [level=3] [ref=e741]: AI/Machine Learning Engineer (3 month contract)
+              - heading [level=4] [ref=e742]:
+                - link [ref=e743] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e744]:
+                - generic [ref=e745]: Manchester, England, United Kingdom
+                - generic [ref=e748]: Be an early applicant
+                - time [ref=e749]: 2 hours ago
+        - listitem [ref=e750]:
+          - generic [ref=e751]:
+            - link [ref=e752] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/engineering-intern-web3-ai-at-blockchain-com-4367325397?position=45&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=zz1JvG61zlnwZxYR%2FIggRA%3D%3D
+              - generic [ref=e753]: Engineering Intern, Web3/AI
+            - generic [ref=e755]:
+              - heading [level=3] [ref=e756]: Engineering Intern, Web3/AI
+              - heading [level=4] [ref=e757]:
+                - link [ref=e758] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/blockchain?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Blockchain.com
+              - generic [ref=e759]:
+                - generic [ref=e760]: London Area, United Kingdom
+                - time [ref=e761]: 23 hours ago
+        - listitem [ref=e762]:
+          - generic [ref=e763]:
+            - link [ref=e764] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/frontend-software-engineer-codex-app-at-openai-4372699465?position=46&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=XAM5AYbhPnmpHEtb97bkOg%3D%3D
+              - generic [ref=e765]: Frontend Software Engineer, Codex App
+            - generic [ref=e767]:
+              - heading [level=3] [ref=e768]: Frontend Software Engineer, Codex App
+              - heading [level=4] [ref=e769]:
+                - link [ref=e770] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/openai?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: OpenAI
+              - generic [ref=e771]:
+                - generic [ref=e772]: London, England, United Kingdom
+                - time [ref=e773]: 22 hours ago
+        - listitem [ref=e774]:
+          - generic [ref=e775]:
+            - link [ref=e776] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/test-automation-engineer-ai-trainer-at-dataannotation-4397391630?position=47&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=AmVg6Xu1Jzx77BpjRXPy4w%3D%3D
+              - generic [ref=e777]: Test Automation Engineer - AI Trainer
+            - generic [ref=e779]:
+              - heading [level=3] [ref=e780]: Test Automation Engineer - AI Trainer
+              - heading [level=4] [ref=e781]:
+                - link [ref=e782] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e783]:
+                - generic [ref=e784]: United Kingdom
+                - generic [ref=e787]: Be an early applicant
+                - time [ref=e788]: 11 hours ago
+        - listitem [ref=e789]:
+          - generic [ref=e790]:
+            - link [ref=e791] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/founding-software-engineer-at-atarus-4391712088?position=48&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=BAvkdzR81mfU%2FauuL4qimA%3D%3D
+              - generic [ref=e792]: Founding / Software Engineer
+            - generic [ref=e794]:
+              - heading [level=3] [ref=e795]: Founding / Software Engineer
+              - heading [level=4] [ref=e796]:
+                - link [ref=e797] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/atarusgroup?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Atarus
+              - generic [ref=e798]:
+                - generic [ref=e799]: London Area, United Kingdom
+                - time [ref=e800]: 22 hours ago
+        - listitem [ref=e801]:
+          - generic [ref=e802]:
+            - link [ref=e803] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/senior-machine-learning-engineer-at-sage-4384326230?position=49&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=bU6boW7UrQPwWrVbgtn6yA%3D%3D
+              - generic [ref=e804]: Senior Machine Learning Engineer
+            - generic [ref=e806]:
+              - heading [level=3] [ref=e807]: Senior Machine Learning Engineer
+              - heading [level=4] [ref=e808]:
+                - link [ref=e809] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/sage-software?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Sage
+              - generic [ref=e810]:
+                - generic [ref=e811]: Newcastle Upon Tyne, England, United Kingdom
+                - time [ref=e812]: 21 hours ago
+        - listitem [ref=e813]:
+          - generic [ref=e814]:
+            - link [ref=e815] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/software-engineer-genai-at-atarus-4379900469?position=50&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=uzSLsbN3lm2zBPbh%2FOcQkg%3D%3D
+              - generic [ref=e816]: Software Engineer - GenAI
+            - generic [ref=e818]:
+              - heading [level=3] [ref=e819]: Software Engineer - GenAI
+              - heading [level=4] [ref=e820]:
+                - link [ref=e821] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/atarusgroup?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Atarus
+              - generic [ref=e822]:
+                - generic [ref=e823]: London Area, United Kingdom
+                - time [ref=e824]: 22 hours ago
+        - listitem [ref=e825]:
+          - generic [ref=e826]:
+            - link [ref=e827] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/product-focused-full-stack-engineer-python-django-go-graphql-flutter-high-ownership-end-to-end-ai-infrastructure-scale-up-%C2%A360-120k-%2B-equity-london-hybrid-at-owen-thomas-b-corp%E2%84%A2-4397434502?position=51&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=2N7rsEV0iQ50fcRHs%2FPaUA%3D%3D
+              - generic [ref=e828]: Product-Focused Full Stack Engineer (Python, Django) | Go, GraphQL, Flutter | High Ownership, End to end | AI Infrastructure Scale-Up | £60-120k + Equity | London Hybrid
+            - generic [ref=e830]:
+              - heading [level=3] [ref=e831]: Product-Focused Full Stack Engineer (Python, Django) | Go, GraphQL, Flutter | High Ownership, End to end | AI Infrastructure Scale-Up | £60-120k + Equity | London Hybrid
+              - heading [level=4] [ref=e832]:
+                - link [ref=e833] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/owen-thomas-talent?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Owen Thomas | B Corp™
+              - generic [ref=e834]:
+                - generic [ref=e835]: London Area, United Kingdom
+                - generic [ref=e838]: Be an early applicant
+                - time [ref=e839]: 4 hours ago
+        - listitem [ref=e840]:
+          - generic [ref=e841]:
+            - link [ref=e842] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/databricks-data-engineer-at-hackajob-4370025879?position=52&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=%2FySLL%2FTK7s040nAypG6EzQ%3D%3D
+              - generic [ref=e843]: Databricks Data Engineer
+            - generic [ref=e845]:
+              - heading [level=3] [ref=e846]: Databricks Data Engineer
+              - heading [level=4] [ref=e847]:
+                - link [ref=e848] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/hackajob?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: hackajob
+              - generic [ref=e849]:
+                - generic [ref=e850]: London, England, United Kingdom
+                - generic [ref=e853]: Be an early applicant
+                - time [ref=e854]: 30 minutes ago
+        - listitem [ref=e855]:
+          - generic [ref=e856]:
+            - link [ref=e857] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/quality-assurance-engineer-games-deepmind-at-google-deepmind-4393875669?position=53&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=wpFJe6%2BRiuI8lh7pbhLCzg%3D%3D
+              - generic [ref=e858]: Quality Assurance Engineer, Games, DeepMind
+            - generic [ref=e860]:
+              - heading [level=3] [ref=e861]: Quality Assurance Engineer, Games, DeepMind
+              - heading [level=4] [ref=e862]:
+                - link [ref=e863] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/googledeepmind?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Google DeepMind
+              - generic [ref=e864]:
+                - generic [ref=e865]: London, England, United Kingdom
+                - time [ref=e866]: 19 hours ago
+        - listitem [ref=e867]:
+          - generic [ref=e868]:
+            - link [ref=e869] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-engineer-at-thrive-ai-4397441526?position=54&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=n3MKS8XHCRO7i6HradZj%2Fg%3D%3D
+              - generic [ref=e870]: Data Engineer
+            - generic [ref=e872]:
+              - heading [level=3] [ref=e873]: Data Engineer
+              - heading [level=4] [ref=e874]:
+                - link [ref=e875] [cursor=pointer]:
+                  - /url: https://uk.linkedin.com/company/thrive-ai-ltd?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Thrive AI
+              - generic [ref=e876]:
+                - generic [ref=e877]: London Area, United Kingdom
+                - time [ref=e878]: 2 hours ago
+        - listitem [ref=e879]:
+          - generic [ref=e880]:
+            - link [ref=e881] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/frontend-engineer-ai-trainer-at-dataannotation-4397400282?position=55&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=J0%2FNySQc5Vw9R%2FV1Sug%2BYA%3D%3D
+              - generic [ref=e882]: Frontend Engineer - AI Trainer
+            - generic [ref=e884]:
+              - heading [level=3] [ref=e885]: Frontend Engineer - AI Trainer
+              - heading [level=4] [ref=e886]:
+                - link [ref=e887] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e888]:
+                - generic [ref=e889]: United Kingdom
+                - generic [ref=e892]: Be an early applicant
+                - time [ref=e893]: 11 hours ago
+        - listitem [ref=e894]:
+          - generic [ref=e895]:
+            - link [ref=e896] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-masters-at-alignerr-4397418788?position=56&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=5b%2FDdGxiWV7%2F0lv4iUob4w%3D%3D
+              - generic [ref=e897]: Data Scientist (Masters)
+            - generic [ref=e899]:
+              - heading [level=3] [ref=e900]: Data Scientist (Masters)
+              - heading [level=4] [ref=e901]:
+                - link [ref=e902] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e903]:
+                - generic [ref=e904]: United Kingdom
+                - generic [ref=e907]: Be an early applicant
+                - time [ref=e908]: 6 hours ago
+        - listitem [ref=e909]:
+          - generic [ref=e910]:
+            - link [ref=e911] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-masters-at-alignerr-4397421722?position=57&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=YCq3r2mVZvDMRytUh1Qt5A%3D%3D
+              - generic [ref=e912]: Data Scientist (Masters)
+            - generic [ref=e914]:
+              - heading [level=3] [ref=e915]: Data Scientist (Masters)
+              - heading [level=4] [ref=e916]:
+                - link [ref=e917] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/alignerr?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Alignerr
+              - generic [ref=e918]:
+                - generic [ref=e919]: London, England, United Kingdom
+                - generic [ref=e922]: Be an early applicant
+                - time [ref=e923]: 6 hours ago
+        - listitem [ref=e924]:
+          - generic [ref=e925]:
+            - link [ref=e926] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/remote-software-engineer-ai-trainer-at-dataannotation-4397387683?position=58&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=ju7t8mLtR6cHL5jY7h4%2ByA%3D%3D
+              - generic [ref=e927]: Remote Software Engineer - AI Trainer
+            - generic [ref=e929]:
+              - heading [level=3] [ref=e930]: Remote Software Engineer - AI Trainer
+              - heading [level=4] [ref=e931]:
+                - link [ref=e932] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e933]:
+                - generic [ref=e934]: United Kingdom
+                - generic [ref=e937]: Be an early applicant
+                - time [ref=e938]: 11 hours ago
+        - listitem [ref=e939]:
+          - generic [ref=e940]:
+            - link [ref=e941] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/data-scientist-consultant-at-atos-4382797294?position=59&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=DiXW9QF%2FISA63%2FmAVBaQNg%3D%3D
+              - generic [ref=e942]: Data Scientist Consultant
+            - generic [ref=e944]:
+              - heading [level=3] [ref=e945]: Data Scientist Consultant
+              - heading [level=4] [ref=e946]:
+                - link [ref=e947] [cursor=pointer]:
+                  - /url: https://fr.linkedin.com/company/atos?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: Atos
+              - generic [ref=e948]:
+                - generic [ref=e949]: Gildersome, England, United Kingdom
+                - time [ref=e950]: 1 day ago
+        - listitem [ref=e951]:
+          - generic [ref=e952]:
+            - link [ref=e953] [cursor=pointer]:
+              - /url: https://uk.linkedin.com/jobs/view/software-engineer-analyst-ai-trainer-at-dataannotation-4397389691?position=60&pageNum=0&refId=CmHsfbX2t%2FNJvJuvL6CWug%3D%3D&trackingId=KQ3jmW9qEQbROX6vcpug4w%3D%3D
+              - generic [ref=e954]: Software Engineer Analyst - AI Trainer
+            - generic [ref=e956]:
+              - heading [level=3] [ref=e957]: Software Engineer Analyst - AI Trainer
+              - heading [level=4] [ref=e958]:
+                - link [ref=e959] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/dataannotationtech?trk=public_jobs_jserp-result_job-search-card-subtitle
+                  - text: DataAnnotation
+              - generic [ref=e960]:
+                - generic [ref=e961]: United Kingdom
+                - generic [ref=e964]: Be an early applicant
+                - time [ref=e965]: 11 hours ago
+    - contentinfo [ref=e966]:
+      - list [ref=e967]:
+        - listitem [ref=e968]:
+          - generic [ref=e969]: LinkedIn
+          - generic [ref=e971]: © 2026
+        - listitem [ref=e972]:
+          - link [ref=e973] [cursor=pointer]:
+            - /url: https://about.linkedin.com?trk=public_jobs_footer-about
+            - text: About
+        - listitem [ref=e974]:
+          - link [ref=e975] [cursor=pointer]:
+            - /url: https://www.linkedin.com/accessibility?trk=public_jobs_footer-accessibility
+            - text: Accessibility
+        - listitem [ref=e976]:
+          - link [ref=e977] [cursor=pointer]:
+            - /url: https://www.linkedin.com/legal/user-agreement?trk=public_jobs_footer-user-agreement
+            - text: User Agreement
+        - listitem [ref=e978]:
+          - link [ref=e979] [cursor=pointer]:
+            - /url: https://www.linkedin.com/legal/privacy-policy?trk=public_jobs_footer-privacy-policy
+            - text: Privacy Policy
+        - listitem [ref=e980]:
+          - link [ref=e981] [cursor=pointer]:
+            - /url: https://www.linkedin.com/legal/cookie-policy?trk=public_jobs_footer-cookie-policy
+            - text: Cookie Policy
+        - listitem [ref=e982]:
+          - link [ref=e983] [cursor=pointer]:
+            - /url: https://www.linkedin.com/legal/copyright-policy?trk=public_jobs_footer-copyright-policy
+            - text: Copyright Policy
+        - listitem [ref=e984]:
+          - link [ref=e985] [cursor=pointer]:
+            - /url: https://brand.linkedin.com/policies?trk=public_jobs_footer-brand-policy
+            - text: Brand Policy
+        - listitem [ref=e986]:
+          - link [ref=e987] [cursor=pointer]:
+            - /url: https://www.linkedin.com/psettings/guest-controls?trk=public_jobs_footer-guest-controls
+            - text: Guest Controls
+        - listitem [ref=e988]:
+          - link [ref=e989] [cursor=pointer]:
+            - /url: https://www.linkedin.com/legal/professional-community-policies?trk=public_jobs_footer-community-guide
+            - text: Community Guidelines
+        - listitem [ref=e990]:
+          - button [ref=e992]: Language
+  - dialog "Sign in to view more jobs" [active] [ref=e995]:
+    - button "Dismiss" [ref=e996] [cursor=pointer]:
+      - img [ref=e998]
+    - generic [ref=e1001]:
+      - generic [ref=e1002]:
+        - img [ref=e1003]
+        - heading "Sign in to view more jobs" [level=2] [ref=e1004]
+      - generic [ref=e1005]:
+        - button "Continue with google" [ref=e1008]:
+          - generic [ref=e1009]:
+            - button "Continue with Google" [ref=e1011] [cursor=pointer]:
+              - generic [ref=e1013]:
+                - img [ref=e1016]
+                - generic [ref=e1023]: Continue with Google
+            - iframe
+        - button "Sign in with Email" [ref=e1024] [cursor=pointer]:
+          - img [ref=e1026]
+          - generic [ref=e1028]: Sign in with Email
+        - paragraph [ref=e1030]: or
+        - button "Continue with google" [ref=e1032]:
+          - generic [ref=e1033]:
+            - button "Continue with Google" [ref=e1035] [cursor=pointer]:
+              - generic [ref=e1037]:
+                - img [ref=e1039]
+                - generic [ref=e1046]: Continue with Google
+            - iframe
+        - paragraph [ref=e1047]:
+          - text: New to LinkedIn?
+          - link "Join now" [ref=e1048] [cursor=pointer]:
+            - /url: https://www.linkedin.com/signup/cold-join?source=jobs_registration&trk=public_jobs_contextual-sign-in-modal_join-link
+        - paragraph [ref=e1049]:
+          - text: By clicking Continue to join or sign in, you agree to LinkedIn’s
+          - link "User Agreement" [ref=e1050] [cursor=pointer]:
+            - /url: /legal/user-agreement?trk=linkedin-tc_auth-button_user-agreement
+          - text: ","
+          - link "Privacy Policy" [ref=e1051] [cursor=pointer]:
+            - /url: /legal/privacy-policy?trk=linkedin-tc_auth-button_privacy-policy
+          - text: ", and"
+          - link "Cookie Policy" [ref=e1052] [cursor=pointer]:
+            - /url: /legal/cookie-policy?trk=linkedin-tc_auth-button_cookie-policy
+          - text: .

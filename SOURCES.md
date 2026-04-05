@@ -13,7 +13,7 @@ Adding a new job source touches 5-7 files. Follow this checklist and use the mat
 5. **Add `RATE_LIMITS`** entry in `src/config/settings.py`
 6. **Add test** in `tests/test_sources.py` with `_TEST_CONFIG` and mocked HTTP
 7. **Add mock URL** to `_mock_free_sources()` in `tests/test_main.py`
-8. **Update count assertion** in `tests/test_cli.py` (currently 48)
+8. **Update count assertion** in `tests/test_cli.py` (currently 50)
 9. **(If keyed)** Add env var to `src/config/settings.py` and `.env.example`
 9. **(If ATS)** Add company slugs to `src/config/companies.py`
 

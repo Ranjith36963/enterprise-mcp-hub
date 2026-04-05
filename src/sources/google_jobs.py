@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.google_jobs")
 
@@ -104,7 +105,7 @@ class GoogleJobsSource(BaseJobSource):
                     title=title,
                     company=company,
                     location=location,
-                    description=description[:5000],
+                    description=description[:MAX_DESCRIPTION_LENGTH],
                     apply_url=apply_url,
                     source=self.name,
                     date_found=date_found,

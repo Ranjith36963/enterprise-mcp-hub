@@ -111,6 +111,13 @@ RATE_LIMITS = {
     "nomis": {"concurrent": 1, "delay": 5.0},
 }
 
+# Validation — sources where HTTP can't render JS content
+JS_RENDERED_SOURCES = frozenset({"smartrecruiters", "lever", "workable", "recruitee"})
+JS_DESC_SOURCES = frozenset({"ashby", "pinpoint", "workable", "recruitee", "smartrecruiters"})
+REDIRECT_SOURCES = frozenset({"adzuna", "careerjet", "jooble", "google_jobs"})
+VALIDATION_REQUEST_DELAY = 0.5  # seconds between validation requests
+MAX_DESCRIPTION_LENGTH = 5000  # truncate job descriptions to avoid bloated DB rows
+
 # Retry — 2 attempts total (saves ~30s per failing endpoint vs 3 retries)
 MAX_RETRIES = 2
 RETRY_BACKOFF = [1, 3]

@@ -394,20 +394,35 @@ _SENIORITY_TITLE_SIGNALS: dict[str, str] = {
 
 def _compute_seniority(total_months: int,
                        job_titles: list[str]) -> str:
-    """Compute seniority level from experience duration and title signals."""
-    # Check title signals first (highest priority)
-    best_seniority = ""
+    """Compute seniority level from experience duration and title signals.
+
+    Uses the MOST RECENT title (first in list) rather than picking the
+    highest seniority across all titles, since the latest role best
+    represents the person's current level.
+    """
     seniority_rank = {"entry": 1, "mid": 2, "senior": 3, "lead": 4, "executive": 5}
 
-    for title in job_titles:
+    # Check most recent title only (first in list = most recent)
+    for title in job_titles[:1]:  # Only check most recent title
         title_lower = title.lower()
         for keyword, level in _SENIORITY_TITLE_SIGNALS.items():
+            # Require word boundary for short keywords to avoid false matches
+            # e.g., "manager" in "Project Manager" shouldn't map to "lead"
+            if keyword in ("manager", "head") and keyword in title_lower:
+                # Count as lead if it's a dept/operations-level management role
+                # "Operations Manager" = lead, "Project Manager" = skip
+                _lead_mgr_patterns = (
+                    "head of", "engineering manager", "department",
+                    "group manager", "general manager",
+                    "operations manager", "service manager",
+                    "regional manager", "area manager", "branch manager",
+                    "clinical manager", "practice manager",
+                )
+                if any(p in title_lower for p in _lead_mgr_patterns):
+                    return level
+                continue  # Skip generic "manager" / "head" for non-dept roles
             if keyword in title_lower:
-                if not best_seniority or seniority_rank.get(level, 0) > seniority_rank.get(best_seniority, 0):
-                    best_seniority = level
-
-    if best_seniority:
-        return best_seniority
+                return level
 
     # Fall back to experience duration
     years = total_months / 12
@@ -415,12 +430,10 @@ def _compute_seniority(total_months: int,
         return "entry"
     elif years < 5:
         return "mid"
-    elif years < 10:
-        return "senior"
     elif years < 15:
-        return "lead"
+        return "senior"
     else:
-        return "executive"
+        return "lead"
 
 
 # ── Main entry point ─────────────────────────────────────────────────

@@ -1,3 +1,8 @@
+---
+name: debug
+description: 3-step bug fix workflow
+---
+
 # /debug — 3-Step Bug Fix
 
 Triggered by: `/debug <error message or description>`

@@ -557,7 +557,7 @@ def _load_user_actions() -> dict[int, str]:
     try:
         cursor = conn.execute("SELECT job_id, action FROM user_actions")
         return {row["job_id"]: row["action"] for row in cursor.fetchall()}
-    except Exception:
+    except sqlite3.Error:
         return {}
     finally:
         conn.close()
@@ -600,7 +600,7 @@ def _remove_user_action(job_id: int) -> None:
         conn.close()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=10)
 def load_jobs_7day() -> list[dict]:
     """Load jobs from last 7 days with score >= MIN_MATCH_SCORE."""
     if not Path(str(DB_PATH)).exists():
@@ -613,7 +613,7 @@ def load_jobs_7day() -> list[dict]:
             (cutoff, MIN_MATCH_SCORE),
         )
         rows = [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except sqlite3.Error:
         return []
     finally:
         conn.close()
@@ -647,7 +647,7 @@ def load_run_logs() -> pd.DataFrame:
     conn = _get_conn()
     try:
         df = pd.read_sql_query("SELECT * FROM run_log ORDER BY id DESC", conn)
-    except Exception:
+    except (sqlite3.Error, pd.errors.DatabaseError):
         return pd.DataFrame()
     finally:
         conn.close()
@@ -1336,7 +1336,7 @@ with tab_pipeline:
                 "ORDER BY a.last_updated DESC"
             ).fetchall()
             return [dict(row) for row in rows]
-        except Exception:
+        except sqlite3.Error:
             return []
         finally:
             conn.close()

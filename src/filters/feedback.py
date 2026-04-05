@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import aiosqlite
 import numpy as np
 
 logger = logging.getLogger("job360.feedback")
@@ -43,7 +44,7 @@ async def load_feedback_signals(conn) -> dict:
             WHERE ua.action IN ('liked', 'not_interested')
         """)
         rows = await cursor.fetchall()
-    except Exception:
+    except (aiosqlite.Error, ValueError):
         return signals
 
     from src.filters.hybrid_retriever import deserialize_embedding

@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.devitjobs")
 
@@ -41,13 +42,13 @@ class DevITJobsSource(BaseJobSource):
                 ld = _json.loads(ld_match.group(1))
                 raw = ld.get("description", "")
                 if raw:
-                    return _strip_html(raw)[:5000]
+                    return _strip_html(raw)[:MAX_DESCRIPTION_LENGTH]
             except (ValueError, TypeError):
                 pass
         # Fallback: extract from meta og:description
         meta_match = re.search(r'<meta[^>]*property="og:description"[^>]*content="([^"]*)"', html)
         if meta_match:
-            return _strip_html(meta_match.group(1))[:5000]
+            return _strip_html(meta_match.group(1))[:MAX_DESCRIPTION_LENGTH]
         return ""
 
     async def fetch_jobs(self) -> list[Job]:

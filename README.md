@@ -1,6 +1,6 @@
 # Job360
 
-Automated UK job search system supporting **any professional domain**. Aggregates jobs from 48 sources, scores them 0-100 against your CV profile, deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Streamlit dashboard. A user profile with CV is **mandatory** — no CV = no search.
+Automated UK job search system supporting **any professional domain**. Aggregates jobs from 50 sources, scores them 0-100 against your CV profile, deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Streamlit dashboard. A user profile with CV is **mandatory** — no CV = no search.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Automated UK job search system supporting **any professional domain**. Aggregate
 flowchart TD
     CLI["CLI (Click)\njob360 run / view / dashboard / status / sources / pipeline"]
 
-    subgraph Sources["48 Job Sources"]
+    subgraph Sources["50 Job Sources"]
         direction LR
         subgraph Keyed["Keyed APIs (7)"]
             A1[Reed] & A2[Adzuna] & A3[JSearch] & A4[Jooble]
@@ -58,7 +58,7 @@ flowchart TD
 ## Features
 
 ### Phase 1 — Core Pipeline
-- 48 job sources (7 keyed, 10 free, 10 ATS, 8 RSS, 7 scrapers, 4 other, 1 intel)
+- 50 job sources (7 keyed, 10 free, 10 ATS, 10 RSS, 7 scrapers, 5 other, 1 intel)
 - Scoring 0-100: Title (40) + Skills (40) + Location (10) + Recency (10) − Penalties
 - CV-mandatory profile system — parses PDF/DOCX CVs
 - Deduplication by normalized company+title
@@ -134,7 +134,7 @@ python -m src.cli pipeline --reminders             # Due reminders
 # Other
 python -m src.cli dashboard                        # Streamlit UI
 python -m src.cli status                           # Last run stats
-python -m src.cli sources                          # List all 48 sources
+python -m src.cli sources                          # List all 50 sources
 ```
 
 ## Scoring Algorithm

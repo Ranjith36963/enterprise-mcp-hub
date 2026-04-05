@@ -5,6 +5,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 from src.config.companies import PINPOINT_COMPANIES, COMPANY_NAME_OVERRIDES
 
 logger = logging.getLogger("job360.sources.pinpoint")
@@ -50,7 +51,7 @@ class PinpointSource(BaseJobSource):
                     title=title,
                     company=company_name,
                     location=location,
-                    description=desc[:5000],
+                    description=desc[:MAX_DESCRIPTION_LENGTH],
                     apply_url=apply_url,
                     source=self.name,
                     date_found=datetime.now(timezone.utc).isoformat(),

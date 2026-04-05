@@ -1,0 +1,68 @@
+Ranjith Maliga Guruprakash
+AI/ML Engineer | Generative AI Specialist
+United Kingdom
++447442564327 | Email : rahulranjith369@gmail.com | GitHub : github.com/Ranjith36963
+LinkedIn : linkedin.com/in/ranjith-ai-engineer | Portfolio : ranjith36963.github.io
+
+PROFESSIONAL SUMMARY
+AI/ML Engineer with 1.5 years of combined industry and academic experience, specialising in production
+Generative AI systems, RAG pipelines, and scalable ML solutions. Delivered 95% response accuracy in
+containerised multimodal AI assistants and built fraud detection models, achieving 90% accuracy. Skilled in
+LLM fine-tuning, AWS Bedrock, Docker deployment, and cloud MLOps - improving response relevance by
+40%, reducing query latency by 35%, and cutting end-to-end response time by 75% (3.2s to 0.8s). Seeking
+AI Engineer / ML Engineer roles to drive measurable business outcomes using deep learning, NLP, and cloud
+infrastructure.
+
+CORE SKILLS
+AI/ML & GenAI Systems: Generative AI, Foundation Models, Multimodal AI, LLM Fine-Tuning, RAG (Retrieval Augmented Generation), Agentic AI, Computer Vision, Speech Recognition, Audio Processing, Deep Learning, Supervised Learning, Neural Networks, Prompt Engineering, Transfer Learning, Random Forest, XGBoost, Model Optimisation, NLP
+AI Automation Tools: n8n (AI workflows/agents), Zapier, Lovable (AI app builder)
+Frameworks & Libraries: PyTorch, TensorFlow, Scikit-learn, Keras, LangChain, Hugging Face Transformers, OpenAI API, Gemini API
+Cloud & MLOps: AWS (Bedrock, SageMaker, S3, CloudWatch), Docker, Kubernetes, CI/CD Pipelines, Model Deployment, Model Monitoring, Model Versioning, Scalable AI Infrastructure
+Vector & Data Engineering: ChromaDB, FAISS, OpenSearch, Redis Caching, Vector Embeddings, Data Pipeline Architecture, Python (Pandas, NumPy, Matplotlib), ETL Pipelines, Data Preprocessing, Feature Engineering, EDA, OCR (Tesseract)
+AI Governance & Responsible AI: AI Ethics, Bias Detection & Mitigation, Model Explainability, AI Safety, Compliance Frameworks, Data Governance, Security Best Practices
+Software Engineering: Python, Git/GitHub, System Architecture, Algorithm Development, Linux, Agile Methodologies, Process Automation, Jupyter Notebooks
+
+PROFESSIONAL EXPERIENCE
+
+Calnex Solutions | June 2025 - September 2025 | Stevenage, United Kingdom
+AI Solutions Engineer - R&D Department
+- Architected containerised multimodal Generative AI assistant (text, image, speech, audio inputs) using Docker on Linux VM, achieving 95% response accuracy and enabling portable production deployment.
+- Engineered high-performance RAG pipeline with AWS Bedrock and ChromaDB, improving AI response relevance by 40% and reducing query latency by 35%.
+- Accelerated data retrieval performance through Redis caching and AWS S3 optimisation, achieving 75% faster response times (3.2s to 0.8s).
+- Designed multi-agent workflow architecture for complex queries, delivering context-aware solutions with 92% user satisfaction.
+- Collaborated with R&D teams to integrate multimodal AI capabilities, accelerating feature development by 25%.
+
+Nethermind | October 2024 - January 2025 | United Kingdom (Remote)
+AI/ML Engineer Intern
+- Designed and built scalable LLM systems using TensorFlow and PyTorch, enhancing performance through advanced NLP techniques and hyperparameter optimisation.
+- Improved user engagement by iteratively fine-tuning AI responses for optimal interaction quality.
+- Integrated and assessed video understanding models using Gemini and OpenAI APIs, ensuring high quality performance.
+- Developed data preprocessing pipelines to streamline model training workflows.
+
+EDUCATION
+
+Master of Science - Artificial Intelligence and Robotics
+University of Hertfordshire | January 2022 - February 2024
+Relevant Coursework: Neural Networks, Machine Learning, Deep Learning, Computer Vision, Reinforcement Learning, AI Theory and Practice, Artificial Life with Robotics.
+
+Master's Dissertation: Machine Learning Techniques for Online Payment System Fraud Detection
+- Collected and prepared transactional data, performing feature engineering and preprocessing for machine learning models.
+- Trained and optimised fraud detection models using Random Forest, XGBoost, and Neural Networks, achieving 90% accuracy.
+- Evaluated model performance using accuracy, precision, recall, and F1-score metrics, conducting error analysis and interpretability studies to enhance fraud prevention insights.
+
+Bachelor of Engineering - Computer Science Engineering
+Visvesvaraya Technological University | June 2016 - January 2021
+Relevant Coursework: Data Structures & Algorithms, Operating Systems, Computer Networks, Database Management, AI & Machine Learning, Programming Fundamentals.
+
+Academic Project: Traffic Management System using Machine Learning and IoT
+- Developed an intelligent traffic prediction and optimisation system integrating ML algorithms with IoT sensors for real-time traffic flow analysis.
+
+Academic Internship: Prediction of Remaining Useful Life of Aircraft Engine using ML
+- Built predictive maintenance system using regression models to forecast engine remaining useful life (RUL) and optimise maintenance scheduling.
+
+LICENSES & CERTIFICATIONS
+- AWS Certified AI Practitioner - Amazon Web Services (December 2025)
+- Accenture North America - Data Analytics and Visualisation Job Simulation (Forage, March 2024)
+- Cognizant - Artificial Intelligence Job Simulation (Forage, April 2024)
+- The Complete Python Bootcamp from Zero to Hero in Python (Udemy, March 2024)
+- Kaggle Certifications: Python, Intro to Machine Learning, Pandas, Intro to AI Ethics (2024)

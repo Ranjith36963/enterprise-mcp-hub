@@ -15,11 +15,11 @@ class JobicySource(BaseJobSource):
     async def fetch_jobs(self) -> list[Job]:
         jobs = []
         # Use dynamic keywords — no hardcoded industry/tag
-        tag = self.relevance_keywords[0] if self.relevance_keywords else ""
+        # Don't restrict geo — remote jobs are global, relevance_match handles filtering
         params = {
             "count": "50",
-            "geo": "uk",
         }
+        tag = self.relevance_keywords[0] if self.relevance_keywords else ""
         if tag:
             params["tag"] = tag
         data = await self._get_json(

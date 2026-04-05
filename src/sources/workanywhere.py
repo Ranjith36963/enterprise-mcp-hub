@@ -7,6 +7,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _is_uk_or_remote, _sanitize_xml
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.workanywhere")
 
@@ -68,7 +69,7 @@ class WorkAnywhereSource(BaseJobSource):
                 title=title,
                 company=company,
                 location="Remote",
-                description=description[:5000],
+                description=description[:MAX_DESCRIPTION_LENGTH],
                 apply_url=link,
                 source=self.name,
                 date_found=date_found,

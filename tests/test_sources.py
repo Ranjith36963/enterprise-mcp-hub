@@ -261,7 +261,7 @@ def test_greenhouse_parses_response():
                     "location": {"name": "London, UK"},
                     "absolute_url": "https://boards.greenhouse.io/deepmind/jobs/401",
                     "content": "<p>AI research role</p>",
-                }]})
+                }]}, repeat=True)
                 source = GreenhouseSource(session, companies=["deepmind"], search_config=_TEST_CONFIG)
                 jobs = await source.fetch_jobs()
                 assert len(jobs) >= 1
@@ -320,7 +320,7 @@ def test_ashby_parses_response():
                     "location": "London",
                     "applicationUrl": "https://ashby.com/anthropic/601",
                     "descriptionPlain": "AI safety research role",
-                }]})
+                }]}, repeat=True)
                 source = AshbySource(session, companies=["anthropic"], search_config=_TEST_CONFIG)
                 jobs = await source.fetch_jobs()
                 assert len(jobs) >= 1
@@ -452,7 +452,7 @@ def test_smartrecruiters_parses_response():
                     "location": {"city": "London", "country": "GB"},
                     "ref": "https://jobs.smartrecruiters.com/wise/sr-101",
                     "releasedDate": "2024-01-15",
-                }]})
+                }]}, repeat=True)
                 source = SmartRecruitersSource(session, companies=["wise"], search_config=_TEST_CONFIG)
                 jobs = await source.fetch_jobs()
                 assert len(jobs) >= 1
@@ -1343,7 +1343,9 @@ def test_nhs_jobs_parses_xml():
         session = aiohttp.ClientSession()
         try:
             with aioresponses() as m:
-                m.get(re.compile(r"https://www\.jobs\.nhs\.uk/api/v1/search_xml.*"),
+                m.get(re.compile(r"https://www\.jobs\.nhs\.uk/robots\.txt"),
+                      body="User-agent: *\nAllow: /", repeat=True)
+                m.get(re.compile(r"https://www\.jobs\.nhs\.uk/api/.*"),
                       body=NHS_JOBS_XML, content_type="application/xml", repeat=True)
                 source = NHSJobsSource(session, search_config=_TEST_CONFIG)
                 jobs = await source.fetch_jobs()
@@ -1713,12 +1715,12 @@ def test_uni_jobs_parses_rss():
         try:
             with aioresponses() as m:
                 m.get(re.compile(r".*jobs\.cam\.ac\.uk.*"),
-                      body=UNI_JOBS_RSS, content_type="application/xml")
-                m.get(re.compile(r".*hr-jobs\.lancs\.ac\.uk.*"), status=404)
-                m.get(re.compile(r".*jobs\.kent\.ac\.uk.*"), status=404)
-                m.get(re.compile(r".*jobs\.royalholloway\.ac\.uk.*"), status=404)
-                m.get(re.compile(r".*jobs\.surrey\.ac\.uk.*"), status=404)
-                m.get(re.compile(r".*uukjobs\.co\.uk.*"), status=404)
+                      body=UNI_JOBS_RSS, content_type="application/xml", repeat=True)
+                m.get(re.compile(r".*hr-jobs\.lancs\.ac\.uk.*"), status=404, repeat=True)
+                m.get(re.compile(r".*jobs\.kent\.ac\.uk.*"), status=404, repeat=True)
+                m.get(re.compile(r".*jobs\.royalholloway\.ac\.uk.*"), status=404, repeat=True)
+                m.get(re.compile(r".*jobs\.surrey\.ac\.uk.*"), status=404, repeat=True)
+                m.get(re.compile(r".*uukjobs\.co\.uk.*"), status=404, repeat=True)
                 source = UniJobsSource(session, search_config=_TEST_CONFIG)
                 jobs = await source.fetch_jobs()
                 assert len(jobs) >= 1

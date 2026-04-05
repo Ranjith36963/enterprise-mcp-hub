@@ -238,8 +238,9 @@ class TestLoadFeedbackSignals:
         from src.filters.feedback import load_feedback_signals
         from unittest.mock import AsyncMock
 
+        import aiosqlite
         mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock(side_effect=Exception("DB error"))
+        mock_conn.execute = AsyncMock(side_effect=aiosqlite.Error("DB error"))
 
         signals = await load_feedback_signals(mock_conn)
         assert signals["liked_texts"] == []

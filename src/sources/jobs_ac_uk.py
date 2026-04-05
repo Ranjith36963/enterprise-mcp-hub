@@ -6,6 +6,7 @@ import aiohttp
 
 from src.models import Job
 from src.sources.base import BaseJobSource, _sanitize_xml
+from src.config.settings import MAX_DESCRIPTION_LENGTH
 
 logger = logging.getLogger("job360.sources.jobs_ac_uk")
 
@@ -14,6 +15,10 @@ FEED_URLS = [
     "https://www.jobs.ac.uk/feeds/subject-areas/engineering-and-technology",
     "https://www.jobs.ac.uk/feeds/subject-areas/mathematics-and-statistics",
     "https://www.jobs.ac.uk/feeds/subject-areas/health-and-medical",
+    "https://www.jobs.ac.uk/feeds/subject-areas/social-sciences",
+    "https://www.jobs.ac.uk/feeds/subject-areas/environmental-sciences",
+    # Note: law, biological-sciences feeds exist but currently return 0 items
+    # business-and-management returns 404 — not a valid feed path
 ]
 
 
@@ -68,7 +73,7 @@ class JobsAcUkSource(BaseJobSource):
                 title=title,
                 company=company,
                 location="UK",
-                description=description[:5000],
+                description=description[:MAX_DESCRIPTION_LENGTH],
                 apply_url=link,
                 source=self.name,
                 date_found=date_found,

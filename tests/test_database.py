@@ -83,3 +83,85 @@ def test_get_new_jobs_since(db):
     loop.run_until_complete(db.insert_job(j1))
     jobs = loop.run_until_complete(db.get_new_jobs_since(hours=1))
     assert len(jobs) == 1
+
+
+# ── Enhanced database tests (gap fill) ──
+
+
+def test_schema_version_set(db):
+    """Schema version is set after init_db migrations."""
+    loop = asyncio.get_event_loop()
+    version = loop.run_until_complete(db._get_schema_version())
+    assert version >= 7  # Current schema version
+
+
+def test_source_health_table_exists(db):
+    """Source health table (v7 migration) is created."""
+    loop = asyncio.get_event_loop()
+    tables = loop.run_until_complete(db.get_tables())
+    assert "source_health" in tables
+
+
+def test_source_health_round_trip(db):
+    """Record failures → load health → verify round-trip."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(db.record_source_failure("test_src", "timeout"))
+    loop.run_until_complete(db.record_source_failure("test_src", "connection"))
+
+    health = loop.run_until_complete(db.get_source_health())
+    assert "test_src" in health
+    assert health["test_src"]["consecutive_failures"] == 2
+
+
+def test_reset_source_health(db):
+    """reset_source_health removes the record entirely."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(db.record_source_failure("test_src", "error"))
+    loop.run_until_complete(db.reset_source_health("test_src"))
+
+    health = loop.run_until_complete(db.get_source_health())
+    assert "test_src" not in health
+
+
+def test_get_recent_jobs_with_min_score(db):
+    """get_recent_jobs respects min_score filter."""
+    loop = asyncio.get_event_loop()
+    j_low = _make_job(title="Low Job", company="LowCo", match_score=10)
+    j_high = _make_job(title="High Job", company="HighCo", match_score=80)
+    loop.run_until_complete(db.insert_job(j_low))
+    loop.run_until_complete(db.insert_job(j_high))
+
+    jobs = loop.run_until_complete(db.get_recent_jobs(days=7, min_score=50))
+    assert len(jobs) == 1
+    assert jobs[0]["title"] == "High Job"
+
+
+def test_get_job_by_id(db):
+    """get_job_by_id returns the correct job by primary key."""
+    loop = asyncio.get_event_loop()
+    j = _make_job(title="Specific Job", company="SpecificCorp")
+    loop.run_until_complete(db.insert_job(j))
+
+    # Get all jobs and extract the ID
+    jobs = loop.run_until_complete(db.get_new_jobs_since(hours=1))
+    job_id = jobs[0]["id"]
+
+    result = loop.run_until_complete(db.get_job_by_id(job_id))
+    assert result is not None
+    assert result["title"] == "Specific Job"
+
+
+def test_get_job_by_id_not_found(db):
+    """get_job_by_id returns None for nonexistent ID."""
+    loop = asyncio.get_event_loop()
+    result = loop.run_until_complete(db.get_job_by_id(99999))
+    assert result is None
+
+
+def test_count_jobs(db):
+    """count_jobs returns accurate count."""
+    loop = asyncio.get_event_loop()
+    assert loop.run_until_complete(db.count_jobs()) == 0
+    loop.run_until_complete(db.insert_job(_make_job(title="J1", company="C1")))
+    loop.run_until_complete(db.insert_job(_make_job(title="J2", company="C2")))
+    assert loop.run_until_complete(db.count_jobs()) == 2

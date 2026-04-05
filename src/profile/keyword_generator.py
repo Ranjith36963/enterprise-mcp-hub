@@ -47,38 +47,37 @@ def generate_search_config(profile: UserProfile) -> SearchConfig:
             titles.append(title)
             seen.add(title.lower())
 
-    # --- Skills (source-based tiering) ---
-    # Primary: user preferences (strongest signal of intent)
-    primary = list(prefs.additional_skills)
-    seen_skills = {s.lower() for s in primary}
+    # --- Skills (two-tier: proven vs inferred) ---
+    # Primary: ALL user-stated skills — CV + preferences + LinkedIn + GitHub.
+    # These are all proven attributes of the user. No hierarchy between them.
+    primary: list[str] = []
+    seen_skills: set[str] = set()
 
-    # Secondary: CV-extracted skills (proven experience)
-    secondary = []
-    for s in cv.skills:
-        if s.lower() not in seen_skills:
-            secondary.append(s)
-            seen_skills.add(s.lower())
+    for source_list in (
+        prefs.additional_skills,   # preferences
+        cv.skills,                 # CV-extracted
+        cv.linkedin_skills,        # LinkedIn
+        cv.github_skills_inferred, # GitHub
+    ):
+        for s in source_list:
+            if s.lower() not in seen_skills:
+                primary.append(s)
+                seen_skills.add(s.lower())
 
-    # Tertiary: LinkedIn + GitHub (supplementary evidence)
-    tertiary = []
-    for s in cv.linkedin_skills:
-        if s.lower() not in seen_skills:
-            tertiary.append(s)
-            seen_skills.add(s.lower())
-    for s in cv.github_skills_inferred:
-        if s.lower() not in seen_skills:
-            tertiary.append(s)
-            seen_skills.add(s.lower())
-
-    all_skills = primary + secondary + tertiary
-
-    # --- Controlled skill inference (inferred go to tertiary only) ---
+    # Secondary: skills inferred by the skill graph — the system's best guess
+    # about what else the user likely knows, based on their proven skills.
+    # E.g., user knows N8n + Make → system infers Zapier.
+    all_skills = list(primary)
+    secondary: list[str] = []
     inferred = infer_skills(all_skills, threshold=0.7)
     for s in inferred:
         if s.lower() not in seen_skills:
-            tertiary.append(s)
+            secondary.append(s)
             seen_skills.add(s.lower())
             all_skills.append(s)
+
+    # Tertiary: empty (reserved for future use)
+    tertiary: list[str] = []
 
     # --- Relevance keywords ---
     rel_set: set[str] = set()
@@ -208,7 +207,7 @@ def generate_search_config(profile: UserProfile) -> SearchConfig:
             config = enrich_search_config(config, intelligence)
     except ImportError:
         pass  # LLM libraries not installed
-    except Exception as e:
+    except (ValueError, KeyError, TypeError) as e:
         import logging
         logging.getLogger("job360.profile.keyword_generator").warning(
             f"LLM search intelligence failed (continuing with regex config): {e}"

@@ -38,7 +38,7 @@ def _load_model():
         _model = None
         _available = False
         logger.info("sentence-transformers not installed — cross-encoder reranking disabled")
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         _model = None
         _available = False
         logger.warning("Failed to load cross-encoder: %s", e)
@@ -91,7 +91,7 @@ def rerank(
 
     try:
         scores = model.predict(pairs, show_progress_bar=False)
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.warning("Cross-encoder scoring failed: %s", e)
         return candidates
 

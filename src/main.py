@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import aiohttp
+import aiosqlite
 
 from src.config.settings import (
     REED_API_KEY, ADZUNA_APP_ID, ADZUNA_APP_KEY, JSEARCH_API_KEY,
@@ -74,6 +75,8 @@ from src.sources.successfactors import SuccessFactorsSource
 from src.sources.aijobs_global import AIJobsGlobalSource
 from src.sources.aijobs_ai import AIJobsAISource
 from src.sources.nomis import NomisSource
+from src.sources.jobspresso import JobspressoSource
+from src.sources.pythonjobs import PythonJobsSource
 
 logger = logging.getLogger("job360.main")
 
@@ -128,7 +131,15 @@ SOURCE_REGISTRY = {
     "aijobs_global": AIJobsGlobalSource,
     "aijobs_ai": AIJobsAISource,
     "nomis": NomisSource,
+    "jobspresso": JobspressoSource,
+    "pythonjobs": PythonJobsSource,
 }
+
+# Sources that use HTML scraping (legal/ToS risk). Excluded by --safe flag.
+_SCRAPER_SOURCES = frozenset({
+    "linkedin", "jobtensor", "climatebase", "eightykhours",
+    "bcs_jobs", "aijobs_global", "aijobs_ai",
+})
 
 
 def _format_date(date_str: str) -> str:
@@ -147,8 +158,11 @@ def _format_date(date_str: str) -> str:
 
 
 def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = None,
-                    search_config=None) -> list:
-    """Build source instances, optionally filtered to a single source."""
+                    search_config=None, safe_mode: bool = False) -> list:
+    """Build source instances, optionally filtered to a single source.
+
+    When *safe_mode* is True, HTML scraper sources are excluded (API + RSS only).
+    """
     sc = search_config  # short alias
     all_sources = [
         # Group A: Keyed APIs
@@ -209,12 +223,22 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         AIJobsGlobalSource(session, search_config=sc),
         AIJobsAISource(session, search_config=sc),
         NomisSource(session, search_config=sc),
+        # Group L: Additional free RSS sources
+        JobspressoSource(session, search_config=sc),
+        PythonJobsSource(session, search_config=sc),
     ]
     if source_filter:
         # Special case: glassdoor shares JobSpySource with indeed
         if source_filter == "glassdoor":
             source_filter = "indeed"
         return [s for s in all_sources if s.name == source_filter]
+
+    if safe_mode:
+        before = len(all_sources)
+        all_sources = [s for s in all_sources if s.name not in _SCRAPER_SOURCES]
+        skipped = before - len(all_sources)
+        if skipped:
+            logger.info(f"Safe mode: excluded {skipped} scraper source(s)")
     return all_sources
 
 
@@ -225,6 +249,7 @@ async def run_search(
     log_level: str | None = None,
     no_notify: bool = False,
     launch_dashboard: bool = False,
+    safe_mode: bool = False,
 ) -> dict:
     setup_logging(log_level)
     from src.diagnostics import PipelineDiagnostics
@@ -252,6 +277,8 @@ async def run_search(
         return {"total_found": 0, "new_jobs": 0, "sources_queried": 0, "per_source": {}}
 
     search_config = generate_search_config(profile)
+    if not search_config.primary_skills and not search_config.job_titles:
+        logger.warning("  SearchConfig has no skills or titles — results will be poor. Check CV parsing.")
     scorer = JobScorer(search_config)
     logger.info("  Using keywords from user profile")
     logger.info("=" * 60)
@@ -271,11 +298,25 @@ async def run_search(
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             # Build sources
-            sources = _build_sources(session, source_filter, search_config=search_config)
+            sources = _build_sources(session, source_filter, search_config=search_config, safe_mode=safe_mode)
 
             if not sources:
                 logger.error(f"No sources matched filter: {source_filter}")
                 return {"total_found": 0, "new_jobs": 0, "sources_queried": 0, "per_source": {}}
+
+            # Load persistent source health for circuit breaker
+            from src.sources.base import load_source_health
+            try:
+                _health = await db.get_source_health()
+                load_source_health(_health)
+                _skipped = sum(
+                    1 for h in _health.values()
+                    if h.get("skip_until") and h["skip_until"] > datetime.now(timezone.utc).isoformat()
+                )
+                if _skipped:
+                    logger.info(f"Persistent circuit breaker: {_skipped} source(s) in cooldown")
+            except (aiosqlite.Error, KeyError, ValueError):
+                pass  # DB may not have source_health yet
 
             # Fetch from all sources concurrently
             diag.start_phase("source_fetch")
@@ -285,7 +326,7 @@ async def run_search(
 
             async def _fetch_source(source):
                 try:
-                    return await asyncio.wait_for(source.fetch_jobs(), timeout=60)
+                    return await asyncio.wait_for(source.safe_fetch(db=db), timeout=60)
                 except asyncio.TimeoutError:
                     logger.warning(f"Source {source.name} timed out after 60s")
                     return []
@@ -328,7 +369,39 @@ async def run_search(
                 + search_config.secondary_skills
             )
 
-            # Compute job embeddings in batch (64 at a time, not one-by-one)
+            # ── PRE-SCORE: cheap filter BEFORE expensive embeddings ──
+            # Quick-score using role + skill only (no embeddings needed).
+            # Jobs that can't possibly reach MIN_MATCH_SCORE are discarded
+            # BEFORE we waste time computing embeddings for them.
+            diag.start_phase("pre_score")
+            t_pre = time.time()
+            _before_pre = len(all_jobs)
+            candidates = []
+            for job in all_jobs:
+                if len(job.description) < 100:
+                    continue  # Broken scrape
+                role_pts = scorer._dim_role(job.title)
+                text = f"{job.title} {job.description}"
+                skill_pts, _, _, _ = scorer._dim_skill(text)
+                # If role + skill < 5, this job has no domain match.
+                # Even with max location(10) + recency(10) + seniority(10) +
+                # experience(10) + semantic(20) = 60, it needs role+skill
+                # to be meaningful. Jobs with role+skill < 5 are noise.
+                if role_pts + skill_pts >= 5:
+                    candidates.append(job)
+                elif role_pts >= 3 or skill_pts >= 8:
+                    # Weak but not zero — keep as borderline candidate
+                    candidates.append(job)
+            _pre_removed = _before_pre - len(candidates)
+            all_jobs = candidates
+            diag.end_phase("pre_score")
+            logger.info(
+                f"Pre-score filter: {_before_pre} -> {len(all_jobs)} candidates "
+                f"({_pre_removed} removed, {time.time() - t_pre:.1f}s)"
+            )
+            diag.record_funnel("after_pre_score", len(all_jobs))
+
+            # Compute job embeddings ONLY for candidates (not all 3000)
             diag.start_phase("embeddings")
             t_emb = time.time()
             try:
@@ -340,15 +413,64 @@ async def run_search(
                     if vecs is not None:
                         for i, job in enumerate(all_jobs):
                             job.embedding = _emb_ser(vecs[i])
-            except Exception:
+            except (ImportError, RuntimeError, ValueError):
                 pass  # Embeddings are optional
             diag.end_phase("embeddings")
-            logger.info(f"Embeddings computed ({len(all_jobs)} jobs, {time.time() - t_emb:.1f}s)")
+            logger.info(f"Embeddings computed ({len(all_jobs)} candidates, {time.time() - t_emb:.1f}s)")
+
+            # Embedding pre-filter: drop jobs with very low domain similarity
+            # This removes obvious cross-domain mismatches BEFORE scoring,
+            # so the scoring engine only processes domain-relevant candidates.
+            # Zero cost — embeddings are already computed above.
+            _emb_filtered = 0
+            try:
+                from src.filters.embeddings import is_available as _emb_avail, build_profile_embedding
+                from src.filters.hybrid_retriever import deserialize_embedding
+                import numpy as np
+                if _emb_avail():
+                    about_me = getattr(search_config, 'about_me', '') or ''
+                    profile_emb = build_profile_embedding(
+                        job_titles=search_config.job_titles,
+                        primary_skills=search_config.primary_skills,
+                        secondary_skills=search_config.secondary_skills,
+                        relevance_keywords=search_config.relevance_keywords,
+                        about_me=about_me,
+                    )
+                    if profile_emb is not None:
+                        for job in all_jobs:
+                            if not job.embedding:
+                                continue
+                            try:
+                                job_emb = deserialize_embedding(job.embedding)
+                                if job_emb is not None:
+                                    sim = float(np.dot(profile_emb, job_emb) / (
+                                        np.linalg.norm(profile_emb) * np.linalg.norm(job_emb) + 1e-9
+                                    ))
+                                    if sim < 0.13:
+                                        job.match_score = 0  # Mark for skip
+                                        _emb_filtered += 1
+                            except (ValueError, TypeError):
+                                pass
+                    if _emb_filtered:
+                        logger.info(f"Embedding pre-filter: {_emb_filtered} cross-domain jobs removed (cosine < 0.10)")
+            except (ImportError, RuntimeError, ValueError):
+                pass  # Pre-filter is optional
+
+            # Short description filter — skip broken scrapes
+            _short_desc_count = 0
+            for job in all_jobs:
+                if len(job.description) < 100:
+                    job.match_score = 0
+                    _short_desc_count += 1
+            if _short_desc_count:
+                logger.info(f"Short description filter: {_short_desc_count} jobs with <100 char descriptions (score=0)")
 
             diag.start_phase("scoring")
             t_score = time.time()
             score_evolution: dict[int, dict] = {}
             for job in all_jobs:
+                if job.match_score == 0 and len(job.description) < 100:
+                    continue  # Already filtered — skip scoring
                 job.visa_flag = scorer.check_visa_flag(job)
                 job.experience_level = detect_experience_level(job.title)
                 job.job_type = detect_job_type(f"{job.title} {job.description}")
@@ -364,17 +486,29 @@ async def run_search(
                         "seniority": bd.seniority, "experience": bd.experience,
                         "credentials": bd.credentials, "location": bd.location,
                         "recency": bd.recency, "semantic": bd.semantic,
+                        "penalty": bd.penalty,
                         "matched": bd.matched_skills,
                         "missing_required": bd.missing_required,
                         "missing_preferred": bd.missing_preferred,
                         "transferable": bd.transferable_skills,
+                        "salary_type": parsed_jd.salary_type if parsed_jd else "",
+                        "contact_emails": parsed_jd.contact_emails if parsed_jd else [],
+                        "role_reason": bd.role_reason,
+                        "skill_reason": bd.skill_reason,
+                        "seniority_reason": bd.seniority_reason,
+                        "experience_reason": bd.experience_reason,
+                        "credentials_reason": bd.credentials_reason,
+                        "location_reason": bd.location_reason,
+                        "recency_reason": bd.recency_reason,
+                        "semantic_reason": bd.semantic_reason,
+                        "penalty_reason": bd.penalty_reason,
                     })
                     # Backfill salary from JD when source didn't provide it
                     if parsed_jd and job.salary_min is None and parsed_jd.salary_min:
                         job.salary_min = parsed_jd.salary_min
                     if parsed_jd and job.salary_max is None and parsed_jd.salary_max:
                         job.salary_max = parsed_jd.salary_max
-                except Exception:
+                except (ValueError, TypeError, KeyError, AttributeError):
                     # Fallback to legacy score only if detailed scoring fails
                     job.match_score = scorer.score(job)
 
@@ -413,7 +547,7 @@ async def run_search(
                             _fb_total_adj += adj
                     if _fb_adjusted:
                         logger.info(f"Feedback loop adjusted {_fb_adjusted} job scores")
-            except Exception:
+            except (ImportError, aiosqlite.Error, ValueError):
                 pass  # Feedback is optional
             diag.end_phase("feedback")
             diag.record_feedback(_fb_liked, _fb_rejected, _fb_adjusted, _fb_total_adj)
@@ -456,10 +590,10 @@ async def run_search(
                                 _md = json.loads(d["_job_ref"].match_data)
                                 _md["rerank_score"] = round(d.get("rerank_score", 0), 4)
                                 d["_job_ref"].match_data = json.dumps(_md)
-                        except Exception:
+                        except (json.JSONDecodeError, KeyError, TypeError):
                             pass
                     logger.info("Cross-encoder reranked top-50 candidates")
-            except Exception:
+            except (ImportError, RuntimeError, ValueError):
                 pass  # Reranking is optional
             diag.end_phase("reranking")
             diag.record_rerank(
@@ -483,15 +617,18 @@ async def run_search(
                 if _llm_ok():
                     from src.llm.jd_enricher import enrich_top_jobs
                     t_llm = time.time()
-                    enriched = await enrich_top_jobs(
-                        all_jobs, scorer, cv_data, _all_user_skills, top_n=50
+                    enriched = await asyncio.wait_for(
+                        enrich_top_jobs(
+                            all_jobs, scorer, cv_data, _all_user_skills, top_n=50
+                        ),
+                        timeout=120,  # Cap LLM enrichment at 2 minutes
                     )
                     if enriched:
                         logger.info(
                             f"LLM-enriched {enriched} JDs ({time.time() - t_llm:.1f}s)"
                         )
-            except Exception:
-                pass  # LLM enrichment is optional
+            except (ImportError, RuntimeError, ValueError, OSError, asyncio.TimeoutError):
+                pass  # LLM enrichment is optional (capped at 120s)
             diag.end_phase("llm_enrichment")
 
             # Collect LLM stats
@@ -513,7 +650,7 @@ async def run_search(
                     call_counts=_ps.get("call_counts", {}),
                     failures=_ps.get("failures", {}),
                 )
-            except Exception:
+            except (ImportError, KeyError, ValueError):
                 pass
 
             # Record scores after LLM for evolution tracking
@@ -599,7 +736,7 @@ async def run_search(
                         _md = json.loads(job.match_data)
                         _md["score_evolution"] = evo
                         job.match_data = json.dumps(_md)
-                    except Exception:
+                    except (json.JSONDecodeError, TypeError):
                         pass
 
             # Filter new jobs (not seen in DB)
