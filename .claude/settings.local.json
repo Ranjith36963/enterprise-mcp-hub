@@ -106,7 +106,8 @@
       "Bash(mkdir -p /tmp/trufflehog-extract)",
       "Bash(tar -xzf /tmp/trufflehog.tar.gz)",
       "Bash(gitleaks version:*)",
-      "Bash(trufflehog:*)"
+      "Bash(trufflehog:*)",
+      "Bash(git:*)"
     ]
   },
   "disabledMcpjsonServers": [
