@@ -48,6 +48,8 @@ FOREIGN_INDICATORS = {
     "switzerland", "austria", "belgium", "ireland", "singapore", "japan",
     "china", "brazil", "mexico", "south korea", "israel", "poland", "portugal",
     "czech", "romania", "turkey", "south africa", "new zealand", "philippines",
+    # Canadian provinces (catch "London, Ontario" etc.)
+    "ontario", "quebec", "british columbia", "alberta", "manitoba", "saskatchewan",
     # Major non-UK cities
     "new york", "san francisco", "los angeles", "chicago", "seattle", "austin",
     "boston", "denver", "toronto", "vancouver", "montreal", "sydney", "melbourne",
@@ -186,17 +188,22 @@ def _foreign_location_penalty(location: str) -> int:
     if not location:
         return 0  # Unknown location — might be UK, don't penalise
     loc_lower = location.lower()
-    # Check UK / remote terms first — if present, no penalty
+    # Check foreign indicators FIRST — explicit country/state names are stronger
+    # signals than ambiguous city names (e.g., "London, Ontario" vs "London")
+    has_foreign = any(indicator in loc_lower for indicator in FOREIGN_INDICATORS)
+    if has_foreign:
+        # But if an explicit UK qualifier is also present, it's UK
+        uk_qualifiers = ("united kingdom", "england", "scotland", "wales", ", uk")
+        if any(q in loc_lower for q in uk_qualifiers):
+            return 0
+        return 15
+    # No foreign signal — check for UK / remote terms
     for term in UK_TERMS:
         if term in loc_lower:
             return 0
     for term in REMOTE_TERMS:
         if term in loc_lower:
             return 0
-    # Check for foreign indicators
-    for indicator in FOREIGN_INDICATORS:
-        if indicator in loc_lower:
-            return 15
     return 0  # Unknown location — don't penalise
 
 
@@ -229,9 +236,18 @@ def score_job(job: Job) -> int:
     return min(max(total, 0), 100)
 
 
+_VISA_NEGATIONS = (
+    "no sponsorship", "not sponsor", "cannot sponsor", "unable to sponsor",
+    "don't sponsor", "without sponsorship",
+    "company-sponsored", "employer-sponsored", "self-sponsored", "government-sponsored",
+)
+
+
 def check_visa_flag(job: Job) -> bool:
     text = f"{job.title} {job.description}".lower()
-    return any(kw.lower() in text for kw in VISA_KEYWORDS)
+    if any(neg in text for neg in _VISA_NEGATIONS):
+        return False
+    return any(_text_contains(text, kw) for kw in VISA_KEYWORDS)
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +291,8 @@ class JobScorer:
         return min(points, SKILL_CAP)
 
     def _negative_penalty(self, job_title: str) -> int:
-        title_lower = job_title.lower()
         for kw in self._config.negative_title_keywords:
-            if kw in title_lower:
+            if _text_contains(job_title, kw.strip()):
                 return 30
         return 0
 
@@ -294,4 +309,6 @@ class JobScorer:
 
     def check_visa_flag(self, job: Job) -> bool:
         text = f"{job.title} {job.description}".lower()
-        return any(kw.lower() in text for kw in self._config.visa_keywords)
+        if any(neg in text for neg in _VISA_NEGATIONS):
+            return False
+        return any(_text_contains(text, kw) for kw in self._config.visa_keywords)

@@ -454,3 +454,86 @@ def test_partial_title_multiple_core():
     # "GenAI LLM Specialist" → core: {"genai", "llm"}, support: {} → 10
     score = _title_score("GenAI LLM Specialist")
     assert score == 10
+
+
+# ---------------------------------------------------------------------------
+# Regression tests — PR 1 scoring bug fixes (audit findings F-001, F-002, F-036)
+# ---------------------------------------------------------------------------
+
+
+def test_visa_flag_negation_not_flagged():
+    """F-001: 'No sponsorship available' must NOT flag as visa-sponsoring."""
+    job = _make_job(description="No sponsorship available for this role.")
+    assert check_visa_flag(job) is False
+
+
+def test_visa_flag_unable_to_sponsor():
+    """F-001: 'unable to sponsor' must NOT flag as visa-sponsoring."""
+    job = _make_job(description="We are unable to sponsor visas at this time.")
+    assert check_visa_flag(job) is False
+
+
+def test_visa_flag_positive_still_works():
+    """F-001: 'Visa sponsorship available' must still flag correctly."""
+    job = _make_job(description="We offer visa sponsorship for the right candidate.")
+    assert check_visa_flag(job) is True
+
+
+def test_visa_flag_false_positive_sponsored_benefits():
+    """F-001/F-008: 'company-sponsored benefits' must NOT flag as visa."""
+    job = _make_job(description="We offer company-sponsored health benefits and training.")
+    assert check_visa_flag(job) is False
+
+
+def test_jobscorer_negative_penalty_word_boundary():
+    """F-002/F-009: 'Syntax Engineer' must NOT be penalized for 'tax'."""
+    config = SearchConfig.from_defaults()
+    scorer = JobScorer(config)
+    assert scorer._negative_penalty("Syntax Engineer") == 0
+
+
+def test_jobscorer_negative_penalty_wholesale_not_sales():
+    """F-002: 'Wholesale Analyst' must NOT be penalized for 'sales'."""
+    config = SearchConfig.from_defaults()
+    scorer = JobScorer(config)
+    assert scorer._negative_penalty("Wholesale Distribution Analyst") == 0
+
+
+def test_jobscorer_negative_penalty_real_match_still_works():
+    """F-002: Actual negative keyword still triggers penalty."""
+    config = SearchConfig.from_defaults()
+    scorer = JobScorer(config)
+    assert scorer._negative_penalty("Tax Consultant") == 30
+
+
+def test_foreign_penalty_london_ontario():
+    """F-036: London, Ontario must get foreign penalty, not UK match."""
+    assert _foreign_location_penalty("London, Ontario") == 15
+
+
+def test_foreign_penalty_london_canada():
+    """F-036: London, Canada must get foreign penalty."""
+    assert _foreign_location_penalty("London, Canada") == 15
+
+
+def test_foreign_penalty_london_uk_still_zero():
+    """F-036: London, UK must NOT get foreign penalty."""
+    assert _foreign_location_penalty("London, UK") == 0
+
+
+def test_foreign_penalty_bare_london_is_uk():
+    """F-036: Bare 'London' with no country should default to UK (zero penalty)."""
+    assert _foreign_location_penalty("London") == 0
+
+
+def test_foreign_penalty_remote_uk_zero():
+    """F-036: 'Remote, UK' must NOT get foreign penalty."""
+    assert _foreign_location_penalty("Remote, UK") == 0
+
+
+def test_jobscorer_visa_negation():
+    """F-001: JobScorer.check_visa_flag also respects negation."""
+    config = SearchConfig.from_defaults()
+    scorer = JobScorer(config)
+    job = _make_job(description="No sponsorship available.")
+    assert scorer.check_visa_flag(job) is False
