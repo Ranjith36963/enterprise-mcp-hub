@@ -59,4 +59,4 @@ class PinpointSource(BaseJobSource):
                     salary_max=salary_max,
                 ))
         logger.info(f"Pinpoint: found {len(jobs)} relevant jobs across {len(self._companies)} companies")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

@@ -81,4 +81,4 @@ class JobSpySource(BaseJobSource):
                     salary_max=salary_max,
                 ))
         logger.info(f"JobSpy: found {len(jobs)} relevant jobs from {', '.join(self._sites)}")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

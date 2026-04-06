@@ -79,7 +79,7 @@ class BCSJobsSource(BaseJobSource):
                     date_found=now,
                 ))
 
-            return jobs
+            return self._filter_uk_or_remote(jobs)
         except Exception as e:
             logger.warning(f"BCS Jobs: HTML parsing failed: {e}")
             return []

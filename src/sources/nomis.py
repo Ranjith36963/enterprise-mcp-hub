@@ -60,4 +60,4 @@ class NomisSource(BaseJobSource):
             ))
 
         logger.info(f"Nomis: found {len(jobs)} vacancy records")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

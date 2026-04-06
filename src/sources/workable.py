@@ -49,4 +49,4 @@ class WorkableSource(BaseJobSource):
                     date_found=datetime.now(timezone.utc).isoformat(),
                 ))
         logger.info(f"Workable: found {len(jobs)} relevant jobs across {len(self._companies)} companies")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

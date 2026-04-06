@@ -68,7 +68,7 @@ class UniJobsSource(BaseJobSource):
                 date_found=date_found,
             ))
 
-        return jobs
+        return self._filter_uk_or_remote(jobs)
 
     @staticmethod
     def _parse_rss_date(date_str: str) -> str:

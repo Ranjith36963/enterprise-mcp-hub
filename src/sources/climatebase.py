@@ -130,7 +130,7 @@ class ClimatebaseSource(BaseJobSource):
                     date_found=now,
                 ))
 
-            return jobs
+            return self._filter_uk_or_remote(jobs)
         except Exception as e:
             logger.warning(f"Climatebase: HTML fallback parsing failed: {e}")
             return []

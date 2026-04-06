@@ -54,4 +54,4 @@ class SmartRecruitersSource(BaseJobSource):
                     date_found=date_found,
                 ))
         logger.info(f"SmartRecruiters: found {len(jobs)} relevant jobs across {len(self._companies)} companies")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

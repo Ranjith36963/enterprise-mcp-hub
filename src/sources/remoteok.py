@@ -41,4 +41,4 @@ class RemoteOKSource(BaseJobSource):
                 date_found=date_found,
             ))
         logger.info(f"RemoteOK: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

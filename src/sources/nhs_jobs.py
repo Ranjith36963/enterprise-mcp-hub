@@ -85,7 +85,7 @@ class NHSJobsSource(BaseJobSource):
                 salary_max=salary_max,
             ))
 
-        return jobs
+        return self._filter_uk_or_remote(jobs)
 
     @staticmethod
     def _parse_salary(salary_str: str) -> tuple:

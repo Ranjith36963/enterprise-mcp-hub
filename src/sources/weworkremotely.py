@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import aiohttp
 
 from src.models import Job
-from src.sources.base import BaseJobSource, _is_uk_or_remote
+from src.sources.base import BaseJobSource, _is_uk_or_remote, _sanitize_xml
 
 logger = logging.getLogger("job360.sources.weworkremotely")
 
@@ -27,7 +27,7 @@ class WeWorkRemotelySource(BaseJobSource):
     def _parse_feed(self, xml_text: str) -> list[Job]:
         jobs = []
         try:
-            root = ET.fromstring(xml_text)
+            root = ET.fromstring(_sanitize_xml(xml_text))
         except ET.ParseError as e:
             logger.warning(f"WeWorkRemotely: XML parse error: {e}")
             return []

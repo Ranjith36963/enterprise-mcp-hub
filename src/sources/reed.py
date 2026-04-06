@@ -60,4 +60,4 @@ class ReedSource(BaseJobSource):
                         date_found=date_found,
                     ))
         logger.info(f"Reed: found {len(jobs)} jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

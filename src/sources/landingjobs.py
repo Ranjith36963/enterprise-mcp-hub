@@ -80,4 +80,4 @@ class LandingJobsSource(BaseJobSource):
             offset += limit
 
         logger.info(f"LandingJobs: found {len(jobs)} relevant UK/remote jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

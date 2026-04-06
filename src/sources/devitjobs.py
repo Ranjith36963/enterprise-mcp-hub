@@ -60,4 +60,4 @@ class DevITJobsSource(BaseJobSource):
             ))
 
         logger.info(f"DevITjobs: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

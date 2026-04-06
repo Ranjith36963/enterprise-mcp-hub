@@ -51,4 +51,4 @@ class RemotiveSource(BaseJobSource):
                 salary_max=salary_max,
             ))
         logger.info(f"Remotive: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

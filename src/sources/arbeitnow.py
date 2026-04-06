@@ -33,4 +33,4 @@ class ArbeitnowSource(BaseJobSource):
                 date_found=date_found,
             ))
         logger.info(f"Arbeitnow: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

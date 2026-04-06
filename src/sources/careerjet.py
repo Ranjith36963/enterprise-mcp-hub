@@ -89,4 +89,4 @@ class CareerjetSource(BaseJobSource):
                 ))
 
         logger.info(f"Careerjet: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

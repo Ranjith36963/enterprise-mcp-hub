@@ -141,6 +141,15 @@ class BaseJobSource(ABC):
                 self._rate_limiter.release()
         return None
 
+    def _filter_uk_or_remote(self, jobs: list) -> list:
+        """Filter jobs to only UK/remote locations. Logs the filter count."""
+        before = len(jobs)
+        filtered = [j for j in jobs if _is_uk_or_remote(j.location)]
+        removed = before - len(filtered)
+        if removed:
+            logger.debug(f"{self.name}: filtered {removed} non-UK jobs ({len(filtered)} remaining)")
+        return filtered
+
     async def _get_json(self, url: str, params: dict | None = None,
                         headers: dict | None = None) -> dict | list | None:
         return await self._request("GET", url, params=params, headers=headers)

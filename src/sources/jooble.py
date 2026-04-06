@@ -70,4 +70,4 @@ class JoobleSource(BaseJobSource):
                 ))
             await asyncio.sleep(1)
         logger.info(f"Jooble: found {len(jobs)} jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

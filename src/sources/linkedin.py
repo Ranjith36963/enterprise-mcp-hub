@@ -82,4 +82,4 @@ class LinkedInSource(BaseJobSource):
             if len(jobs) >= 50:
                 break
         logger.info(f"LinkedIn: found {len(jobs)} relevant jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)

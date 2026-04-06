@@ -92,4 +92,4 @@ class FindAJobSource(BaseJobSource):
                     salary_max=salary_max,
                 ))
         logger.info(f"FindAJob: found {len(jobs)} jobs")
-        return jobs
+        return self._filter_uk_or_remote(jobs)
