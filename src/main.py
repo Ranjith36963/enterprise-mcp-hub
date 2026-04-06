@@ -261,7 +261,8 @@ async def run_search(
 
         # Create session
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        connector = aiohttp.TCPConnector(limit=200, limit_per_host=10)
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
             # Build sources
             sources = _build_sources(session, source_filter, search_config=search_config)
 
@@ -284,10 +285,16 @@ async def run_search(
                     logger.error(f"Source {source.name} failed: {e}")
                     return None
 
-            results = await asyncio.gather(*[_fetch_source(s) for s in sources])
+            results = await asyncio.gather(
+                *[_fetch_source(s) for s in sources],
+                return_exceptions=True,
+            )
 
             failed_sources = []
             for source, result in zip(sources, results):
+                if isinstance(result, BaseException):
+                    logger.error(f"Source {source.name} raised {type(result).__name__}: {result}")
+                    result = None
                 source_count += 1
                 if result is None:
                     per_source[source.name] = 0
@@ -384,7 +391,7 @@ async def run_search(
                 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
                 md_report = generate_markdown_report(new_jobs, stats)
                 md_path = REPORTS_DIR / f"report_{ts}.md"
-                md_path.write_text(md_report, encoding="utf-8")
+                await asyncio.to_thread(md_path.write_text, md_report, "utf-8")
                 logger.info(f"Report saved: {md_path}")
 
                 # Notifications via channel abstraction
