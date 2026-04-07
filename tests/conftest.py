@@ -64,3 +64,31 @@ def sample_visa_job():
         source="lever",
         date_found=datetime.now(timezone.utc).isoformat(),
     )
+
+
+@pytest.fixture
+def sample_non_uk_job():
+    """Job from a non-UK location (London, Ontario) — for location-scoring edge cases."""
+    return Job(
+        title="Data Scientist",
+        company="CanadaTech",
+        location="London, Ontario, Canada",
+        description="Data science role with Python and SQL.",
+        apply_url="https://canadatech.ca/careers/ds",
+        source="jsearch",
+        date_found=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@pytest.fixture
+def sample_empty_description_job():
+    """Job with empty description — for scoring and rendering edge cases."""
+    return Job(
+        title="AI Engineer",
+        company="Startup Inc",
+        location="London, UK",
+        description="",
+        apply_url="https://startup.com/jobs/1",
+        source="greenhouse",
+        date_found=datetime.now(timezone.utc).isoformat(),
+    )
