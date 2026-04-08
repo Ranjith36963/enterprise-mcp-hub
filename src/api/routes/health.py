@@ -1,5 +1,13 @@
-from fastapi import APIRouter
-from src.api.models import HealthResponse
+"""Health, status, and sources endpoints."""
+import json
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_db
+from src.api.models import HealthResponse, StatusResponse, SourceInfo, SourcesResponse
+from src.main import SOURCE_REGISTRY
+from src.profile.storage import profile_exists
+from src.storage.database import JobDatabase
 
 router = APIRouter(tags=["health"])
 
@@ -7,3 +15,34 @@ router = APIRouter(tags=["health"])
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(status="ok", version="1.0.0")
+
+
+@router.get("/status", response_model=StatusResponse)
+async def status(db: JobDatabase = Depends(get_db)):
+    jobs_total = await db.count_jobs()
+    run_logs = await db.get_run_logs(limit=1)
+    last_run = run_logs[0] if run_logs else None
+
+    sources_active = 0
+    if last_run and last_run.get("per_source"):
+        per_source = last_run["per_source"]
+        if isinstance(per_source, str):
+            per_source = json.loads(per_source)
+        sources_active = sum(1 for v in per_source.values() if v > 0)
+
+    return StatusResponse(
+        jobs_total=jobs_total,
+        last_run=last_run,
+        sources_total=len(SOURCE_REGISTRY),
+        sources_active=sources_active,
+        profile_exists=profile_exists(),
+    )
+
+
+@router.get("/sources", response_model=SourcesResponse)
+async def sources():
+    source_list = [
+        SourceInfo(name=name, type="free", health={})
+        for name in sorted(SOURCE_REGISTRY.keys())
+    ]
+    return SourcesResponse(sources=source_list)

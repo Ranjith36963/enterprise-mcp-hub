@@ -1,3 +1,92 @@
-from fastapi import APIRouter
+"""Pipeline (application tracker) routes for Job360 FastAPI backend."""
+from __future__ import annotations
+
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from src.api.dependencies import get_db
+from src.api.models import (
+    PipelineAdvanceRequest,
+    PipelineApplication,
+    PipelineListResponse,
+    PipelineRemindersResponse,
+)
+from src.storage.database import JobDatabase
 
 router = APIRouter(tags=["pipeline"])
+
+_VALID_STAGES = {"applied", "outreach", "interview", "offer", "rejected"}
+
+
+def _to_pipeline_application(row: dict) -> PipelineApplication:
+    return PipelineApplication(
+        job_id=row["job_id"],
+        stage=row["stage"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        notes=row.get("notes", ""),
+        title=row.get("title", ""),
+        company=row.get("company", ""),
+    )
+
+
+@router.get("/pipeline", response_model=PipelineListResponse)
+async def list_pipeline(
+    stage: Optional[str] = Query(None),
+    db: JobDatabase = Depends(get_db),
+):
+    """List all tracked job applications, optionally filtered by stage."""
+    rows = await db.get_applications(stage)
+    return PipelineListResponse(
+        applications=[_to_pipeline_application(r) for r in rows]
+    )
+
+
+@router.get("/pipeline/counts")
+async def pipeline_counts(db: JobDatabase = Depends(get_db)):
+    """Return application counts per pipeline stage."""
+    counts = await db.get_application_counts()
+    defaults = {stage: 0 for stage in _VALID_STAGES}
+    defaults.update(counts)
+    return defaults
+
+
+@router.get("/pipeline/reminders", response_model=PipelineRemindersResponse)
+async def pipeline_reminders(db: JobDatabase = Depends(get_db)):
+    """Return stale applications that haven't been updated in 7+ days."""
+    rows = await db.get_stale_applications(days=7)
+    return PipelineRemindersResponse(
+        reminders=[_to_pipeline_application(r) for r in rows]
+    )
+
+
+@router.post("/pipeline/{job_id}", response_model=PipelineApplication)
+async def create_application(
+    job_id: int,
+    db: JobDatabase = Depends(get_db),
+):
+    """Add a job to the application pipeline (stage: applied)."""
+    job = await db.get_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    row = await db.create_application(job_id)
+    return _to_pipeline_application(row)
+
+
+@router.post("/pipeline/{job_id}/advance", response_model=PipelineApplication)
+async def advance_application(
+    job_id: int,
+    body: PipelineAdvanceRequest,
+    db: JobDatabase = Depends(get_db),
+):
+    """Advance a job application to the specified pipeline stage."""
+    if body.stage not in _VALID_STAGES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid stage '{body.stage}'. Must be one of: {sorted(_VALID_STAGES)}",
+        )
+    row = await db.advance_application(job_id, body.stage)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Application for job {job_id} not found")
+    return _to_pipeline_application(row)
