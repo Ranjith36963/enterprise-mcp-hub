@@ -52,8 +52,11 @@ _ROLE_TITLE_LINE = re.compile(
     re.MULTILINE,
 )
 
-# Delimiters for splitting skill lists
-_SKILL_DELIMITERS = re.compile(r'[,;|•·▪\n]')
+# Primary delimiters — bullet points that separate skill entries
+_BULLET_DELIMITERS = re.compile(r'[•·▪\ufffd]')
+
+# Category header pattern: "Category Name:" at the start of a bullet entry
+_CATEGORY_HEADER = re.compile(r'^[A-Za-z/&\s]+:\s*')
 
 # Valid single-character programming language names
 SINGLE_CHAR_SKILLS = {"R", "C"}
@@ -137,14 +140,83 @@ def _find_sections(text: str) -> dict[str, str]:
 
 
 def _extract_skills_from_text(text: str) -> list[str]:
-    """Extract skills from a skills section by splitting on common delimiters."""
-    items = _SKILL_DELIMITERS.split(text)
+    """Extract skills from a skills section.
+
+    Handles: PDF line-wrapping, category headers (e.g., "Cloud & MLOps:"),
+    parenthetical groups (e.g., "AWS (Bedrock, SageMaker, S3)"), and
+    bullet-delimited skill lists.
+    """
+    has_bullets = bool(_BULLET_DELIMITERS.search(text))
+
+    if has_bullets:
+        # Bullet-delimited CV (most common) — rejoin broken lines, split on bullets
+        joined = re.sub(r'(?<![:\n])\n(?!\s*[•·▪\ufffd])', ' ', text)
+        entries = _BULLET_DELIMITERS.split(joined)
+    elif ';' in text:
+        # Semicolon-delimited list
+        entries = text.split(';')
+    else:
+        # Newline-delimited or comma-delimited list
+        entries = text.split('\n')
+
     skills = []
-    for item in items:
-        cleaned = item.strip().strip("-•·▪ ")
-        if cleaned and (len(cleaned) > 1 or cleaned in SINGLE_CHAR_SKILLS) and len(cleaned) < 60:
-            skills.append(cleaned)
+    for entry in entries:
+        entry = entry.strip().strip("-•·▪\ufffd ")
+        if not entry:
+            continue
+
+        # Step 3: Strip category headers like "AI/ML & GenAI Systems: "
+        entry = _CATEGORY_HEADER.sub('', entry).strip()
+        if not entry:
+            continue
+
+        # Step 4: If the entry still contains internal bullet-like separators
+        # (some CVs use "Skill1 • Skill2 • Skill3" inline), those were already
+        # split above. But if it has parenthetical content, keep it together.
+        # Only split on bare commas if there are NO parentheses.
+        if '(' not in entry:
+            # Safe to split on commas — no parenthetical groups
+            sub_items = [s.strip() for s in entry.split(',') if s.strip()]
+        else:
+            # Has parentheses — keep the whole entry as-is, or split carefully
+            # Protect parenthetical groups, then split remaining commas
+            sub_items = _split_preserving_parens(entry)
+
+        for item in sub_items:
+            cleaned = item.strip().strip("-•·▪\ufffd ")
+            if cleaned and (len(cleaned) > 1 or cleaned in SINGLE_CHAR_SKILLS) and len(cleaned) < 80:
+                skills.append(cleaned)
+
     return skills
+
+
+def _split_preserving_parens(text: str) -> list[str]:
+    """Split on commas but keep parenthetical groups together.
+
+    E.g., "AWS (Bedrock, SageMaker, S3), Docker, Python (Pandas, NumPy)"
+    → ["AWS (Bedrock, SageMaker, S3)", "Docker", "Python (Pandas, NumPy)"]
+    """
+    results = []
+    depth = 0
+    current = []
+    for char in text:
+        if char == '(':
+            depth += 1
+            current.append(char)
+        elif char == ')':
+            depth = max(0, depth - 1)
+            current.append(char)
+        elif char == ',' and depth == 0:
+            part = ''.join(current).strip()
+            if part:
+                results.append(part)
+            current = []
+        else:
+            current.append(char)
+    part = ''.join(current).strip()
+    if part:
+        results.append(part)
+    return results
 
 
 def _extract_titles_from_experience(text: str) -> list[str]:
@@ -202,9 +274,33 @@ def parse_cv(file_path: str) -> CVData:
     sections = _find_sections(raw_text)
     cv = CVData(raw_text=raw_text)
 
-    # Extract skills
+    # Extract skills from skills section
     if "skills" in sections:
         cv.skills = _extract_skills_from_text(sections["skills"])
+
+    # Also scan experience, summary, education for skills mentioned inline
+    # (e.g., "built using TensorFlow and PyTorch" in experience bullets)
+    # Only add skills not already covered by existing entries (even inside parens)
+    extra_sections = ["experience", "summary", "education", "certifications"]
+    extra_text = " ".join(sections.get(s, "") for s in extra_sections)
+    if extra_text.strip():
+        from src.config.keywords import KNOWN_SKILLS
+        # Build a set of all text already in skills (including parenthetical contents)
+        existing_text = " ".join(cv.skills).lower()
+        for known in sorted(KNOWN_SKILLS, key=len, reverse=True):
+            kl = known.lower()
+            # Skip if this skill (or its text) is already present in existing skills
+            if kl in existing_text:
+                continue
+            # Skip single-char matches (too many false positives like "R", "C")
+            if len(known) <= 1:
+                continue
+            # Word-boundary match in the extra text
+            pattern = re.compile(r'\b' + re.escape(known) + r'\b', re.IGNORECASE)
+            if pattern.search(extra_text):
+                cv.skills.append(known)
+                existing_text += " " + kl
+
     if not cv.skills:
         # Fallback: try to find tech names from full text
         cv.skills = _extract_tech_names(raw_text)[:30]
