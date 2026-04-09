@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import pytest
 
@@ -14,66 +14,50 @@ from src.profile.models import CVData, UserPreferences, UserProfile, SearchConfi
 from src.profile.preferences import validate_preferences, merge_cv_and_preferences
 from src.profile.keyword_generator import generate_search_config
 from src.profile.storage import save_profile, load_profile, profile_exists
-from src.profile.cv_parser import (
-    _extract_skills_from_text,
-    _extract_titles_from_experience,
-    _find_sections,
-)
 from src.filters.skill_matcher import JobScorer
-from src.config.keywords import (
-    JOB_TITLES,
-    PRIMARY_SKILLS,
-    SECONDARY_SKILLS,
-    TERTIARY_SKILLS,
-    RELEVANCE_KEYWORDS,
-    NEGATIVE_TITLE_KEYWORDS,
-    VISA_KEYWORDS,
-)
+from src.config.keywords import VISA_KEYWORDS
 
 
 # -----------------------------------------------------------------------
-# SearchConfig.from_defaults() — must reproduce hard-coded AI/ML keywords
+# SearchConfig.from_defaults() — no domain assumptions; empty skill lists
 # -----------------------------------------------------------------------
 
 class TestSearchConfigDefaults:
-    def test_from_defaults_job_titles(self):
+    def test_from_defaults_job_titles_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.job_titles == list(JOB_TITLES)
+        assert cfg.job_titles == []
 
-    def test_from_defaults_primary_skills(self):
+    def test_from_defaults_primary_skills_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.primary_skills == list(PRIMARY_SKILLS)
+        assert cfg.primary_skills == []
 
-    def test_from_defaults_secondary_skills(self):
+    def test_from_defaults_secondary_skills_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.secondary_skills == list(SECONDARY_SKILLS)
+        assert cfg.secondary_skills == []
 
-    def test_from_defaults_tertiary_skills(self):
+    def test_from_defaults_tertiary_skills_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.tertiary_skills == list(TERTIARY_SKILLS)
+        assert cfg.tertiary_skills == []
 
-    def test_from_defaults_relevance_keywords(self):
+    def test_from_defaults_relevance_keywords_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.relevance_keywords == list(RELEVANCE_KEYWORDS)
+        assert cfg.relevance_keywords == []
 
-    def test_from_defaults_negative_keywords(self):
+    def test_from_defaults_negative_keywords_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert cfg.negative_title_keywords == list(NEGATIVE_TITLE_KEYWORDS)
+        assert cfg.negative_title_keywords == []
 
-    def test_from_defaults_visa_keywords(self):
+    def test_from_defaults_visa_keywords_populated(self):
         cfg = SearchConfig.from_defaults()
         assert cfg.visa_keywords == list(VISA_KEYWORDS)
 
-    def test_from_defaults_has_core_domain_words(self):
+    def test_from_defaults_core_domain_words_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert "ai" in cfg.core_domain_words
-        assert "ml" in cfg.core_domain_words
-        assert "llm" in cfg.core_domain_words
+        assert cfg.core_domain_words == set()
 
-    def test_from_defaults_has_supporting_role_words(self):
+    def test_from_defaults_supporting_role_words_empty(self):
         cfg = SearchConfig.from_defaults()
-        assert "engineer" in cfg.supporting_role_words
-        assert "scientist" in cfg.supporting_role_words
+        assert cfg.supporting_role_words == set()
 
 
 # -----------------------------------------------------------------------
@@ -102,60 +86,6 @@ class TestUserProfile:
     def test_profile_with_empty_prefs_not_complete(self):
         profile = UserProfile(preferences=UserPreferences())
         assert not profile.is_complete
-
-
-# -----------------------------------------------------------------------
-# CV Parser helpers
-# -----------------------------------------------------------------------
-
-class TestCVParserHelpers:
-    def test_extract_skills_comma_separated(self):
-        text = "Python, SQL, JavaScript, React, Node.js"
-        skills = _extract_skills_from_text(text)
-        assert "Python" in skills
-        assert "SQL" in skills
-        assert "JavaScript" in skills
-
-    def test_extract_skills_semicolon_separated(self):
-        text = "Python; SQL; JavaScript"
-        skills = _extract_skills_from_text(text)
-        assert "Python" in skills
-        assert "SQL" in skills
-
-    def test_extract_skills_newline_separated(self):
-        text = "Python\nSQL\nJavaScript"
-        skills = _extract_skills_from_text(text)
-        assert "Python" in skills
-
-    def test_extract_skills_filters_short(self):
-        """Single-char items should be filtered out."""
-        text = "a, Python, b, SQL"
-        skills = _extract_skills_from_text(text)
-        assert "a" not in skills
-        assert "b" not in skills
-        assert "Python" in skills
-
-    def test_extract_titles_from_experience(self):
-        text = "Software Engineer at Google\nProduct Manager at Meta\n"
-        titles = _extract_titles_from_experience(text)
-        assert "Software Engineer" in titles
-        assert "Product Manager" in titles
-
-    def test_extract_titles_dash_separator(self):
-        text = "Data Scientist - Amazon"
-        titles = _extract_titles_from_experience(text)
-        assert "Data Scientist" in titles
-
-    def test_find_sections_skills(self):
-        text = "Summary\nI am a developer\nSkills\nPython, Java\nExperience\nWorked at Google"
-        sections = _find_sections(text)
-        assert "skills" in sections
-        assert "Python" in sections["skills"]
-
-    def test_find_sections_no_headers(self):
-        text = "Just some random text without section headers"
-        sections = _find_sections(text)
-        assert "full_text" in sections
 
 
 # -----------------------------------------------------------------------
@@ -403,12 +333,10 @@ class TestJobScorer:
             search_queries=["Sales Manager UK", "Account Executive London"],
         ))
 
-    def test_default_scorer_matches_score_job(self, default_scorer, sample_ai_job):
-        """Default scorer should produce same result as score_job()."""
-        from src.filters.skill_matcher import score_job
-        dynamic = default_scorer.score(sample_ai_job)
-        static = score_job(sample_ai_job)
-        assert dynamic == static
+    def test_default_scorer_returns_valid_score(self, default_scorer, sample_ai_job):
+        """Default scorer (empty config) returns a score in valid 0-100 range."""
+        score = default_scorer.score(sample_ai_job)
+        assert 0 <= score <= 100
 
     def test_default_scorer_visa_matches(self, default_scorer, sample_visa_job):
         from src.filters.skill_matcher import check_visa_flag
@@ -508,18 +436,99 @@ class TestStorageEdgeCases:
             assert load_profile() is None
 
 
+# -----------------------------------------------------------------------
+# LLM CV Parser
+# -----------------------------------------------------------------------
+
+class TestLLMCVParser:
+    """Tests for the LLM-based CV parser."""
+
+    def test_llm_result_to_cvdata_tech_cv(self):
+        """LLM result for a tech CV populates CVData correctly."""
+        from src.profile.cv_parser import _llm_result_to_cvdata
+
+        result = {
+            "name": "Ranjith Guruprakash",
+            "headline": "AI/ML Engineer | Generative AI Specialist",
+            "location": "United Kingdom",
+            "summary": "AI/ML Engineer with 1.5 years of experience.",
+            "skills": ["Python", "PyTorch", "TensorFlow", "AWS Bedrock", "Docker"],
+            "experience": [
+                {"company": "Calnex", "title": "AI Solutions Engineer", "dates": "June 2025",
+                 "location": "UK", "bullets": ["Built RAG pipeline"]}
+            ],
+            "education": [
+                {"degree": "MSc AI and Robotics", "institution": "Univ of Hertfordshire",
+                 "dates": "2022-2024", "details": ["Neural Networks", "Machine Learning"]}
+            ],
+            "certifications": ["AWS Certified AI Practitioner (2025)"],
+            "achievements": ["achieving 95% response accuracy"],
+            "experience_level": "mid",
+            "industries": ["AI/ML"],
+            "languages": ["English"],
+        }
+
+        cv = _llm_result_to_cvdata("raw cv text here", result)
+        assert "Python" in cv.skills
+        assert "AWS Bedrock" in cv.skills
+        assert "achieving 95% response accuracy" in cv.skills
+        assert "Ranjith Guruprakash" in cv.skills  # name for highlighting
+        assert any("Calnex" in t for t in cv.job_titles)
+        assert any("AI Solutions Engineer" in t for t in cv.job_titles)
+        assert any("MSc" in e for e in cv.education)
+        assert any("AWS" in c for c in cv.certifications)
+        assert "1.5 years" in cv.summary
+
+    def test_llm_result_to_cvdata_medical_cv(self):
+        """LLM result for a medical CV works just as well — domain-agnostic."""
+        from src.profile.cv_parser import _llm_result_to_cvdata
+
+        result = {
+            "name": "Dr. Sarah Thompson",
+            "headline": "Cardiology Consultant",
+            "location": "London, UK",
+            "summary": "Experienced cardiologist with 10 years of clinical practice.",
+            "skills": ["Echocardiography", "Cardiac Catheterization", "HIPAA", "Patient Triage",
+                       "EHR Systems", "Clinical Trials", "Medical Research"],
+            "experience": [
+                {"company": "NHS Royal Free", "title": "Cardiology Consultant",
+                 "dates": "2018-Present", "location": "London",
+                 "bullets": ["Led cardiac unit with 40% reduced wait times"]}
+            ],
+            "education": [
+                {"degree": "MBBS Medicine", "institution": "University of Oxford",
+                 "dates": "2004-2010", "details": ["Honours in Cardiology"]}
+            ],
+            "certifications": ["MRCP Cardiology — Royal College of Physicians (2012)"],
+            "achievements": ["reduced patient wait times by 40%"],
+            "experience_level": "senior",
+            "industries": ["Healthcare", "Cardiology"],
+            "languages": ["English", "French"],
+        }
+
+        cv = _llm_result_to_cvdata("raw medical cv text", result)
+        assert "Echocardiography" in cv.skills
+        assert "HIPAA" in cv.skills
+        assert "Patient Triage" in cv.skills
+        assert "Dr. Sarah Thompson" in cv.skills  # name for highlighting
+        assert any("Cardiology Consultant" in t for t in cv.job_titles)
+        assert any("Oxford" in e for e in cv.education)
+        assert any("MRCP" in c for c in cv.certifications)
+
+    def test_llm_result_to_cvdata_empty(self):
+        """Empty LLM result produces empty CVData without crashing."""
+        from src.profile.cv_parser import _llm_result_to_cvdata
+
+        cv = _llm_result_to_cvdata("some raw text", {})
+        assert cv.raw_text == "some raw text"
+        assert cv.skills == []
+        assert cv.job_titles == []
+        assert cv.education == []
+
+
 class TestCVParserEdgeCases:
     def test_doc_format_rejected(self):
         """Legacy .doc files should return empty string with warning."""
         from src.profile.cv_parser import extract_text
         result = extract_text("resume.doc")
         assert result == ""
-
-    def test_single_char_skills_r_and_c(self):
-        """R and C should be preserved as valid single-char skills."""
-        text = "R, Python, C, Java"
-        skills = _extract_skills_from_text(text)
-        assert "R" in skills
-        assert "C" in skills
-        assert "Python" in skills
-        assert "Java" in skills
