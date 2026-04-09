@@ -129,6 +129,9 @@ def setup_profile(cv_path, linkedin_path, github_username):
         click.echo(f"Parsing CV: {cv_path}")
         try:
             cv_data = parse_cv(cv_path)
+        except RuntimeError as e:
+            click.echo(f"Error: CV analysis failed — {e}", err=True)
+            return
         except Exception as e:
             click.echo(f"  Warning: could not parse CV ({e}). Continuing without CV data.")
             cv_data = CVData()

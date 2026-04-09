@@ -405,7 +405,14 @@ with st.sidebar:
         if st.button("Save Profile"):
             cv_data = CVData()
             if uploaded_cv:
-                cv_data = parse_cv_from_bytes(uploaded_cv.read(), uploaded_cv.name)
+                try:
+                    cv_data = parse_cv_from_bytes(uploaded_cv.read(), uploaded_cv.name)
+                except RuntimeError as e:
+                    st.error(f"CV analysis unavailable: {e}")
+                    cv_data = None
+
+            if cv_data is None:
+                st.stop()
 
             # Enrich from LinkedIn
             if uploaded_linkedin:

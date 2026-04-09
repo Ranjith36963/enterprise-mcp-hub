@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.api.dependencies import get_db, save_upload_to_temp
 from src.api.models import CVDetail, GitHubResponse, LinkedInResponse, ProfileResponse, ProfileSummary
-from src.profile.cv_parser import parse_cv
+from src.profile.cv_parser import parse_cv_async
 from src.profile.github_enricher import enrich_cv_from_github, fetch_github_profile
 from src.profile.linkedin_parser import enrich_cv_from_linkedin, parse_linkedin_zip
 from src.profile.models import UserPreferences, UserProfile
@@ -70,7 +70,10 @@ async def upsert_profile(
         suffix = os.path.splitext(cv.filename or ".pdf")[1] or ".pdf"
         tmp_path = save_upload_to_temp(content, suffix)
         try:
-            cv_data = parse_cv(tmp_path)
+            try:
+                cv_data = await parse_cv_async(tmp_path)
+            except RuntimeError as e:
+                raise HTTPException(status_code=503, detail=str(e))
             profile.cv_data = cv_data
         finally:
             try:
