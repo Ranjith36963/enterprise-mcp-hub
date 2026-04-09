@@ -5,17 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from src.config.keywords import (
-    JOB_TITLES,
-    LOCATIONS,
-    PRIMARY_SKILLS,
-    SECONDARY_SKILLS,
-    TERTIARY_SKILLS,
-    RELEVANCE_KEYWORDS,
-    NEGATIVE_TITLE_KEYWORDS,
-    VISA_KEYWORDS,
-)
-
 
 @dataclass
 class CVData:
@@ -83,26 +72,23 @@ class SearchConfig:
 
     @classmethod
     def from_defaults(cls) -> SearchConfig:
-        """Return SearchConfig with the current hard-coded AI/ML keywords."""
-        core_ai_words = {
-            "ai", "ml", "machine", "learning", "deep", "nlp", "data",
-            "genai", "llm", "rag", "mlops", "neural", "transformer",
-            "generative", "vision", "computer",
-        }
-        supporting_words = {
-            "scientist", "engineer", "research", "applied", "platform",
-            "infrastructure", "conversational", "robotics", "alignment",
-        }
+        """Return a minimal SearchConfig with no domain assumptions.
+
+        When no user profile exists, we use empty skill lists rather than
+        hardcoded AI/ML keywords. The user MUST upload a CV or set preferences
+        for meaningful job matching.
+        """
+        from src.config.keywords import LOCATIONS, VISA_KEYWORDS
         return cls(
-            job_titles=list(JOB_TITLES),
-            primary_skills=list(PRIMARY_SKILLS),
-            secondary_skills=list(SECONDARY_SKILLS),
-            tertiary_skills=list(TERTIARY_SKILLS),
-            relevance_keywords=list(RELEVANCE_KEYWORDS),
-            negative_title_keywords=list(NEGATIVE_TITLE_KEYWORDS),
+            job_titles=[],
+            primary_skills=[],
+            secondary_skills=[],
+            tertiary_skills=[],
+            relevance_keywords=[],
+            negative_title_keywords=[],
             locations=list(LOCATIONS),
             visa_keywords=list(VISA_KEYWORDS),
-            core_domain_words=core_ai_words,
-            supporting_role_words=supporting_words,
+            core_domain_words=set(),
+            supporting_role_words=set(),
             search_queries=[],
         )
