@@ -23,6 +23,14 @@ def _make_job(**overrides):
 
 
 def test_high_match_scores_above_70():
+    """With an AI/ML SearchConfig, a matching job should score >= 70."""
+    config = SearchConfig(
+        job_titles=["AI Engineer", "ML Engineer"],
+        primary_skills=["Python", "PyTorch", "TensorFlow", "LangChain", "RAG"],
+        secondary_skills=["Hugging Face", "LLM fine-tuning", "NLP"],
+        tertiary_skills=["Docker", "Kubernetes"],
+    )
+    scorer = JobScorer(config)
     job = _make_job(
         title="AI Engineer",
         location="London, UK",
@@ -33,7 +41,7 @@ def test_high_match_scores_above_70():
             "AWS SageMaker, Docker, Kubernetes, FastAPI, ChromaDB."
         ),
     )
-    score = score_job(job)
+    score = scorer.score(job)
     assert score >= 70, f"Expected >= 70, got {score}"
 
 
@@ -48,9 +56,12 @@ def test_low_match_scores_below_30():
 
 
 def test_title_match_contributes_points():
+    """With explicit JobScorer config, title match beats non-match."""
+    config = SearchConfig(job_titles=["ML Engineer"], primary_skills=["Python"])
+    scorer = JobScorer(config)
     job_match = _make_job(title="ML Engineer", description="Python role")
     job_no_match = _make_job(title="Chef", description="Python role")
-    assert score_job(job_match) > score_job(job_no_match)
+    assert scorer.score(job_match) > scorer.score(job_no_match)
 
 
 def test_location_match_contributes_points():
@@ -88,11 +99,18 @@ def test_score_range_0_to_100():
 
 
 def test_more_skills_higher_score():
+    """With explicit config, jobs matching more skills score higher."""
+    config = SearchConfig(
+        primary_skills=["Python", "PyTorch", "TensorFlow", "LangChain"],
+        secondary_skills=["RAG", "LLM", "NLP", "Deep Learning"],
+        tertiary_skills=["AWS", "Docker"],
+    )
+    scorer = JobScorer(config)
     job_few = _make_job(description="Python developer role")
     job_many = _make_job(
         description="Python PyTorch TensorFlow LangChain RAG LLM NLP Deep Learning AWS Docker"
     )
-    assert score_job(job_many) > score_job(job_few)
+    assert scorer.score(job_many) > scorer.score(job_few)
 
 
 # ---- Recency scoring tests ----
@@ -128,6 +146,18 @@ def test_recency_invalid_date_no_crash():
 
 def test_score_can_reach_100():
     """A perfect job (exact title + many skills + UK location + today's date) should hit 100."""
+    config = SearchConfig(
+        job_titles=["AI Engineer"],
+        # Need enough primary skills to hit the 40-point cap (14 × 3 = 42 capped to 40)
+        primary_skills=[
+            "Python", "PyTorch", "TensorFlow", "LangChain", "RAG",
+            "Hugging Face", "LLM fine-tuning", "NLP", "Deep Learning",
+            "Neural Networks", "Computer Vision", "SageMaker", "Docker", "Kubernetes",
+        ],
+        secondary_skills=["ChromaDB", "FastAPI"],
+        tertiary_skills=[],
+    )
+    scorer = JobScorer(config)
     job = _make_job(
         title="AI Engineer",
         location="London, UK",
@@ -139,7 +169,7 @@ def test_score_can_reach_100():
             "AWS SageMaker, Docker, Kubernetes, FastAPI, ChromaDB."
         ),
     )
-    score = score_job(job)
+    score = scorer.score(job)
     assert score == 100, f"Expected 100, got {score}"
 
 
@@ -247,20 +277,28 @@ def test_word_boundary_ml_standalone():
 # ---- Negative keyword tests ----
 
 
-def test_negative_penalty_sales_engineer():
-    assert _negative_penalty("Sales Engineer") == 30
-
-
-def test_negative_penalty_marketing_manager():
-    assert _negative_penalty("Marketing Manager") == 30
-
-
-def test_negative_penalty_no_match():
+def test_negative_penalty_empty_defaults():
+    """Module-level _negative_penalty returns 0 because NEGATIVE_TITLE_KEYWORDS
+    is empty by design. Users must set negative_keywords in their preferences.
+    """
+    assert _negative_penalty("Sales Engineer") == 0
     assert _negative_penalty("AI Engineer") == 0
 
 
-def test_negative_penalty_civil_engineer():
-    assert _negative_penalty("Civil Engineer") == 30
+def test_jobscorer_negative_penalty_dynamic():
+    """JobScorer uses user-configured negative keywords, not hardcoded defaults."""
+    from src.profile.models import SearchConfig
+    from src.filters.skill_matcher import JobScorer
+
+    config = SearchConfig(negative_title_keywords=["sales", "marketing"])
+    scorer = JobScorer(config)
+
+    # User's own negatives are penalized
+    assert scorer._negative_penalty("Sales Engineer") == 30
+    assert scorer._negative_penalty("Marketing Manager") == 30
+    # Non-matching titles are not penalized
+    assert scorer._negative_penalty("AI Engineer") == 0
+    assert scorer._negative_penalty("Cardiology Consultant") == 0
 
 
 def test_sales_engineer_scores_below_threshold():
@@ -393,41 +431,6 @@ def test_us_ai_job_scores_lower_than_uk():
     uk_score = score_job(uk_job)
     us_score = score_job(us_job)
     assert uk_score - us_score >= 15, f"UK={uk_score}, US={us_score}"
-
-
-# ---- Expanded negative keyword tests ----
-
-
-def test_negative_penalty_site_reliability():
-    assert _negative_penalty("Site Reliability Engineer") == 30
-
-
-def test_negative_penalty_quantum():
-    assert _negative_penalty("Quantum Computing Researcher") == 30
-
-
-def test_negative_penalty_power_platform():
-    assert _negative_penalty("Power Platform Developer") == 30
-
-
-def test_negative_penalty_model_artist():
-    assert _negative_penalty("3D Model Artist") == 30
-
-
-def test_negative_penalty_sap():
-    assert _negative_penalty("SAP Consultant") == 30
-
-
-def test_negative_penalty_solicitor():
-    assert _negative_penalty("Corporate Solicitor") == 30
-
-
-def test_negative_penalty_ai_engineer_zero():
-    """AI/ML titles should NOT be penalised by expanded keywords."""
-    assert _negative_penalty("AI Engineer") == 0
-    assert _negative_penalty("ML Engineer") == 0
-    assert _negative_penalty("Machine Learning Engineer") == 0
-    assert _negative_penalty("Data Scientist") == 0
 
 
 # ---- Partial title scoring tests ----
