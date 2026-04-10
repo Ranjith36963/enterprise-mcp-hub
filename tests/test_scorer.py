@@ -433,27 +433,38 @@ def test_negative_penalty_ai_engineer_zero():
 # ---- Partial title scoring tests ----
 
 
-def test_partial_title_needs_core_keyword():
-    """Titles without core AI/ML words should score 0 in partial matching."""
+def test_title_score_no_hardcoded_ai_bias():
+    """Module-level _title_score must not use hardcoded AI/ML keywords.
+
+    For domain-agnostic scaling, ANY title that's not in JOB_TITLES should
+    return 0 — regardless of whether it contains AI buzzwords.
+    """
     from src.filters.skill_matcher import _title_score
-    # "Technical Program Manager" has no core AI words and doesn't match JOB_TITLES → 0
+    # "Technical Program Manager" has no match in JOB_TITLES → 0
     assert _title_score("Technical Program Manager") == 0
+    # "AI Workspace Coordinator" also has no match — no AI word boost allowed
+    assert _title_score("AI Workspace Coordinator") == 0
+    # "Cardiology Consultant" (medical) also 0 — no domain favouritism
+    assert _title_score("Cardiology Consultant") == 0
 
 
-def test_partial_title_with_core_keyword():
-    """Titles with core AI words should get partial points."""
-    from src.filters.skill_matcher import _title_score
-    # "AI Workspace Coordinator" → core: {"ai"}, support: {} → 5
-    score = _title_score("AI Workspace Coordinator")
-    assert score == 5
+def test_jobscorer_title_score_works_for_medical_user():
+    """JobScorer must work for non-tech users using their actual titles."""
+    from src.profile.models import SearchConfig
+    from src.filters.skill_matcher import JobScorer
 
+    config = SearchConfig(
+        job_titles=["Cardiology Consultant", "Cardiologist"],
+        primary_skills=["Echocardiography"],
+        secondary_skills=[],
+        tertiary_skills=[],
+    )
+    scorer = JobScorer(config)
 
-def test_partial_title_multiple_core():
-    """Multiple core words should accumulate points."""
-    from src.filters.skill_matcher import _title_score
-    # "GenAI LLM Specialist" → core: {"genai", "llm"}, support: {} → 10
-    score = _title_score("GenAI LLM Specialist")
-    assert score == 10
+    # Medical title should score WELL for medical user
+    assert scorer._title_score("Cardiology Consultant") > 0
+    # AI title should score 0 for medical user — no hardcoded AI bonus
+    assert scorer._title_score("AI Engineer") == 0
 
 
 # ---- Visa negation regression tests (F-001, F-008) ----

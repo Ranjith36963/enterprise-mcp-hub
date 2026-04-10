@@ -111,28 +111,21 @@ def _text_contains(text: str, term: str) -> bool:
 
 
 def _title_score(job_title: str) -> int:
+    """Score a job title against the default JOB_TITLES list.
+
+    Module-level fallback for when no user profile exists. Returns 0 for any
+    title not in JOB_TITLES — no hardcoded domain biases. Users MUST provide
+    a profile (CV or preferences) to get meaningful title scoring.
+
+    Production path uses JobScorer(config)._title_score() which is dynamic.
+    """
     title_lower = job_title.lower()
     for target in JOB_TITLES:
         if target.lower() == title_lower:
             return TITLE_WEIGHT
         if target.lower() in title_lower or title_lower in target.lower():
             return TITLE_WEIGHT // 2
-    # Check for partial keyword overlap — require at least one core AI/ML word
-    title_words = set(re.findall(r'\w+', title_lower))
-    core_ai_words = {
-        "ai", "ml", "machine", "learning", "deep", "nlp", "data",
-        "genai", "llm", "rag", "mlops", "neural", "transformer",
-        "generative", "vision", "computer",
-    }
-    supporting_words = {
-        "scientist", "engineer", "research", "applied", "platform",
-        "infrastructure", "conversational", "robotics", "alignment",
-    }
-    core_overlap = title_words & core_ai_words
-    if not core_overlap:
-        return 0
-    support_overlap = title_words & supporting_words
-    return min(len(core_overlap) * 5 + len(support_overlap) * 3, TITLE_WEIGHT // 2)
+    return 0
 
 
 def _skill_score(text: str) -> int:
