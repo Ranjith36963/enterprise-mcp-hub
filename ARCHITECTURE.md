@@ -35,7 +35,7 @@ job360/
 |   +-- models.py            # Job dataclass with normalized_key()
 |   +-- config/
 |   |   +-- settings.py      # Env vars, paths, RATE_LIMITS (48 entries), thresholds
-|   |   +-- keywords.py      # Default AI/ML keywords, KNOWN_SKILLS (391), KNOWN_TITLE_PATTERNS (107)
+|   |   +-- keywords.py      # Default AI/ML keywords (KNOWN_SKILLS and KNOWN_TITLE_PATTERNS removed in commit 3ba1342 — replaced by LLM parser)
 |   |   +-- companies.py     # ATS company slugs (~104 companies across 10 ATS platforms)
 |   +-- profile/
 |   |   +-- models.py        # CVData, UserPreferences, UserProfile, SearchConfig
@@ -45,6 +45,7 @@ job360/
 |   |   +-- keyword_generator.py  # UserProfile -> SearchConfig conversion
 |   |   +-- linkedin_parser.py    # LinkedIn ZIP export parser
 |   |   +-- github_enricher.py    # GitHub public API enricher
+|   |   +-- llm_provider.py       # Multi-provider LLM client (Gemini/Groq/Cerebras) for CV parsing
 |   +-- sources/
 |   |   +-- base.py          # BaseJobSource ABC with retry, rate limiting, keyword properties
 |   |   +-- ... (47 source files, 48 registry entries)
@@ -66,7 +67,7 @@ job360/
 |       +-- time_buckets.py  # Time bucketing, score colors, bucket_summary_counts
 +-- tests/
 |   +-- conftest.py          # Shared fixtures (sample_ai_job, etc.)
-|   +-- test_*.py            # 18 test files, 387 tests
+|   +-- test_*.py            # 21 test files, 412 tests
 +-- data/                    # Runtime data (gitignored)
 |   +-- jobs.db              # SQLite database
 |   +-- user_profile.json    # User profile (optional)
@@ -439,11 +440,9 @@ PDF/DOCX -> extract_text() -> raw text
   |
   +-> _find_sections() -> {skills, experience, education, certifications, summary}
   |
-  +-> _extract_skills_from_text(skills_section) -> ["Python", "SQL", ...]
-  |     Uses KNOWN_SKILLS (391 entries) for matching
-  +-> _extract_titles_from_experience(exp_section) -> ["Engineer at Google", ...]
-  |     Uses KNOWN_TITLE_PATTERNS for matching
-  +-> fallback: _extract_tech_names(full_text) -> capitalized tool names
+  +-> LLM extraction via llm_provider.py (Gemini/Groq/Cerebras with free-tier fallback)
+  |     Returns: skills[], job_titles[], education[], certifications[], summary
+  |     The regex KNOWN_SKILLS / KNOWN_TITLE_PATTERNS approach was removed in commit 804725c
 ```
 
 ---
@@ -508,6 +507,25 @@ CREATE TABLE IF NOT EXISTS run_log (
     new_jobs INTEGER DEFAULT 0,
     sources_queried INTEGER DEFAULT 0,
     per_source TEXT DEFAULT '{}'  -- JSON string
+);
+
+CREATE TABLE IF NOT EXISTS user_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    action TEXT NOT NULL,            -- save, dismiss, applied, etc.
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(job_id)
+);
+
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'applied',  -- applied, interview, offer, rejected
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(job_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_date_found ON jobs(date_found);
@@ -605,6 +623,13 @@ Each source has configured `concurrent` (max parallel requests) and `delay` (sec
 | python-docx >=1.1.0 | DOCX text extraction (CV parsing) |
 | rich >=13.0.0 | Terminal table rendering |
 | humanize >=4.9.0 | Relative time formatting |
+| fastapi >=0.115.0 | API server for Next.js frontend (`src/api/`) |
+| uvicorn[standard] >=0.30.0 | ASGI server for FastAPI |
+| python-multipart >=0.0.9 | File upload support for FastAPI |
+| httpx >=0.27.0 | Async HTTP client (used by API + LLM providers) |
+| google-generativeai >=0.8.0 | Gemini LLM provider for CV parsing |
+| groq >=0.11.0 | Groq LLM provider for CV parsing |
+| cerebras-cloud-sdk >=1.0.0 | Cerebras LLM provider for CV parsing |
 
 ### Dev (requirements-dev.txt)
 

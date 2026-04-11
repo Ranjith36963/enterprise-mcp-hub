@@ -161,27 +161,30 @@ flowchart TD
 - **Split requirements** — prod deps in `requirements.txt`, dev/test in `requirements-dev.txt`
 - **Hardened setup** — Python 3.9+ version check, idempotent installs, .env validation
 
-### Testing (387 tests)
+### Testing (412 tests)
 
 | Test file | Count | What it covers |
 |-----------|-------|----------------|
-| `test_sources.py` | 65 | All 48 sources with mocked HTTP |
-| `test_scorer.py` | 58 | Scoring algorithm, penalties, recency tiers, edge cases |
-| `test_profile.py` | 56 | CV parser, preferences, keyword generator, JobScorer |
+| `test_sources.py` | 71 | All 48 sources with mocked HTTP |
+| `test_profile.py` | 55 | CV parser, preferences, keyword generator, JobScorer |
 | `test_linkedin_github.py` | 54 | LinkedIn ZIP parsing, GitHub API enrichment |
+| `test_scorer.py` | 53 | Scoring algorithm, penalties, recency tiers, edge cases |
 | `test_time_buckets.py` | 33 | Time bucket grouping logic |
-| `test_models.py` | 19 | Job dataclass, normalisation, company cleaning |
+| `test_models.py` | 21 | Job dataclass, normalisation, company cleaning |
 | `test_notifications.py` | 19 | Email, Slack, Discord sending |
 | `test_deduplicator.py` | 13 | Cross-source dedup logic |
-| `test_cli.py` | 11 | CLI commands + options + SOURCE_REGISTRY assertions |
 | `test_main.py` | 12 | Orchestrator integration |
-| `test_notification_base.py` | 7 | ABC, format_salary, channel discovery |
+| `test_cli.py` | 11 | CLI commands + options + SOURCE_REGISTRY assertions |
 | `test_database.py` | 9 | SQLite operations, migrations, source history |
-| `test_reports.py` | 6 | Markdown + HTML report generation |
+| `test_api.py` | 9 | FastAPI endpoints (health, jobs, actions, profile, search, pipeline) |
+| `test_llm_provider.py` | 8 | Multi-provider LLM client for CV parsing |
+| `test_notification_base.py` | 7 | ABC, format_salary, channel discovery |
 | `test_setup.py` | 6 | setup.sh validation |
-| `test_cli_view.py` | 5 | Rich terminal table viewer |
-| `test_cron.py` | 5 | cron_setup.sh validation |
+| `test_reports.py` | 6 | Markdown + HTML report generation |
+| `test_dashboard.py` | 6 | URL sanitization (`_safe_url`) for XSS prevention |
 | `test_rate_limiter.py` | 5 | Async rate limiter (acquire/release, concurrency, delay) |
+| `test_cron.py` | 5 | cron_setup.sh validation |
+| `test_cli_view.py` | 5 | Rich terminal table viewer |
 | `test_csv_export.py` | 4 | CSV export format |
 
 ## Quick Start
@@ -342,7 +345,7 @@ for channel in get_configured_channels():
 - **11 tertiary skills** (1pt each): CI/CD, MLflow, Git, Linux, n8n, Data Pipelines, ETL, Feature Engineering, S3, CloudWatch, Machine Learning
 - **24 UK locations** + Remote/Hybrid
 - **60 negative title keywords** across 12 categories (sales, IT ops, healthcare, legal, finance, etc.)
-- **391 known skills** for CV parsing (programming languages, frameworks, cloud, databases, etc.)
+- **LLM-only CV parsing** via `src/profile/llm_provider.py` (multi-provider: Gemini, Groq, Cerebras with free-tier fallback). The earlier 391-entry `KNOWN_SKILLS` regex set was removed in commit 3ba1342.
 
 ### ATS Companies (`src/config/companies.py`)
 - **Greenhouse** (25): DeepMind, Monzo, Deliveroo, Darktrace, Stability AI, Anthropic, Graphcore, Wayve, PolyAI, Synthesia, Wise, Snyk, Stripe, Cloudflare, Databricks, Dataiku, Ocado Technology, Tractable, Paddle, Harness, Isomorphic Labs, Speechmatics, Onfido, Oxford Nanopore, Bloomberg
@@ -368,11 +371,12 @@ job360/
 │   ├── dashboard.py             # Streamlit web dashboard (filters, charts, KPIs, profile setup)
 │   ├── config/
 │   │   ├── settings.py          # Env vars, rate limits, timeouts, thresholds
-│   │   ├── keywords.py          # Default keywords + KNOWN_SKILLS (391) + KNOWN_TITLE_PATTERNS (107)
+│   │   ├── keywords.py          # Default AI/ML keywords (KNOWN_SKILLS and KNOWN_TITLE_PATTERNS removed in commit 3ba1342)
 │   │   └── companies.py         # ATS company slugs (~104 companies across 10 platforms)
 │   ├── profile/
 │   │   ├── models.py            # CVData, UserPreferences, UserProfile, SearchConfig
-│   │   ├── cv_parser.py         # PDF/DOCX text extraction + section parsing
+│   │   ├── cv_parser.py         # PDF/DOCX text extraction; LLM-only skill/title extraction
+│   │   ├── llm_provider.py      # Multi-provider LLM client (Gemini/Groq/Cerebras) for CV parsing
 │   │   ├── preferences.py       # Form validation, CV+preferences merge
 │   │   ├── storage.py           # JSON persistence (data/user_profile.json)
 │   │   ├── keyword_generator.py # UserProfile -> SearchConfig conversion
@@ -397,11 +401,11 @@ job360/
 │       ├── logger.py            # Rotating file + console logging
 │       ├── rate_limiter.py      # Async semaphore + delay rate limiter
 │       └── time_buckets.py      # Time bucket grouping for CLI view
-├── tests/                       # 376 tests across 17 files
+├── tests/                       # 412 tests across 21 files
 │   ├── conftest.py              # Shared fixtures (sample jobs)
-│   └── test_*.py                # 17 test modules
+│   └── test_*.py                # 21 test modules
 ├── data/                        # Exports, reports, logs (gitignored)
-├── requirements.txt             # Production dependencies (12 packages)
+├── requirements.txt             # Production dependencies (19 packages)
 ├── requirements-dev.txt         # Dev/test dependencies (pytest, aioresponses, fpdf2)
 ├── .env.example                 # Template for API keys and webhooks
 ├── setup.sh                     # Setup script (Python 3.9+ check, venv, deps)
@@ -411,7 +415,7 @@ job360/
 ## Testing
 
 ```bash
-# Run all 387 tests
+# Run all 412 tests
 python -m pytest tests/ -v
 
 # Run specific test file
@@ -421,7 +425,7 @@ python -m pytest tests/test_scorer.py -v
 python -m pytest tests/ -v -s
 ```
 
-All 387 tests pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
+All 412 tests pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
 
 ## Output
 

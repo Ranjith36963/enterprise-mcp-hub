@@ -2,10 +2,10 @@
 
 ## Current State: Phase 2 Complete
 
-**Last updated:** 2026-03-17
-**Total tests:** 387 across 18 test modules
-**Source files:** 74 Python modules | **Test files:** 18 test modules
-**Job sources:** 48 registered in SOURCE_REGISTRY
+**Last updated:** 2026-04-11
+**Total tests:** 412 across 21 test modules
+**Source files:** 47 source files in `src/sources/` (excluding `__init__.py` and `base.py`) | **Test files:** 21 test modules
+**Job sources:** 48 registered in SOURCE_REGISTRY (47 source files; indeed.py handles both Indeed + Glassdoor)
 
 ---
 
@@ -18,7 +18,7 @@
 | Component | File(s) | Status |
 |-----------|---------|--------|
 | Profile dataclasses | `src/profile/models.py` | Done -- CVData, UserPreferences, UserProfile, SearchConfig |
-| CV parser (PDF/DOCX) | `src/profile/cv_parser.py` | Done -- pdfplumber + python-docx, section detection, KNOWN_SKILLS matching |
+| CV parser (PDF/DOCX) | `src/profile/cv_parser.py` | Done -- pdfplumber + python-docx text extraction, LLM-only skill/title extraction via `llm_provider.py` (KNOWN_SKILLS regex removed in commit 804725c) |
 | Preferences validator | `src/profile/preferences.py` | Done -- form validation, CV+prefs merge |
 | Profile storage | `src/profile/storage.py` | Done -- JSON at `data/user_profile.json` |
 | Keyword generator | `src/profile/keyword_generator.py` | Done -- UserProfile -> SearchConfig conversion |
@@ -114,7 +114,7 @@
 - Email, Slack, Discord notifications (when configured)
 - CLI commands: run, view, dashboard, status, sources, setup-profile
 - Streamlit dashboard with filters, charts, profile setup
-- 387 tests pass (3 skip on Windows)
+- 412 tests pass (3 skip on Windows)
 
 ---
 
@@ -151,25 +151,28 @@
 
 | Test file | Module tested | Tests |
 |-----------|--------------|-------|
-| `test_sources.py` | All 48 sources | 65 |
-| `test_scorer.py` | `skill_matcher.py` scoring | 58 |
-| `test_profile.py` | `src/profile/*`, `JobScorer` | 56 |
+| `test_sources.py` | All 48 sources | 71 |
+| `test_profile.py` | `src/profile/*`, `JobScorer` | 55 |
 | `test_linkedin_github.py` | LinkedIn parser, GitHub enricher | 54 |
+| `test_scorer.py` | `skill_matcher.py` scoring | 53 |
 | `test_time_buckets.py` | `time_buckets.py` | 33 |
-| `test_models.py` | `models.py` Job dataclass | 19 |
+| `test_models.py` | `models.py` Job dataclass | 21 |
 | `test_notifications.py` | Slack + Discord + Email channels | 19 |
 | `test_deduplicator.py` | `deduplicator.py` | 13 |
-| `test_cli.py` | `cli.py` commands + SOURCE_REGISTRY | 11 |
 | `test_main.py` | `main.py` orchestrator + error paths | 12 |
+| `test_cli.py` | `cli.py` commands + SOURCE_REGISTRY | 11 |
+| `test_database.py` | SQLite database + migration + source history | 9 |
+| `test_api.py` | FastAPI endpoints (health, jobs, actions, profile, search, pipeline) | 9 |
+| `test_llm_provider.py` | Multi-provider LLM client for CV parsing | 8 |
 | `test_notification_base.py` | Channel base + discovery | 7 |
 | `test_reports.py` | Report generation | 6 |
-| `test_database.py` | SQLite database + migration + source history | 9 |
 | `test_setup.py` | setup.sh + requirements | 6 |
-| `test_cli_view.py` | `cli_view.py` | 5 |
-| `test_cron.py` | cron_run.sh | 5 |
-| `test_csv_export.py` | CSV export | 4 |
+| `test_dashboard.py` | URL sanitization (`_safe_url`) for XSS prevention | 6 |
 | `test_rate_limiter.py` | `rate_limiter.py` | 5 |
-| **Total** | | **387** (3 skip on Windows) |
+| `test_cron.py` | cron_run.sh | 5 |
+| `test_cli_view.py` | `cli_view.py` | 5 |
+| `test_csv_export.py` | CSV export | 4 |
+| **Total** | | **412** (3 skip on Windows) |
 
 ### Not covered or lightly covered
 

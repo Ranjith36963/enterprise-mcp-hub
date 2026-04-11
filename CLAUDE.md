@@ -22,6 +22,13 @@ Job360 is an automated UK job search system supporting **any professional domain
 | python-docx | >=1.1.0 | DOCX text extraction for CV parsing |
 | rich | >=13.0.0 | Terminal table rendering |
 | humanize | >=4.9.0 | Relative time formatting |
+| fastapi | >=0.115.0 | API server for Next.js frontend |
+| uvicorn[standard] | >=0.30.0 | ASGI server for FastAPI |
+| python-multipart | >=0.0.9 | File upload support for FastAPI |
+| httpx | >=0.27.0 | Async HTTP client (used by API + LLM providers) |
+| google-generativeai | >=0.8.0 | Gemini LLM provider for CV parsing |
+| groq | >=0.11.0 | Groq LLM provider for CV parsing |
+| cerebras-cloud-sdk | >=1.0.0 | Cerebras LLM provider for CV parsing |
 
 **Dev/test extras** (in `requirements-dev.txt`): pytest >=8.0.0, pytest-asyncio >=0.23.0, aioresponses >=0.7.0, fpdf2 >=2.7.0
 
@@ -62,12 +69,14 @@ python -m src.cli view --hours 24 --min-score 50   # Rich terminal table
 python -m src.cli view --visa-only                  # Filter by visa
 
 # Tests (all use mocked HTTP via aioresponses)
-python -m pytest tests/ -v                              # Run all 397 tests
-python -m pytest tests/test_scorer.py -v                # Scoring tests (63)
-python -m pytest tests/test_sources.py -v               # All 48 sources (65)
-python -m pytest tests/test_profile.py -v               # Profile system (56)
+python -m pytest tests/ -v                              # Run all 412 tests
+python -m pytest tests/test_scorer.py -v                # Scoring tests (53)
+python -m pytest tests/test_sources.py -v               # All 48 sources (71)
+python -m pytest tests/test_profile.py -v               # Profile system (55)
 python -m pytest tests/test_linkedin_github.py -v       # LinkedIn/GitHub enrichment (54)
 python -m pytest tests/test_dashboard.py -v             # Dashboard helpers (6)
+python -m pytest tests/test_llm_provider.py -v          # LLM CV parser (8)
+python -m pytest tests/test_api.py -v                   # FastAPI endpoints (9)
 python -m pytest tests/test_scorer.py::test_name -v     # Single test
 ```
 
@@ -88,11 +97,12 @@ job360/
 │   ├── models.py            # Job dataclass with normalized_key() for dedup
 │   ├── config/
 │   │   ├── settings.py      # Env vars, paths, RATE_LIMITS (48 entries), thresholds
-│   │   ├── keywords.py      # Default AI/ML keywords + KNOWN_SKILLS (391) + KNOWN_TITLE_PATTERNS (107)
+│   │   ├── keywords.py      # Default AI/ML keywords (KNOWN_SKILLS and KNOWN_TITLE_PATTERNS removed in commit 3ba1342 — replaced by LLM parser)
 │   │   └── companies.py     # ATS company slugs (~104 companies across 10 ATS platforms)
 │   ├── profile/
 │   │   ├── models.py        # CVData, UserPreferences, UserProfile, SearchConfig dataclasses
-│   │   ├── cv_parser.py     # PDF/DOCX text extraction, section detection, skill/title extraction
+│   │   ├── cv_parser.py     # PDF/DOCX text extraction; LLM-only skill/title extraction (regex KNOWN_SKILLS removed in commit 804725c)
+│   │   ├── llm_provider.py  # Multi-provider LLM client (Gemini/Groq/Cerebras) for CV analysis
 │   │   ├── preferences.py   # Form validation, CV+preferences merge
 │   │   ├── storage.py       # JSON persistence at data/user_profile.json
 │   │   ├── keyword_generator.py  # UserProfile → SearchConfig conversion
@@ -119,14 +129,14 @@ job360/
 │       └── time_buckets.py  # Time bucketing for CLI view + console summary
 ├── tests/                   # 409 tests across 20 files
 │   ├── conftest.py          # Shared fixtures (sample_ai_job, sample_visa_job, etc.)
-│   └── test_*.py            # 20 test modules
+│   └── test_*.py            # 21 test modules
 ├── data/                    # Runtime data (gitignored)
 │   ├── jobs.db              # SQLite database
 │   ├── user_profile.json    # User profile (optional)
 │   ├── exports/             # CSV exports per run
 │   ├── reports/             # Markdown reports per run
 │   └── logs/                # Rotating log files
-├── requirements.txt         # Production dependencies (12 packages)
+├── requirements.txt         # Production dependencies (19 packages)
 ├── requirements-dev.txt     # Test dependencies (includes prod via -r)
 ├── .env.example             # Template for API keys and webhooks
 ├── setup.sh                 # Setup script (Python 3.9+ check, venv, deps, .env validation)
@@ -144,11 +154,12 @@ The pipeline flows: **CLI (Click)** → **Orchestrator (`src/main.py`)** → **S
 - `src/cli_view.py` — Rich terminal table viewer for browsing jobs from the DB
 - `src/models.py` — `Job` dataclass with `normalized_key()` for dedup (strips company suffixes like Ltd/Inc/PLC and region suffixes like UK/US/EMEA, lowercases)
 - `src/config/settings.py` — All env vars, paths, `RATE_LIMITS` dict (48 entries, per-source), thresholds. Constants: `MIN_MATCH_SCORE=30`, `MAX_RETRIES=3`, `RETRY_BACKOFF=[1,2,4]`, `REQUEST_TIMEOUT=30`.
-- `src/config/keywords.py` — Default AI/ML keywords: `JOB_TITLES` (25), skills in 3 tiers (`PRIMARY_SKILLS` 15 / `SECONDARY_SKILLS` 17 / `TERTIARY_SKILLS` 11), `LOCATIONS` (26: 24 UK + Remote + Hybrid), `RELEVANCE_KEYWORDS`, `NEGATIVE_TITLE_KEYWORDS` (60 entries across 12 categories), `KNOWN_SKILLS` (391-entry set for CV parsing), `KNOWN_TITLE_PATTERNS` (107 entries). Used as fallback when no user profile exists.
+- `src/config/keywords.py` — Default AI/ML keywords: `JOB_TITLES` (25), skills in 3 tiers (`PRIMARY_SKILLS` 15 / `SECONDARY_SKILLS` 17 / `TERTIARY_SKILLS` 11), `LOCATIONS` (26: 24 UK + Remote + Hybrid), `RELEVANCE_KEYWORDS`, `NEGATIVE_TITLE_KEYWORDS` (60 entries across 12 categories). `KNOWN_SKILLS` and `KNOWN_TITLE_PATTERNS` were removed in commit 3ba1342 — CV parsing is now LLM-only via `src/profile/llm_provider.py`. Used as fallback when no user profile exists.
 - `src/config/companies.py` — ATS company slugs: Greenhouse (25), Lever (12), Workable (8), Ashby (9), SmartRecruiters (6), Pinpoint (8), Recruitee (8), Workday (15 — dict format with tenant/wd/site/name), Personio (10), SuccessFactors (3 — dict format with name/sitemap_url). ~104 companies total.
 - `src/profile/` — Dynamic user profile system:
   - `models.py` — `CVData` (includes linkedin_positions, linkedin_skills, github_languages, github_topics, github_skills_inferred fields), `UserPreferences` (includes github_username), `UserProfile`, `SearchConfig` dataclasses. `SearchConfig.from_defaults()` returns the hard-coded AI/ML keywords.
-  - `cv_parser.py` — PDF (pdfplumber) / DOCX (python-docx) text extraction, section detection, skill/title extraction using `KNOWN_SKILLS` and `KNOWN_TITLE_PATTERNS`
+  - `cv_parser.py` — PDF (pdfplumber) / DOCX (python-docx) text extraction, section detection. Skill/title extraction is LLM-only via `llm_provider.py` — the regex `KNOWN_SKILLS`/`KNOWN_TITLE_PATTERNS` approach was removed in commit 804725c
+  - `llm_provider.py` — Multi-provider LLM client (Gemini, Groq, Cerebras) with free-tier fallback chain for CV parsing
   - `preferences.py` — Validates/normalises form data, merges CV data with user preferences
   - `storage.py` — JSON persistence at `data/user_profile.json`
   - `keyword_generator.py` — Converts `UserProfile` → `SearchConfig` (auto-tiers skills, builds relevance keywords, generates search queries)
@@ -188,21 +199,30 @@ Groups by `job.normalized_key()` = (normalized company, normalized title). Keeps
 
 ## Testing
 
-**397 tests** across 19 test files (count is `pytest --collect-only` output; parametrized tests expand into multiple collected items). Shared fixtures in `tests/conftest.py` (provides `sample_ai_job`, `sample_unrelated_job`, `sample_duplicate_jobs`, `sample_visa_job`, `sample_non_uk_job`, `sample_empty_description_job`). All HTTP calls mocked with `aioresponses`. Uses `pytest-asyncio` for async tests.
+**412 tests** across 21 test files (count is `pytest --collect-only` output; parametrized tests expand into multiple collected items). Shared fixtures in `tests/conftest.py` (provides `sample_ai_job`, `sample_unrelated_job`, `sample_duplicate_jobs`, `sample_visa_job`, `sample_non_uk_job`, `sample_empty_description_job`). All HTTP calls mocked with `aioresponses`. Uses `pytest-asyncio` for async tests.
 
 Key test files:
-- `test_sources.py` — 65 tests: all 48 sources with mocked HTTP responses
-- `test_scorer.py` — 63 tests: scoring components, penalties, word boundaries, experience detection, visa negation, location ordering
-- `test_profile.py` — 56 tests: SearchConfig defaults, UserProfile, CV parser, preferences, storage, keyword generator, JobScorer (including cross-domain scoring)
+- `test_sources.py` — 71 tests: all 48 sources with mocked HTTP responses
+- `test_profile.py` — 55 tests: SearchConfig defaults, UserProfile, CV parser, preferences, storage, keyword generator, JobScorer (including cross-domain scoring)
 - `test_linkedin_github.py` — 54 tests: LinkedIn ZIP parsing, GitHub API enrichment, CVData merging
+- `test_scorer.py` — 53 tests: scoring components, penalties, word boundaries, experience detection, visa negation, location ordering
 - `test_time_buckets.py` — 33 tests: time bucket grouping logic
 - `test_models.py` — 21 tests: Job dataclass, normalization, salary sanitization, normalization divergence documentation
 - `test_notifications.py` — 19 tests: Email, Slack, Discord sending
 - `test_deduplicator.py` — 13 tests: dedup logic, company suffix stripping
-- `test_cli.py` — 11 tests: CLI commands, `len(SOURCE_REGISTRY) == 48` assertion (update when adding/removing sources)
 - `test_main.py` — 12 tests: orchestrator with mocked sources
-- `test_dashboard.py` — 6 tests: URL sanitization (`_safe_url`) for XSS prevention
+- `test_cli.py` — 11 tests: CLI commands, `len(SOURCE_REGISTRY) == 48` assertion (update when adding/removing sources)
+- `test_database.py` — 9 tests: SQLite operations, migrations, source history
 - `test_api.py` — 9 tests: FastAPI endpoints (health, status, sources, jobs, actions, profile, pipeline, integration)
+- `test_llm_provider.py` — 8 tests: multi-provider LLM client for CV parsing
+- `test_notification_base.py` — 7 tests: ABC, format_salary, channel discovery
+- `test_setup.py` — 6 tests: setup.sh validation
+- `test_reports.py` — 6 tests: Markdown + HTML report generation
+- `test_dashboard.py` — 6 tests: URL sanitization (`_safe_url`) for XSS prevention
+- `test_rate_limiter.py` — 5 tests: async rate limiter (acquire/release, concurrency, delay)
+- `test_cron.py` — 5 tests: cron_setup.sh validation
+- `test_cli_view.py` — 5 tests: Rich terminal table viewer
+- `test_csv_export.py` — 4 tests: CSV export format
 
 ## Environment
 
@@ -250,7 +270,7 @@ Key test files:
 6. **Read a file fully before editing it.** Understand the existing logic, imports, and how other modules depend on it.
 7. **Check if something exists before creating it.** Search for existing implementations before adding new files or functions.
 8. **When adding/removing sources:** Update `SOURCE_REGISTRY` dict, `_build_sources()` list, `RATE_LIMITS` dict, the test assertion `len(SOURCE_REGISTRY) == N` in `test_cli.py`, and the expected source set in the same file.
-9. **Scoring changes require test verification.** The scoring algorithm is tested with 58 tests across edge cases. Run `test_scorer.py` and `test_profile.py` after any change to `skill_matcher.py`.
+9. **Scoring changes require test verification.** The scoring algorithm is tested with 53 tests across edge cases. Run `test_scorer.py` and `test_profile.py` after any change to `skill_matcher.py`.
 
 ## Related Documentation
 
