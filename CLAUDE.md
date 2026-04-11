@@ -105,25 +105,42 @@ job360/
 │   │   ├── cli_view.py         # Rich terminal table viewer (time-bucketed)
 │   │   ├── dashboard.py        # Streamlit dashboard
 │   │   ├── models.py           # Job dataclass with normalized_key() for dedup
-│   │   ├── api/
+│   │   │
+│   │   ├── api/                # Delivery layer (FastAPI)
 │   │   │   ├── main.py         # FastAPI app: CORS, lifespan, route registration
 │   │   │   ├── dependencies.py # Shared deps: get_db(), save_upload_to_temp()
 │   │   │   ├── models.py       # Pydantic request/response models (matches frontend types.ts)
 │   │   │   └── routes/         # 7 route modules: health, jobs, actions, profile, search, pipeline
-│   │   ├── config/
+│   │   │
+│   │   ├── core/               # App config + constants (phase 4 rename from config/)
 │   │   │   ├── settings.py     # Env vars, paths, RATE_LIMITS, thresholds
 │   │   │   ├── keywords.py     # Default keywords (emptied in a01c1b3 — LLM-driven only)
 │   │   │   └── companies.py    # ATS company slugs (~104 companies across 10 platforms)
-│   │   ├── profile/            # CV + LinkedIn + GitHub enrichment, LLM-driven
-│   │   │   ├── models.py       # CVData, UserPreferences, UserProfile, SearchConfig
-│   │   │   ├── cv_parser.py    # PDF/DOCX extraction; LLM-only skill/title extraction
-│   │   │   ├── llm_provider.py # Multi-provider LLM client (Gemini/Groq/Cerebras)
-│   │   │   ├── preferences.py
-│   │   │   ├── storage.py
-│   │   │   ├── keyword_generator.py  # UserProfile → SearchConfig
-│   │   │   ├── linkedin_parser.py
-│   │   │   └── github_enricher.py
-│   │   ├── sources/            # 47 source files split by category (phase 2 refactor)
+│   │   │
+│   │   ├── services/           # Business logic (phase 4 merge of filters/ + notifications/ + profile/)
+│   │   │   ├── skill_matcher.py  # JobScorer: title/skill/location/recency scoring, visa detection
+│   │   │   ├── deduplicator.py   # Group by normalized_key, keep highest-scored
+│   │   │   ├── notifications/    # Email / Slack / Discord channels + report_generator
+│   │   │   │   ├── base.py       # NotificationChannel ABC + get_configured_channels()
+│   │   │   │   ├── email_notify.py
+│   │   │   │   ├── slack_notify.py
+│   │   │   │   ├── discord_notify.py
+│   │   │   │   └── report_generator.py
+│   │   │   └── profile/          # CV + LinkedIn + GitHub enrichment, LLM-driven
+│   │   │       ├── models.py     # CVData, UserPreferences, UserProfile, SearchConfig
+│   │   │       ├── cv_parser.py  # PDF/DOCX extraction; LLM-only skill/title extraction
+│   │   │       ├── llm_provider.py  # Multi-provider LLM client (Gemini/Groq/Cerebras)
+│   │   │       ├── preferences.py
+│   │   │       ├── storage.py
+│   │   │       ├── keyword_generator.py
+│   │   │       ├── linkedin_parser.py
+│   │   │       └── github_enricher.py
+│   │   │
+│   │   ├── repositories/       # Data access (phase 4 rename from storage/)
+│   │   │   ├── database.py     # Async SQLite (aiosqlite), WAL, auto-purge >30 days
+│   │   │   └── csv_export.py
+│   │   │
+│   │   ├── sources/            # 47 source files split by category (phase 2)
 │   │   │   ├── base.py         # BaseJobSource ABC + _is_uk_or_remote helper
 │   │   │   ├── apis_keyed/     # 7: adzuna, careerjet, findwork, google_jobs, jooble, jsearch, reed
 │   │   │   ├── apis_free/      # 10: aijobs, arbeitnow, devitjobs, himalayas, hn_jobs, jobicy, landingjobs, remoteok, remotive, yc_companies
@@ -131,19 +148,8 @@ job360/
 │   │   │   ├── feeds/          # 8 RSS/XML: biospace, findajob, jobs_ac_uk, nhs_jobs, realworkfromanywhere, uni_jobs, workanywhere, weworkremotely
 │   │   │   ├── scrapers/       # 7 HTML: aijobs_ai, aijobs_global, bcs_jobs, climatebase, eightykhours, jobtensor, linkedin
 │   │   │   └── other/          # 5: hackernews, indeed (jobspy), nofluffjobs, nomis, themuse
-│   │   ├── filters/
-│   │   │   ├── skill_matcher.py  # JobScorer: title/skill/location/recency scoring, visa detection
-│   │   │   └── deduplicator.py   # Group by normalized_key, keep highest-scored
-│   │   ├── storage/
-│   │   │   ├── database.py     # Async SQLite (aiosqlite), WAL, auto-purge >30 days
-│   │   │   └── csv_export.py
-│   │   ├── notifications/
-│   │   │   ├── base.py         # NotificationChannel ABC + get_configured_channels()
-│   │   │   ├── email_notify.py # Gmail SMTP
-│   │   │   ├── slack_notify.py # Block Kit webhook
-│   │   │   ├── discord_notify.py
-│   │   │   └── report_generator.py  # Markdown + HTML templates
-│   │   └── utils/
+│   │   │
+│   │   └── utils/              # Cross-cutting helpers
 │   │       ├── logger.py       # Rotating file + console logging
 │   │       ├── rate_limiter.py # Async semaphore + delay
 │   │       └── time_buckets.py
@@ -181,7 +187,13 @@ job360/
 └── ARCHITECTURE.md
 ```
 
-**Restructure note (phase 1–3):** The codebase was previously flat at project root (`src/`, `tests/`, `pyproject.toml`). The move to `backend/` + `frontend/src/` was completed in commits `0d3ef72`, the sources split commit, and the phase 3 frontend commit. Internal backend renames (`filters/` → `services/`, `storage/` → `repositories/`, `config/` → `core/`) are a future phase and haven't been applied yet — the module paths still use the original names.
+**Restructure note (phases 1–4):** The codebase was previously flat at project root (`src/`, `tests/`, `pyproject.toml`). The clean-architecture layout was built up in four commits:
+- `0d3ef72` — phase 1: outer move (`src/` → `backend/src/`, `tests/` → `backend/tests/`, `pyproject.toml` → `backend/pyproject.toml`, `data/` → `backend/data/`, merged `requirements*.txt` into `[project.dependencies]`)
+- `bd8f952` — phase 2: sources split (47 sources → 6 category subfolders under `backend/src/sources/`)
+- `e4b7c07` — phase 3: `backend/main.py` uvicorn entry + `frontend/src/` wrapper
+- `a814ae8` — phase 4: internal rename — `filters/` → `services/`, `notifications/` + `profile/` → `services/{notifications,profile}/`, `storage/` → `repositories/`, `config/` → `core/`. 197 import rewrites across 51 files. Module paths are now `src.services.X`, `src.repositories.X`, `src.core.X`.
+
+**Deferred:** `api/` → `api/v1/` routing upgrade (coordinates with frontend API client change). `models.py` split into `models/{domain,schemas}/` would collide with `repositories/database.py` naming and has been left as a single module at `backend/src/models.py`.
 
 ## Architecture
 
