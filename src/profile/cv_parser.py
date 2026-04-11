@@ -292,22 +292,3 @@ def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
         location=location,
         achievements=achievements,
     )
-
-
-def parse_cv_from_bytes(content: bytes, filename: str) -> CVData:
-    """Parse CV from in-memory bytes (for Streamlit file_uploader)."""
-    import tempfile
-    import os
-
-    suffix = Path(filename).suffix
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        return parse_cv(tmp_path)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
