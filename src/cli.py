@@ -1,8 +1,6 @@
 """Job360 CLI — command-line interface for the job search system."""
 
 import asyncio
-import subprocess
-import sys
 
 import click
 
@@ -23,8 +21,7 @@ def cli():
               default="INFO", help="Set logging verbosity.")
 @click.option("--db-path", default=None, help="Override database file path.")
 @click.option("--no-email", is_flag=True, help="Skip all notifications (email, Slack, Discord).")
-@click.option("--dashboard", is_flag=True, help="Launch Streamlit dashboard after the run.")
-def run(source, dry_run, log_level, db_path, no_email, dashboard):
+def run(source, dry_run, log_level, db_path, no_email):
     """Run the job search pipeline."""
     try:
         stats = asyncio.run(run_search(
@@ -33,7 +30,6 @@ def run(source, dry_run, log_level, db_path, no_email, dashboard):
             dry_run=dry_run,
             log_level=log_level,
             no_notify=no_email,
-            launch_dashboard=dashboard,
         ))
         # C1: Exit with error message if no profile was found
         if stats.get("error") == "no_profile":
@@ -46,13 +42,6 @@ def run(source, dry_run, log_level, db_path, no_email, dashboard):
     except KeyboardInterrupt:
         click.echo("\nJob360: Search interrupted. Exiting gracefully.")
         raise SystemExit(130)
-
-
-@cli.command()
-def dashboard():
-    """Launch the Streamlit web dashboard."""
-    click.echo("Starting Job360 Dashboard...")
-    subprocess.run([sys.executable, "-m", "streamlit", "run", "src/dashboard.py"], check=True)
 
 
 @cli.command()

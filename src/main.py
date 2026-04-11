@@ -1,8 +1,6 @@
 import argparse
 import asyncio
 import logging
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -226,7 +224,6 @@ async def run_search(
     dry_run: bool = False,
     log_level: str | None = None,
     no_notify: bool = False,
-    launch_dashboard: bool = False,
 ) -> dict:
     setup_logging(log_level)
     logger.info("=" * 60)
@@ -423,11 +420,6 @@ async def run_search(
     finally:
         await db.close()
 
-    # Launch dashboard if requested
-    if launch_dashboard:
-        logger.info("Launching Streamlit dashboard...")
-        subprocess.Popen([sys.executable, "-m", "streamlit", "run", "src/dashboard.py"])
-
     return stats
 
 
@@ -471,6 +463,5 @@ def _print_bucketed_summary(jobs: list, label: str = "Results"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Job360 Pipeline")
     parser.add_argument("--no-email", action="store_true", help="Skip notifications")
-    parser.add_argument("--dashboard", action="store_true", help="Launch dashboard after run")
     args = parser.parse_args()
-    asyncio.run(run_search(no_notify=args.no_email, launch_dashboard=args.dashboard))
+    asyncio.run(run_search(no_notify=args.no_email))
