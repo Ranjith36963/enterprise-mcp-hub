@@ -38,28 +38,34 @@ Job360 is an automated UK job search system supporting **any professional domain
 
 ## Commands
 
+**All backend commands run from `backend/`** (after the directory restructure — see Folder Structure below). Frontend commands run from `frontend/`.
+
 ```bash
-# Setup
+# Setup (from project root)
 bash setup.sh                  # Creates venv, installs deps, validates .env
 source venv/bin/activate       # Activate virtualenv (Linux/Mac)
 
+# Backend — all commands below run from backend/
+cd backend
+
 # API server (for Next.js frontend)
-python -m src.cli api                              # Start FastAPI on localhost:8000
-python -m src.cli api --port 3001 --host 0.0.0.0   # Custom host/port
+python main.py                                      # Start FastAPI on localhost:8000
+uvicorn main:app --host 0.0.0.0 --port 8000         # Production-style
+python -m src.cli api                               # Alternative entry via CLI
+python -m src.cli api --port 3001 --host 0.0.0.0    # Custom host/port
 
 # Run the pipeline
-python -m src.cli run                              # Full pipeline (all 48 sources)
-python -m src.cli run --source arbeitnow           # Single source
-python -m src.cli run --dry-run --log-level DEBUG   # Dry run with debug
-python -m src.cli run --db-path /tmp/test.db        # Custom DB path
-python -m src.cli run --no-email                    # Skip notifications
-python -m src.cli run --dashboard                   # Launch dashboard after
+python -m src.cli run                               # Full pipeline (47 source instances)
+python -m src.cli run --source arbeitnow            # Single source
+python -m src.cli run --dry-run --log-level DEBUG    # Dry run with debug
+python -m src.cli run --db-path /tmp/test.db         # Custom DB path
+python -m src.cli run --no-email                     # Skip notifications
+python -m src.cli run --dashboard                    # Launch dashboard after
 
 # Profile setup (personalise for any domain)
 python -m src.cli setup-profile --cv path/to/cv.pdf                    # CV only
 python -m src.cli setup-profile --cv cv.pdf --linkedin linkedin.zip    # CV + LinkedIn
 python -m src.cli setup-profile --cv cv.pdf --github username          # CV + GitHub
-python -m src.cli setup-profile --linkedin data.zip --github user      # All enrichment sources
 
 # Other CLI commands
 python -m src.cli dashboard    # Launch Streamlit UI
@@ -68,80 +74,114 @@ python -m src.cli sources      # List all 48 sources
 python -m src.cli view --hours 24 --min-score 50   # Rich terminal table
 python -m src.cli view --visa-only                  # Filter by visa
 
-# Tests (all use mocked HTTP via aioresponses)
+# Tests (run from backend/ — pytest picks up pyproject.toml pythonpath=["."])
 python -m pytest tests/ -v                              # Run all 412 tests
-python -m pytest tests/test_scorer.py -v                # Scoring tests (53)
-python -m pytest tests/test_sources.py -v               # All 48 sources (71)
+python -m pytest tests/test_scorer.py -v                # Scoring tests
+python -m pytest tests/test_sources.py -v               # All sources (71)
 python -m pytest tests/test_profile.py -v               # Profile system (55)
-python -m pytest tests/test_linkedin_github.py -v       # LinkedIn/GitHub enrichment (54)
-python -m pytest tests/test_dashboard.py -v             # Dashboard helpers (6)
-python -m pytest tests/test_llm_provider.py -v          # LLM CV parser (8)
 python -m pytest tests/test_api.py -v                   # FastAPI endpoints (9)
 python -m pytest tests/test_scorer.py::test_name -v     # Single test
+
+# Frontend — all commands below run from frontend/
+cd ../frontend
+npm run dev                    # Next.js dev server (localhost:3000)
+npm run build                  # Production build
+npm run lint                   # ESLint
 ```
 
 ## Folder Structure
 
+The repo is split into two top-level deployables: **`backend/`** (Python + FastAPI) and **`frontend/`** (Next.js 16). Runtime data lives inside `backend/data/` so each side is self-contained.
+
 ```
 job360/
-├── src/
-│   ├── main.py              # Orchestrator: run_search(), SOURCE_REGISTRY (48), _build_sources()
-│   ├── cli.py               # Click CLI: run, api, dashboard, status, sources, view, setup-profile
-│   ├── api/
-│   │   ├── main.py          # FastAPI app with CORS, lifespan (DB init/close)
-│   │   ├── models.py        # Pydantic request/response models (matches frontend types.ts)
-│   │   ├── dependencies.py  # Shared deps: get_db(), save_upload_to_temp()
-│   │   └── routes/          # 6 route modules: health, jobs, actions, profile, search, pipeline
-│   ├── cli_view.py          # Rich terminal table viewer (time-bucketed)
-│   ├── dashboard.py         # Streamlit web dashboard with profile setup sidebar
-│   ├── models.py            # Job dataclass with normalized_key() for dedup
-│   ├── config/
-│   │   ├── settings.py      # Env vars, paths, RATE_LIMITS (48 entries), thresholds
-│   │   ├── keywords.py      # Default AI/ML keywords (KNOWN_SKILLS and KNOWN_TITLE_PATTERNS removed in commit 3ba1342 — replaced by LLM parser)
-│   │   └── companies.py     # ATS company slugs (~104 companies across 10 ATS platforms)
-│   ├── profile/
-│   │   ├── models.py        # CVData, UserPreferences, UserProfile, SearchConfig dataclasses
-│   │   ├── cv_parser.py     # PDF/DOCX text extraction; LLM-only skill/title extraction (regex KNOWN_SKILLS removed in commit 804725c)
-│   │   ├── llm_provider.py  # Multi-provider LLM client (Gemini/Groq/Cerebras) for CV analysis
-│   │   ├── preferences.py   # Form validation, CV+preferences merge
-│   │   ├── storage.py       # JSON persistence at data/user_profile.json
-│   │   ├── keyword_generator.py  # UserProfile → SearchConfig conversion
-│   │   ├── linkedin_parser.py    # LinkedIn ZIP export parser (positions, skills, education)
-│   │   └── github_enricher.py    # GitHub public API enricher (repos, languages, topics)
-│   ├── sources/             # 47 source files (48 registry entries; indeed+glassdoor share one)
-│   │   ├── base.py          # BaseJobSource ABC: retry, rate limiting, keyword properties
-│   │   └── *.py             # One file per source implementation
-│   ├── filters/
-│   │   ├── skill_matcher.py # Scoring (score_job + JobScorer), visa detection, experience level
-│   │   └── deduplicator.py  # Group by normalized_key, keep highest-scored
-│   ├── storage/
-│   │   ├── database.py      # Async SQLite (aiosqlite), jobs + run_log tables, auto-purge
-│   │   └── csv_export.py    # CSV export per run
-│   ├── notifications/
-│   │   ├── base.py          # NotificationChannel ABC, get_configured_channels()
-│   │   ├── email_notify.py  # Gmail SMTP (HTML + CSV attachment)
-│   │   ├── slack_notify.py  # Slack Block Kit webhook
-│   │   ├── discord_notify.py # Discord embed webhook
-│   │   └── report_generator.py  # Markdown + HTML report templates
-│   └── utils/
-│       ├── logger.py        # Rotating file + console logging (5MB, 3 backups)
-│       ├── rate_limiter.py  # Async semaphore + delay rate limiter
-│       └── time_buckets.py  # Time bucketing for CLI view + console summary
-├── tests/                   # 409 tests across 20 files
-│   ├── conftest.py          # Shared fixtures (sample_ai_job, sample_visa_job, etc.)
-│   └── test_*.py            # 21 test modules
-├── data/                    # Runtime data (gitignored)
-│   ├── jobs.db              # SQLite database
-│   ├── user_profile.json    # User profile (optional)
-│   ├── exports/             # CSV exports per run
-│   ├── reports/             # Markdown reports per run
-│   └── logs/                # Rotating log files
-├── requirements.txt         # Production dependencies (19 packages)
-├── requirements-dev.txt     # Test dependencies (includes prod via -r)
-├── .env.example             # Template for API keys and webhooks
-├── setup.sh                 # Setup script (Python 3.9+ check, venv, deps, .env validation)
-└── cron_setup.sh            # Cron scheduling (4AM/4PM Europe/London)
+├── backend/
+│   ├── main.py                 # FastAPI entrypoint (uvicorn target) — thin, imports src/api/main.py
+│   ├── pyproject.toml          # Deps + dev + indeed extras, ruff/mypy/pytest config, pythonpath=["."]
+│   ├── data/                   # Runtime data (gitignored): jobs.db, user_profile.json, exports/, reports/, logs/
+│   ├── src/
+│   │   ├── main.py             # Pipeline orchestrator: run_search(), SOURCE_REGISTRY (48), _build_sources()
+│   │   ├── cli.py              # Click CLI: run, api, dashboard, status, sources, view, setup-profile
+│   │   ├── cli_view.py         # Rich terminal table viewer (time-bucketed)
+│   │   ├── dashboard.py        # Streamlit dashboard
+│   │   ├── models.py           # Job dataclass with normalized_key() for dedup
+│   │   ├── api/
+│   │   │   ├── main.py         # FastAPI app: CORS, lifespan, route registration
+│   │   │   ├── dependencies.py # Shared deps: get_db(), save_upload_to_temp()
+│   │   │   ├── models.py       # Pydantic request/response models (matches frontend types.ts)
+│   │   │   └── routes/         # 7 route modules: health, jobs, actions, profile, search, pipeline
+│   │   ├── config/
+│   │   │   ├── settings.py     # Env vars, paths, RATE_LIMITS, thresholds
+│   │   │   ├── keywords.py     # Default keywords (emptied in a01c1b3 — LLM-driven only)
+│   │   │   └── companies.py    # ATS company slugs (~104 companies across 10 platforms)
+│   │   ├── profile/            # CV + LinkedIn + GitHub enrichment, LLM-driven
+│   │   │   ├── models.py       # CVData, UserPreferences, UserProfile, SearchConfig
+│   │   │   ├── cv_parser.py    # PDF/DOCX extraction; LLM-only skill/title extraction
+│   │   │   ├── llm_provider.py # Multi-provider LLM client (Gemini/Groq/Cerebras)
+│   │   │   ├── preferences.py
+│   │   │   ├── storage.py
+│   │   │   ├── keyword_generator.py  # UserProfile → SearchConfig
+│   │   │   ├── linkedin_parser.py
+│   │   │   └── github_enricher.py
+│   │   ├── sources/            # 47 source files split by category (phase 2 refactor)
+│   │   │   ├── base.py         # BaseJobSource ABC + _is_uk_or_remote helper
+│   │   │   ├── apis_keyed/     # 7: adzuna, careerjet, findwork, google_jobs, jooble, jsearch, reed
+│   │   │   ├── apis_free/      # 10: aijobs, arbeitnow, devitjobs, himalayas, hn_jobs, jobicy, landingjobs, remoteok, remotive, yc_companies
+│   │   │   ├── ats/            # 10: ashby, greenhouse, lever, personio, pinpoint, recruitee, smartrecruiters, successfactors, workable, workday
+│   │   │   ├── feeds/          # 8 RSS/XML: biospace, findajob, jobs_ac_uk, nhs_jobs, realworkfromanywhere, uni_jobs, workanywhere, weworkremotely
+│   │   │   ├── scrapers/       # 7 HTML: aijobs_ai, aijobs_global, bcs_jobs, climatebase, eightykhours, jobtensor, linkedin
+│   │   │   └── other/          # 5: hackernews, indeed (jobspy), nofluffjobs, nomis, themuse
+│   │   ├── filters/
+│   │   │   ├── skill_matcher.py  # JobScorer: title/skill/location/recency scoring, visa detection
+│   │   │   └── deduplicator.py   # Group by normalized_key, keep highest-scored
+│   │   ├── storage/
+│   │   │   ├── database.py     # Async SQLite (aiosqlite), WAL, auto-purge >30 days
+│   │   │   └── csv_export.py
+│   │   ├── notifications/
+│   │   │   ├── base.py         # NotificationChannel ABC + get_configured_channels()
+│   │   │   ├── email_notify.py # Gmail SMTP
+│   │   │   ├── slack_notify.py # Block Kit webhook
+│   │   │   ├── discord_notify.py
+│   │   │   └── report_generator.py  # Markdown + HTML templates
+│   │   └── utils/
+│   │       ├── logger.py       # Rotating file + console logging
+│   │       ├── rate_limiter.py # Async semaphore + delay
+│   │       └── time_buckets.py
+│   └── tests/                  # 412 tests across 23 files (pytest pythonpath=["."])
+│       ├── conftest.py
+│       └── test_*.py           # Mirrors src/ layout
+│
+├── frontend/                   # Next.js 16 + React 19 + Tailwind 4 + shadcn 4
+│   ├── next.config.ts
+│   ├── tsconfig.json           # "@/*" → "./src/*"
+│   ├── components.json         # shadcn config
+│   ├── package.json
+│   ├── public/
+│   └── src/
+│       ├── app/                # App Router: layout.tsx, page.tsx, dashboard/, jobs/[id]/, pipeline/, profile/
+│       ├── components/
+│       │   ├── ui/             # shadcn primitives: button, card, dialog, input, ...
+│       │   ├── jobs/           # JobCard, JobList, FilterPanel, ScoreRadar, TimeBuckets
+│       │   ├── profile/        # CVUpload, CVViewer, PreferencesForm
+│       │   ├── pipeline/       # KanbanBoard
+│       │   └── layout/         # Navbar, Footer, FloatingIcons
+│       └── lib/
+│           ├── api.ts          # fetch-based API client (typed against types.ts)
+│           ├── types.ts        # TypeScript types mirroring backend Pydantic models
+│           └── utils.ts        # cn() etc.
+│
+├── scripts/
+│   └── split_sources_by_category.py  # One-shot migration used during phase 2 restructure
+├── docs/                       # Architecture, ADRs (future)
+├── .env.example
+├── setup.sh
+├── cron_setup.sh
+├── CLAUDE.md
+├── README.md
+└── ARCHITECTURE.md
 ```
+
+**Restructure note (phase 1–3):** The codebase was previously flat at project root (`src/`, `tests/`, `pyproject.toml`). The move to `backend/` + `frontend/src/` was completed in commits `0d3ef72`, the sources split commit, and the phase 3 frontend commit. Internal backend renames (`filters/` → `services/`, `storage/` → `repositories/`, `config/` → `core/`) are a future phase and haven't been applied yet — the module paths still use the original names.
 
 ## Architecture
 
