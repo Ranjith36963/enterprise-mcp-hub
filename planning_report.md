@@ -28,7 +28,7 @@
 
 ## 1. Ground Truth (Real Data State)
 
-Verified against `data/jobs.db` on 2026-04-11.
+Verified against `backend/data/jobs.db` on 2026-04-11.
 
 | Metric | Value |
 |---|---|
@@ -59,18 +59,18 @@ adzuna:         12/2  same-day (17%)   ← healthy
 
 ### 2.1 The root bug
 
-`src/utils/time_buckets.py:51-63` `get_job_age_hours()` reads `date_found` first. But `date_found` is set by sources via the pattern `item.get("X") or datetime.now(...)` — a missing API field silently becomes "posted right now." All 46 sources have this fallback; 13 sources use `now()` unconditionally because their upstream has no date field at all.
+`backend/src/utils/time_buckets.py:51-63` `get_job_age_hours()` reads `date_found` first. But `date_found` is set by sources via the pattern `item.get("X") or datetime.now(...)` — a missing API field silently becomes "posted right now." All 46 sources have this fallback; 13 sources use `now()` unconditionally because their upstream has no date field at all.
 
 ### 2.2 Original-plan bugs caught by Round-2 audit
 
 | # | Bug | Fix lives in |
 |---|---|---|
-| **H1** | Original plan referenced `DatabaseManager.connect()` — **class is actually `JobDatabase` with `init_db()`**. An idempotent `_migrate()` already exists at `src/storage/database.py:75-97` with a column-name allowlist ready for extension. | Phase 0.1 |
+| **H1** | Original plan referenced `DatabaseManager.connect()` — **class is actually `JobDatabase` with `init_db()`**. An idempotent `_migrate()` already exists at `backend/src/storage/database.py:75-97` with a column-name allowlist ready for extension. | Phase 0.1 |
 | **H2** | Upsert `description = excluded.description` silently **clobbers** non-empty Reed descriptions with empty LinkedIn ones when dedup winner flips between runs. `apply_url` flip-flop breaks bookmarks. | Phase 3.2 corrected SQL |
-| **H3** | Frontend breaks silently. `frontend/lib/types.ts:15` is `date_found: string` (non-null). Three consumers at `frontend/components/jobs/JobCard.tsx:100`, `frontend/app/dashboard/page.tsx:38`, `frontend/app/jobs/[id]/page.tsx:224` read `date_found` with no fallback. Dropping it from the API crashes the frontend. | Phase 2.7 |
+| **H3** | Frontend breaks silently. `frontend/src/lib/types.ts:15` is `date_found: string` (non-null). Three consumers at `frontend/src/components/jobs/JobCard.tsx:100`, `frontend/src/app/dashboard/page.tsx:38`, `frontend/src/app/jobs/[id]/page.tsx:224` read `date_found` with no fallback. Dropping it from the API crashes the frontend. | Phase 2.7 |
 | **H5** | `mark_disappeared` per-source fails when dedup winner switches source between runs — row's `source` field moves from Reed→LinkedIn, so next run's `WHERE source="reed"` misses it. | Phase 3.3 (corrected SQL) |
 | **H6** | Phase 2.2 sets `_recency_score(None) → 0`, causing historical rows with `date_posted=NULL` to deflate 0-10 recency points overnight. **Estimated 15-30% of qualifying jobs vanish below `MIN_MATCH_SCORE=30` on deploy.** | Phase 2.0 — fallback to `first_seen` with -2 confidence penalty |
-| **NHS** | `src/sources/nhs_jobs.py:66` stores `<closingDate>` (a **future** deadline) as `date_found`. `_recency_score` computes `days_old = (now - future).days = negative`. Path `if days_old <= 1` matches → NHS jobs always score **full 10 recency points**. Silent bias for months. | Phase 4.2 + one-line sanity clamp `if days_old < 0: return 0` |
+| **NHS** | `backend/src/sources/feeds/nhs_jobs.py:66` stores `<closingDate>` (a **future** deadline) as `date_found`. `_recency_score` computes `days_old = (now - future).days = negative`. Path `if days_old <= 1` matches → NHS jobs always score **full 10 recency points**. Silent bias for months. | Phase 4.2 + one-line sanity clamp `if days_old < 0: return 0` |
 
 ### 2.3 Missed consumers (file inventory additions)
 
@@ -78,23 +78,23 @@ These files/lines were not in the original plan's touch list:
 
 | File:line | Role | Phase |
 |---|---|---|
-| `src/api/routes/jobs.py:17-39` | **Duplicate `_compute_bucket`** — independent bucketing implementation reading `date_found` | 2.8 — consolidate into `time_buckets.get_job_age_hours` |
-| `src/api/routes/jobs.py:58,63,74,94,127,148` | `JobResponse.date_found`, CSV export, hours filter, bucket filter | 2.6 / 2.8 |
-| `src/storage/csv_export.py:10,41` | `HEADERS` list + row writer — **public contract** (user spreadsheets) | 2.8 |
-| `src/notifications/email_notify.py:28` | Builds `{"date_found": j.date_found}` for subject line | 2.8 |
-| `src/notifications/report_generator.py:26,76,122` | `_jobs_to_dicts` + 2× `Job(date_found=...)` reconstructions | 2.8 |
-| `src/main.py:137,442,463` | `_format_date()` + `_print_bucketed_summary` | 2 |
-| `src/filters/skill_matcher.py:236` | **Module-level `score_job()`** also reads `job.date_found` (plan caught only `JobScorer.score` at 299) | 2.2 |
-| `tests/test_api.py:27,36,97,102` | Hardcodes `48` source count | 1.12 |
-| `tests/test_cli_view.py:25` | Hand-written `CREATE TABLE` DDL with `date_found TEXT NOT NULL` | 0/2 |
-| `tests/conftest.py:24,37,48,65,78,91` | All 6 shared fixtures set `date_found=now()` | 0.3 (new) |
-| `frontend/lib/types.ts:15` + 3 components | TypeScript contract + display sites | 2.7 (new) |
+| `backend/src/api/routes/jobs.py:17-39` | **Duplicate `_compute_bucket`** — independent bucketing implementation reading `date_found` | 2.8 — consolidate into `time_buckets.get_job_age_hours` |
+| `backend/src/api/routes/jobs.py:58,63,74,94,127,148` | `JobResponse.date_found`, CSV export, hours filter, bucket filter | 2.6 / 2.8 |
+| `backend/src/storage/csv_export.py:10,41` | `HEADERS` list + row writer — **public contract** (user spreadsheets) | 2.8 |
+| `backend/src/notifications/email_notify.py:28` | Builds `{"date_found": j.date_found}` for subject line | 2.8 |
+| `backend/src/notifications/report_generator.py:26,76,122` | `_jobs_to_dicts` + 2× `Job(date_found=...)` reconstructions | 2.8 |
+| `backend/src/main.py:137,442,463` | `_format_date()` + `_print_bucketed_summary` | 2 |
+| `backend/src/filters/skill_matcher.py:236` | **Module-level `score_job()`** also reads `job.date_found` (plan caught only `JobScorer.score` at 299) | 2.2 |
+| `backend/tests/test_api.py:27,36,97,102` | Hardcodes `48` source count | 1.12 |
+| `backend/tests/test_cli_view.py:25` | Hand-written `CREATE TABLE` DDL with `date_found TEXT NOT NULL` | 0/2 |
+| `backend/tests/conftest.py:24,37,48,65,78,91` | All 6 shared fixtures set `date_found=now()` | 0.3 (new) |
+| `frontend/src/lib/types.ts:15` + 3 components | TypeScript contract + display sites | 2.7 (new) |
 
 ### 2.4 Verified correct in original plan (no change)
 
-- Workday already uses CXS endpoint — `src/sources/workday.py:52` hits `POST /wday/cxs/{tenant}/{site}/jobs`, 15 dict-format companies in `companies.py:58-74`, 2 passing tests.
-- ChromaDB / sentence-transformers **not** in `requirements.txt` — ghost detection is greenfield.
-- Dashboard (`src/dashboard.py`) is alive, not being deleted. `STREAMLIT_DELETE.md` in git history is a stale review branch.
+- Workday already uses CXS endpoint — `backend/src/sources/ats/workday.py:52` hits `POST /wday/cxs/{tenant}/{site}/jobs`, 15 dict-format companies in `companies.py:58-74`, 2 passing tests.
+- ChromaDB / sentence-transformers **not** in `backend/pyproject.toml` — ghost detection is greenfield.
+- Dashboard (`backend/src/dashboard.py`) is alive, not being deleted. `STREAMLIT_DELETE.md` in git history is a stale review branch.
 - `nomis` + `yc_companies` are not job sources (market stats / company directory) — removal stands.
 - `is_new: bool = True` on `Job` dataclass is dead code (grep confirms zero runtime readers, one test assertion). Delete in Phase 0.4.
 
@@ -112,7 +112,7 @@ These files/lines were not in the original plan's touch list:
 
 5. **Per-run `run_hash` drives disappearance detection** via `INSERT ... ON CONFLICT DO UPDATE`. The naive per-source `mark_disappeared` is insufficient (H5); corrected SQL uses a subquery to check "was this job's key seen by *any* source in the current run."
 
-6. **Idempotent migrations reuse existing scaffolding.** Extend `src/storage/database.py:_migrate()` line 82-85 `migrations` list — do not invent a parallel `_migrate_schema()`.
+6. **Idempotent migrations reuse existing scaffolding.** Extend `backend/src/storage/database.py:_migrate()` line 82-85 `migrations` list — do not invent a parallel `_migrate_schema()`.
 
 7. **Backfill strategy: recency fallback, not column backfill.** Historical rows keep `date_posted=NULL`; the scorer's `first_seen` fallback (−2 pts) preserves continuity without lying about Greenhouse job ages.
 
@@ -122,26 +122,26 @@ These files/lines were not in the original plan's touch list:
 
 ### Modified
 
-**Core schema & scoring:** `src/models.py` · `src/storage/database.py` · `src/storage/csv_export.py` · `src/filters/skill_matcher.py` · `src/utils/time_buckets.py` · `src/main.py`
+**Core schema & scoring:** `backend/src/models.py` · `backend/src/storage/database.py` · `backend/src/storage/csv_export.py` · `backend/src/filters/skill_matcher.py` · `backend/src/utils/time_buckets.py` · `backend/src/main.py`
 
-**Consumers:** `src/dashboard.py` · `src/cli_view.py` · `src/api/models.py` · `src/api/routes/jobs.py` · `src/notifications/email_notify.py` · `src/notifications/report_generator.py`
+**Consumers:** `backend/src/dashboard.py` · `backend/src/cli_view.py` · `backend/src/api/models.py` · `backend/src/api/routes/jobs.py` · `backend/src/notifications/email_notify.py` · `backend/src/notifications/report_generator.py`
 
-**All 46 sources:** `src/sources/*.py` (see Phase 1 batching table)
+**All 46 sources:** `backend/src/sources/**/*.py` (grouped into `apis_keyed/`, `apis_free/`, `ats/`, `feeds/`, `scrapers/`, `other/` — see Phase 1 batching table)
 
-**Tests:** `tests/conftest.py` · `tests/test_database.py` · `tests/test_scorer.py` · `tests/test_time_buckets.py` · `tests/test_deduplicator.py` · `tests/test_sources.py` · `tests/test_api.py` · `tests/test_cli.py` · `tests/test_cli_view.py` · `tests/test_csv_export.py` · `tests/test_main.py` · `tests/test_notifications.py` · `tests/test_reports.py` · `tests/test_models.py`
+**Tests:** `backend/tests/conftest.py` · `backend/tests/test_database.py` · `backend/tests/test_scorer.py` · `backend/tests/test_time_buckets.py` · `backend/tests/test_deduplicator.py` · `backend/tests/test_sources.py` · `backend/tests/test_api.py` · `backend/tests/test_cli.py` · `backend/tests/test_cli_view.py` · `backend/tests/test_csv_export.py` · `backend/tests/test_main.py` · `backend/tests/test_notifications.py` · `backend/tests/test_reports.py` · `backend/tests/test_models.py`
 
-**Frontend (Phase 2.7):** `frontend/lib/types.ts` · `frontend/components/jobs/JobCard.tsx` · `frontend/app/jobs/[id]/page.tsx` · `frontend/app/dashboard/page.tsx`
+**Frontend (Phase 2.7):** `frontend/src/lib/types.ts` · `frontend/src/components/jobs/JobCard.tsx` · `frontend/src/app/jobs/[id]/page.tsx` · `frontend/src/app/dashboard/page.tsx`
 
 ### Created
 
-- `src/utils/date_parsing.py` — shared `parse_iso_utc`, `parse_ms_epoch_utc`, `parse_relative_date_utc`, `now_utc_iso`, `to_iso_or_none`
-- `frontend/lib/jobDates.ts` — `displayedPostedDate(job)` + `isApproximateDate(job)` helpers
-- `tests/test_date_parsing.py`
-- `tests/test_disappearance.py`
+- `backend/src/utils/date_parsing.py` — shared `parse_iso_utc`, `parse_ms_epoch_utc`, `parse_relative_date_utc`, `now_utc_iso`, `to_iso_or_none`
+- `frontend/src/lib/jobDates.ts` — `displayedPostedDate(job)` + `isApproximateDate(job)` helpers
+- `backend/tests/test_date_parsing.py`
+- `backend/tests/test_disappearance.py`
 
 ### Deleted
 
-- `src/sources/nomis.py` + `src/sources/yc_companies.py` (not job sources)
+- `backend/src/sources/other/nomis.py` + `backend/src/sources/apis_free/yc_companies.py` (not job sources)
 
 ---
 
@@ -171,7 +171,7 @@ Each task uses a compressed TDD cycle: **(a)** write failing test with concrete 
 
 **Task 0.1 — Add 5 columns via existing `_migrate()`**
 
-Extend `src/storage/database.py:82-85` `migrations` list to:
+Extend `backend/src/storage/database.py:82-85` `migrations` list to:
 ```python
 migrations = [
     ("date_posted",    "TEXT"),
@@ -181,25 +181,25 @@ migrations = [
     ("disappeared_at", "TEXT"),
 ]
 ```
-Also add matching columns to the inline `CREATE TABLE` at `database.py:23-42` for fresh DBs. Add indexes on `date_posted`, `last_seen_at`, `run_hash`. Test in `tests/test_database.py` following existing `asyncio.run(...)` pattern: fresh DB has new columns, legacy DB auto-migrates, second open is idempotent.
+Also add matching columns to the inline `CREATE TABLE` at `database.py:23-42` for fresh DBs. Add indexes on `date_posted`, `last_seen_at`, `run_hash`. Test in `backend/tests/test_database.py` following existing `asyncio.run(...)` pattern: fresh DB has new columns, legacy DB auto-migrates, second open is idempotent.
 
 Commit: `feat(db): migrate to date_posted/last_seen_at/run_hash schema`
 
 **Task 0.2 — Extend `Job` dataclass**
 
-`src/models.py` — add `date_posted: Optional[str] = None` and `discovered_at: Optional[str] = None`. Test that defaults are `None`. Run `tests/test_models.py`.
+`backend/src/models.py` — add `date_posted: Optional[str] = None` and `discovered_at: Optional[str] = None`. Test that defaults are `None`. Run `backend/tests/test_models.py`.
 
 Commit: `feat(models): add date_posted and discovered_at fields`
 
 **Task 0.3 — Extend conftest fixtures**
 
-`tests/conftest.py:7-93` — all 6 fixtures get `date_posted=datetime.now(timezone.utc).isoformat()` alongside existing `date_found`. **Why:** prevents Phase 2.2 cascade where `_recency_score` reads `date_posted` and every fixture-consuming test drops 10 points.
+`backend/tests/conftest.py:7-93` — all 6 fixtures get `date_posted=datetime.now(timezone.utc).isoformat()` alongside existing `date_found`. **Why:** prevents Phase 2.2 cascade where `_recency_score` reads `date_posted` and every fixture-consuming test drops 10 points.
 
 Commit: `chore(tests): backfill date_posted into shared fixtures`
 
 **Task 0.4 — Delete vestigial `is_new`**
 
-Grep confirms `Job.is_new` has zero runtime readers, one test assertion. Delete `src/models.py:30` and the assertion in `tests/test_models.py:32`.
+Grep confirms `Job.is_new` has zero runtime readers, one test assertion. Delete `backend/src/models.py:30` and the assertion in `backend/tests/test_models.py:32`.
 
 Commit: `refactor(models): remove vestigial is_new flag`
 
@@ -207,7 +207,7 @@ Commit: `refactor(models): remove vestigial is_new flag`
 
 **Task 1.1 — Shared date parsing utilities**
 
-Create `src/utils/date_parsing.py` with `parse_iso_utc`, `parse_ms_epoch_utc`, `parse_sec_epoch_utc`, `parse_relative_date_utc`, `now_utc_iso`, `to_iso_or_none`. **All functions return None on missing/unparseable input — never substitute `now()`.** Write `tests/test_date_parsing.py` covering ISO with `Z` suffix, with `+01:00` offset, null/empty/garbage, ms epoch, second epoch, relative phrases ("2 days ago", "yesterday", "just posted"), future-date handling.
+Create `backend/src/utils/date_parsing.py` with `parse_iso_utc`, `parse_ms_epoch_utc`, `parse_sec_epoch_utc`, `parse_relative_date_utc`, `now_utc_iso`, `to_iso_or_none`. **All functions return None on missing/unparseable input — never substitute `now()`.** Write `backend/tests/test_date_parsing.py` covering ISO with `Z` suffix, with `+01:00` offset, null/empty/garbage, ms epoch, second epoch, relative phrases ("2 days ago", "yesterday", "just posted"), future-date handling.
 
 Commit: `feat(utils): shared UTC date parsing helpers`
 
@@ -219,7 +219,7 @@ Commit: `feat(sources): add _discovered_at helper`
 
 **Task 1.3 — Lever (reference implementation)**
 
-`src/sources/lever.py:38-42`. Replace inline `fromtimestamp(created_at/1000)` with `parse_ms_epoch_utc`. Set `date_posted = to_iso_or_none(parse_ms_epoch_utc(item.get("createdAt")))`, `discovered_at = now_utc_iso()`, `date_found = date_posted or discovered_at`. Test the None case explicitly.
+`backend/src/sources/ats/lever.py:38-42`. Replace inline `fromtimestamp(created_at/1000)` with `parse_ms_epoch_utc`. Set `date_posted = to_iso_or_none(parse_ms_epoch_utc(item.get("createdAt")))`, `discovered_at = now_utc_iso()`, `date_found = date_posted or discovered_at`. Test the None case explicitly.
 
 Commit: `fix(sources/lever): populate date_posted from createdAt; None on missing`
 
@@ -227,12 +227,12 @@ Commit: `fix(sources/lever): populate date_posted from createdAt; None on missin
 
 | File | Source field | Parser |
 |---|---|---|
-| `src/sources/ashby.py:35` | `publishedAt` / `updatedAt` | `parse_iso_utc` |
-| `src/sources/reed.py:50` | `date` / `datePosted` | `parse_iso_utc` |
-| `src/sources/adzuna.py:49` | `created` | `parse_iso_utc` |
-| `src/sources/hn_jobs.py:64` | Firebase epoch | `parse_sec_epoch_utc` |
-| `src/sources/linkedin.py:67` | **HTML `<time datetime="...">`** attribute (JobSpy pattern) | `parse_iso_utc` |
-| `src/sources/workday.py:95` | "Posted X Days Ago" text | `parse_relative_date_utc` |
+| `backend/src/sources/ats/ashby.py:35` | `publishedAt` / `updatedAt` | `parse_iso_utc` |
+| `backend/src/sources/apis_keyed/reed.py:50` | `date` / `datePosted` | `parse_iso_utc` |
+| `backend/src/sources/apis_keyed/adzuna.py:49` | `created` | `parse_iso_utc` |
+| `backend/src/sources/apis_free/hn_jobs.py:64` | Firebase epoch | `parse_sec_epoch_utc` |
+| `backend/src/sources/scrapers/linkedin.py:67` | **HTML `<time datetime="...">`** attribute (JobSpy pattern) | `parse_iso_utc` |
+| `backend/src/sources/ats/workday.py:95` | "Posted X Days Ago" text | `parse_relative_date_utc` |
 
 Same TDD cycle for each. One commit per source.
 
@@ -258,7 +258,7 @@ Commit: `fix(sources): no-date sources leave date_posted=None, record discovered
 
 **Task 1.12.2 — Remove `nomis` and `yc_companies`**
 
-Delete source files. Remove from `SOURCE_REGISTRY` + `_build_sources()` + `RATE_LIMITS`. Bump `tests/test_cli.py` assertion from 48 to 46. **Also bump `tests/test_api.py:27,36,97,102` hardcoded 48** (plan originally missed these).
+Delete source files. Remove from `SOURCE_REGISTRY` + `_build_sources()` + `RATE_LIMITS`. Bump `backend/tests/test_cli.py` assertion from 48 to 46. **Also bump `backend/tests/test_api.py:27,36,97,102` hardcoded 48** (plan originally missed these).
 
 Commit: `refactor(sources): remove nomis and yc_companies (not job sources)`
 
@@ -272,7 +272,7 @@ Commit: `feat(observability): log per-source date_posted fill rate`
 
 **Task 2.0 — Backfill policy (BLOCKS 2.2)**
 
-Update `src/filters/skill_matcher.py:_recency_score` signature to `(date_posted: Optional[str], first_seen: Optional[str] = None) -> int`. When `date_posted is None`, fall back to `first_seen` with a **−2 point confidence penalty** across all tiers. Add NHS sanity clamp: `if days_old < 0: return 0`.
+Update `backend/src/filters/skill_matcher.py:_recency_score` signature to `(date_posted: Optional[str], first_seen: Optional[str] = None) -> int`. When `date_posted is None`, fall back to `first_seen` with a **−2 point confidence penalty** across all tiers. Add NHS sanity clamp: `if days_old < 0: return 0`.
 
 ```python
 def _recency_score(date_posted: Optional[str], first_seen: Optional[str] = None) -> int:
@@ -303,46 +303,46 @@ Commit: `feat(scoring): recency fallback to first_seen with -2 confidence penalt
 
 **Task 2.1 — Update `get_job_age_hours` to prefer `date_posted`**
 
-`src/utils/time_buckets.py:51-63`. Signature becomes `(date_posted, first_seen, date_found=None)` — `date_found` accepted for backwards-compat but ignored. Update `bucket_jobs()` to pass `date_posted`. Update all 33 tests in `tests/test_time_buckets.py` factory.
+`backend/src/utils/time_buckets.py:51-63`. Signature becomes `(date_posted, first_seen, date_found=None)` — `date_found` accepted for backwards-compat but ignored. Update `bucket_jobs()` to pass `date_posted`. Update all 33 tests in `backend/tests/test_time_buckets.py` factory.
 
 Commit: `refactor(time_buckets): prefer date_posted over first_seen`
 
 **Task 2.3 — Persist new fields in `insert_job`**
 
-`src/storage/database.py:114-132`. Extend INSERT column list + value tuple. Test round-trip: insert job with `date_posted` + `discovered_at`, SELECT confirms values stored.
+`backend/src/storage/database.py:114-132`. Extend INSERT column list + value tuple. Test round-trip: insert job with `date_posted` + `discovered_at`, SELECT confirms values stored.
 
 Commit: `feat(db): persist date_posted and discovered_at on insert`
 
 **Task 2.4 — Dashboard**
 
-`src/dashboard.py:241,253,305,669`. Load `date_posted` + `discovered_at` in SELECT. Change ORDER BY to `COALESCE(date_posted, first_seen) DESC`. Update `age_hours` computation. Add "Posted date unknown" filter option. Update `format_relative_time` call site to pass `date_posted ?? date_found`.
+`backend/src/dashboard.py:241,253,305,669`. Load `date_posted` + `discovered_at` in SELECT. Change ORDER BY to `COALESCE(date_posted, first_seen) DESC`. Update `age_hours` computation. Add "Posted date unknown" filter option. Update `format_relative_time` call site to pass `date_posted ?? date_found`.
 
 Commit: `refactor(dashboard): prefer date_posted; add unknown bucket`
 
 **Task 2.5 — CLI view**
 
-`src/cli_view.py:36,82,122`. Same pattern as dashboard — ORDER BY, `format_relative_time`, `parse_date_safe` all prefer `date_posted`.
+`backend/src/cli_view.py:36,82,122`. Same pattern as dashboard — ORDER BY, `format_relative_time`, `parse_date_safe` all prefer `date_posted`.
 
 Commit: `refactor(cli_view): prefer date_posted for bucketing`
 
 **Task 2.6 — API response model + routes**
 
-`src/api/models.py`: add `date_posted: Optional[str]`, `discovered_at: Optional[str]` to `JobResponse`. **Keep `date_found` for frontend compat.**
+`backend/src/api/models.py`: add `date_posted: Optional[str]`, `discovered_at: Optional[str]` to `JobResponse`. **Keep `date_found` for frontend compat.**
 
-`src/api/routes/jobs.py:17-39` — consolidate `_compute_bucket` into a thin wrapper around `time_buckets.get_job_age_hours`. Update `_row_to_job_response` (line 58) to pass `date_posted`. Update hours filter (line 127) and bucket filter (line 148) to use `date_posted` with `first_seen` fallback.
+`backend/src/api/routes/jobs.py:17-39` — consolidate `_compute_bucket` into a thin wrapper around `time_buckets.get_job_age_hours`. Update `_row_to_job_response` (line 58) to pass `date_posted`. Update hours filter (line 127) and bucket filter (line 148) to use `date_posted` with `first_seen` fallback.
 
 Commit: `feat(api): expose date_posted; consolidate bucket logic`
 
 **Task 2.7 — Frontend contract update**
 
-Create `frontend/lib/jobDates.ts`:
+Create `frontend/src/lib/jobDates.ts`:
 ```typescript
 import type { JobResponse } from './types';
 export const displayedPostedDate = (j: JobResponse): string => j.date_posted ?? j.date_found;
 export const isApproximateDate  = (j: JobResponse): boolean => !j.date_posted;
 ```
 
-Update `frontend/lib/types.ts:15`:
+Update `frontend/src/lib/types.ts:15`:
 ```typescript
 date_found: string;              // Legacy — prefer displayedPostedDate(job)
 date_posted: string | null;
@@ -350,19 +350,19 @@ discovered_at: string | null;
 ```
 
 Update the three consumers:
-- `frontend/components/jobs/JobCard.tsx:100` — `timeAgo(displayedPostedDate(job))` with optional `~` prefix from `isApproximateDate`
-- `frontend/app/dashboard/page.tsx:38` — `hoursSince(displayedPostedDate(j))`
-- `frontend/app/jobs/[id]/page.tsx:224` — `relativeDate(displayedPostedDate(job))`
+- `frontend/src/components/jobs/JobCard.tsx:100` — `timeAgo(displayedPostedDate(job))` with optional `~` prefix from `isApproximateDate`
+- `frontend/src/app/dashboard/page.tsx:38` — `hoursSince(displayedPostedDate(j))`
+- `frontend/src/app/jobs/[id]/page.tsx:224` — `relativeDate(displayedPostedDate(job))`
 
 Commit: `feat(frontend): prefer date_posted via displayedPostedDate helper`
 
 **Task 2.8 — CSV exports + reports**
 
-`src/storage/csv_export.py:10,41` — add `date_posted`, `discovered_at` columns after existing `date_found`. Keep `date_found` for downstream spreadsheet compat (public contract).
+`backend/src/storage/csv_export.py:10,41` — add `date_posted`, `discovered_at` columns after existing `date_found`. Keep `date_found` for downstream spreadsheet compat (public contract).
 
-`src/notifications/email_notify.py:28` + `src/notifications/report_generator.py:26,76,122` — propagate `date_posted` through the dict builders and Job reconstructions.
+`backend/src/notifications/email_notify.py:28` + `backend/src/notifications/report_generator.py:26,76,122` — propagate `date_posted` through the dict builders and Job reconstructions.
 
-`src/api/routes/jobs.py:74,94` — same column addition in the API `/jobs/export` endpoint.
+`backend/src/api/routes/jobs.py:74,94` — same column addition in the API `/jobs/export` endpoint.
 
 One commit per file pair (csv_export + notifications + api export) = 3 commits.
 
@@ -370,13 +370,13 @@ One commit per file pair (csv_export + notifications + api export) = 3 commits.
 
 **Task 3.1 — Per-run `run_hash`**
 
-`src/main.py` `run_search()` — generate `run_hash = uuid.uuid4().hex` at start. Add `run_hash: Optional[str] = None` to `Job` dataclass. After each source fetch, set `job.run_hash = run_hash` on every returned Job.
+`backend/src/main.py` `run_search()` — generate `run_hash = uuid.uuid4().hex` at start. Add `run_hash: Optional[str] = None` to `Job` dataclass. After each source fetch, set `job.run_hash = run_hash` on every returned Job.
 
 Commit: `feat(pipeline): generate per-run run_hash`
 
 **Task 3.2 — Convert `insert_job` to upsert (CORRECTED SQL)**
 
-`src/storage/database.py:114-132` — replace `INSERT OR IGNORE` with `ON CONFLICT DO UPDATE`. **The asymmetry matters** (H2):
+`backend/src/storage/database.py:114-132` — replace `INSERT OR IGNORE` with `ON CONFLICT DO UPDATE`. **The asymmetry matters** (H2):
 
 ```sql
 INSERT INTO jobs (...)
@@ -402,12 +402,12 @@ ON CONFLICT(normalized_company, normalized_title) DO UPDATE SET
     END
 ```
 
-**Regression test (Phase 3.2.1)** in `tests/test_deduplicator.py`: Reed rich → LinkedIn empty (higher score) → Reed-only. Assert final row has Reed's 2000-char description, Reed's `apply_url`, `source="reed"`, Reed's `salary_min`, Run 3's `match_score`.
+**Regression test (Phase 3.2.1)** in `backend/tests/test_deduplicator.py`: Reed rich → LinkedIn empty (higher score) → Reed-only. Assert final row has Reed's 2000-char description, Reed's `apply_url`, `source="reed"`, Reed's `salary_min`, Run 3's `match_score`.
 
 **Safety smoke-test before committing:**
 ```bash
-cp data/jobs.db /tmp/jobs_backup.db
-cp data/jobs.db /tmp/jobs_upsert_test.db
+cp backend/data/jobs.db /tmp/jobs_backup.db
+cp backend/data/jobs.db /tmp/jobs_upsert_test.db
 python -m src.cli run --db-path /tmp/jobs_upsert_test.db --dry-run
 sqlite3 /tmp/jobs_backup.db       "SELECT COUNT(*), AVG(match_score), MAX(match_score) FROM jobs"
 sqlite3 /tmp/jobs_upsert_test.db  "SELECT COUNT(*), AVG(match_score), MAX(match_score) FROM jobs"
@@ -419,7 +419,7 @@ Commit: `feat(db): upsert with stable attribution; advance last_seen and run_has
 
 **Task 3.3 — `mark_disappeared` with alternate-source guard (CORRECTED)**
 
-`src/storage/database.py` new method:
+`backend/src/storage/database.py` new method:
 
 ```python
 async def mark_disappeared(self, source: str, current_run_hash: str) -> int:
@@ -444,13 +444,13 @@ async def mark_disappeared(self, source: str, current_run_hash: str) -> int:
     return cursor.rowcount
 ```
 
-**Regression test (Phase 3.3.1)** in `tests/test_disappearance.py`: LinkedIn wins run 1. Reed-only run 2 (Reed sees same job). Assert row still has `disappeared_at IS NULL`. Run 3 neither source returns → assert flagged.
+**Regression test (Phase 3.3.1)** in `backend/tests/test_disappearance.py`: LinkedIn wins run 1. Reed-only run 2 (Reed sees same job). Assert row still has `disappeared_at IS NULL`. Run 3 neither source returns → assert flagged.
 
 Commit: `feat(db): mark_disappeared respects alternate-source sightings`
 
 **Task 3.4 — Wire into orchestrator**
 
-`src/main.py` after each source's jobs are inserted AND the source returned >0 jobs (guard against network-error mass-disappearance):
+`backend/src/main.py` after each source's jobs are inserted AND the source returned >0 jobs (guard against network-error mass-disappearance):
 
 ```python
 if source_jobs:
@@ -461,7 +461,7 @@ Commit: `feat(pipeline): mark disappeared jobs per source`
 
 **Task 3.5 — Purge logic**
 
-`src/storage/database.py:183-190`. Replace with:
+`backend/src/storage/database.py:183-190`. Replace with:
 
 ```python
 async def purge_old_jobs(self, days: int = 90, grace_days: int = 14) -> int:
@@ -486,7 +486,7 @@ Commit: `refactor(db): purge disappeared jobs with grace period`
 
 **Task 3.6 — Exclude disappeared from notifications**
 
-In `src/main.py` new-jobs assembly for email/Slack/Discord, filter `disappeared_at IS NOT NULL`. Test in `tests/test_notifications.py` with a disappeared fixture.
+In `backend/src/main.py` new-jobs assembly for email/Slack/Discord, filter `disappeared_at IS NOT NULL`. Test in `backend/tests/test_notifications.py` with a disappeared fixture.
 
 Commit: `fix(notifications): skip disappeared jobs`
 
@@ -494,13 +494,13 @@ Commit: `fix(notifications): skip disappeared jobs`
 
 **Task 4.1 — Greenhouse**
 
-`src/sources/greenhouse.py:40` — set `date_posted = None` with a comment: Greenhouse's public API exposes only `updated_at` (last modification time), which is NOT posting date. Phase 2.0's `first_seen` fallback becomes the proxy.
+`backend/src/sources/ats/greenhouse.py:40` — set `date_posted = None` with a comment: Greenhouse's public API exposes only `updated_at` (last modification time), which is NOT posting date. Phase 2.0's `first_seen` fallback becomes the proxy.
 
 Commit: `fix(sources/greenhouse): updated_at is not posting date; use first_seen proxy`
 
 **Task 4.2 — NHS Jobs**
 
-`src/sources/nhs_jobs.py:66` — parse `<pubDate>` from the RSS item instead of `<closingDate>`. The Phase 2.0 sanity clamp (`days_old < 0 → 0`) is the safety net if a closing date ever leaks through again.
+`backend/src/sources/feeds/nhs_jobs.py:66` — parse `<pubDate>` from the RSS item instead of `<closingDate>`. The Phase 2.0 sanity clamp (`days_old < 0 → 0`) is the safety net if a closing date ever leaks through again.
 
 Commit: `fix(sources/nhs_jobs): parse pubDate (posting), not closingDate (deadline)`
 
@@ -514,7 +514,7 @@ Add `ghost_flag INTEGER DEFAULT 0` column. `flag_ghosts(threshold_days=45)` upda
 
 ### Phase 6 — BambooHR
 
-Probe `https://{company}.bamboohr.com/careers/list` with `Accept: application/json` header to verify JSON availability. Base on `src/sources/workable.py` pattern. Add companies to `src/config/companies.py` `BAMBOOHR_COMPANIES` list. Update SOURCE_REGISTRY / rate limits / test counts.
+Probe `https://{company}.bamboohr.com/careers/list` with `Accept: application/json` header to verify JSON availability. Base on `backend/src/sources/ats/workable.py` pattern. Add companies to `backend/src/config/companies.py` `BAMBOOHR_COMPANIES` list. Update SOURCE_REGISTRY / rate limits / test counts.
 
 ### Phase 7 — HiringCafe internal API
 
@@ -522,13 +522,13 @@ Use reverse-engineered `POST /api/search-jobs` with `dateFetchedPastNDays: 7` fo
 
 ### Phase 8 — Company slug expansion (104 → 500+)
 
-**Discovery script** `scripts/discover_companies.py` (one-off, outside `src/`):
+**Discovery script** `scripts/discover_companies.py` (one-off, outside `backend/src/`):
 
 1. Pull `https://yc-oss.github.io/api/companies/all.json` (~5,500 companies).
 2. For each `company.url`, HEAD-probe `boards.greenhouse.io/{slug}`, `jobs.lever.co/{slug}`, `jobs.ashbyhq.com/{slug}`, `apply.workable.com/{slug}`, `{slug}.bamboohr.com/careers`.
-3. Write verified hits to `data/discovered_companies.json`.
+3. Write verified hits to `backend/data/discovered_companies.json`.
 4. **Manual review gate** — drop agencies, offshore staffing, scams (the HiringCafe / Ali pattern).
-5. Append to `src/config/companies.py`.
+5. Append to `backend/src/config/companies.py`.
 
 **Supplementation via Google dorks:** `site:boards.greenhouse.io "London"`, `site:jobs.lever.co "United Kingdom"`, etc. Extract slugs from result URLs.
 
@@ -560,7 +560,7 @@ All free. Bottleneck is cron cadence, not cost.
 
 **Free cron options:**
 - **Local cron** (current) — `cron_setup.sh`. Simple. Requires machine on.
-- **GitHub Actions free tier** — 2000 min/month private, unlimited public. 10-min pipeline × 6/day = 1800 min/month. Persist `data/jobs.db` via `actions/upload-artifact` + `actions/download-artifact` across runs. Workflow file: `.github/workflows/scrape.yml` with `cron: '0 */4 * * *'`.
+- **GitHub Actions free tier** — 2000 min/month private, unlimited public. 10-min pipeline × 6/day = 1800 min/month. Persist `backend/data/jobs.db` via `actions/upload-artifact` + `actions/download-artifact` across runs. Workflow file: `.github/workflows/scrape.yml` with `cron: '0 */4 * * *'`.
 - **Railway/Render free tier** — 500 hours/month compute + persistent disk.
 
 **What ships after Phases 0-4 + 8 + cron hardening:**
