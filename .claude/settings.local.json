@@ -131,7 +131,8 @@
       "Bash(where alex:*)",
       "Bash(where write-good:*)",
       "Bash(npm list:*)",
-      "Bash(mv data:*)"
+      "Bash(mv data:*)",
+      "Bash(npx tsc:*)"
     ]
   },
   "disabledMcpjsonServers": [
