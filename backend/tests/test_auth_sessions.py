@@ -18,8 +18,10 @@ SESSION_SECRET = "test-secret-" + "x" * 32
 async def session_db():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    # Apply migrations up through 0001_auth (Phase 1).
-    await runner.up(path)
+    # Apply migrations up through 0001_auth only — later migrations
+    # (0002_multi_tenant) rebuild user_actions / applications which this
+    # test has no reason to create.
+    await runner.up(path, target="0001_auth")
     async with aiosqlite.connect(path) as db:
         # Insert a placeholder user matching the sessions FK.
         await db.execute(
