@@ -115,9 +115,20 @@ def test_idempotency_key_is_deterministic():
 async def test_score_and_ingest_creates_feed_rows_for_each_passing_user(worker_db):
     async with aiosqlite.connect(worker_db) as db:
         enqueued: list[tuple] = []
+        # Inject a per-user scorer — the Phase 5 task MUST call it for every
+        # user. Deliberately returning distinct scores per user proves the
+        # score_and_ingest is genuinely scoring per user (not reusing the
+        # catalog-level match_score).
+        calls: list[tuple[str, str]] = []
+
+        def scorer(user_id: str, job):
+            calls.append((user_id, job.title))
+            return {"alice": 85, "bob": 70}.get(user_id, 0)
+
         ctx = {
             "db": db,
             "enqueue": lambda *args: _append(enqueued, args),
+            "scorer": scorer,
         }
         result = await score_and_ingest(
             ctx,
@@ -129,8 +140,13 @@ async def test_score_and_ingest_creates_feed_rows_for_each_passing_user(worker_d
         )
         cur = await db.execute("SELECT user_id, score, bucket FROM user_feed")
         rows = sorted([tuple(r) for r in await cur.fetchall()])
-    assert result == {"ingested": 2, "notifications_queued": 2}
-    assert [(r[0], r[1]) for r in rows] == [("alice", 85), ("bob", 85)]
+    assert result == {"ingested": 2, "notifications_queued": 1}  # only alice ≥ 80
+    assert [(r[0], r[1]) for r in rows] == [("alice", 85), ("bob", 70)]
+    # Prove per-user scorer invocation
+    assert sorted(calls) == [
+        ("alice", "Senior Python Engineer"),
+        ("bob", "Senior Python Engineer"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -140,6 +156,7 @@ async def test_score_and_ingest_skips_users_failing_prefilter(worker_db):
         ctx = {
             "db": db,
             "enqueue": lambda *args: _append(enqueued, args),
+            "scorer": lambda user_id, job: 85,
         }
         result = await score_and_ingest(
             ctx,
@@ -158,7 +175,11 @@ async def test_score_and_ingest_skips_users_failing_prefilter(worker_db):
 @pytest.mark.asyncio
 async def test_score_and_ingest_is_idempotent(worker_db):
     async with aiosqlite.connect(worker_db) as db:
-        ctx = {"db": db, "enqueue": lambda *a: None}
+        ctx = {
+            "db": db,
+            "enqueue": lambda *a: None,
+            "scorer": lambda user_id, job: 85,
+        }
         await score_and_ingest(
             ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
         )
@@ -173,7 +194,11 @@ async def test_score_and_ingest_is_idempotent(worker_db):
 @pytest.mark.asyncio
 async def test_ledger_idempotent_per_channel(worker_db):
     async with aiosqlite.connect(worker_db) as db:
-        ctx = {"db": db, "enqueue": lambda *a: None}
+        ctx = {
+            "db": db,
+            "enqueue": lambda *a: None,
+            "scorer": lambda user_id, job: 85,
+        }
         # Two runs with same (user, job, channel='instant') — ledger unique
         await score_and_ingest(
             ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
@@ -192,7 +217,11 @@ async def test_ledger_idempotent_per_channel(worker_db):
 async def test_instant_notification_suppressed_below_threshold(worker_db):
     async with aiosqlite.connect(worker_db) as db:
         enqueued: list[tuple] = []
-        ctx = {"db": db, "enqueue": lambda *args: _append(enqueued, args)}
+        ctx = {
+            "db": db,
+            "enqueue": lambda *args: _append(enqueued, args),
+            "scorer": lambda user_id, job: 85,
+        }
         result = await score_and_ingest(
             ctx,
             job_id=1,
@@ -209,7 +238,11 @@ async def test_instant_notification_suppressed_below_threshold(worker_db):
 @pytest.mark.asyncio
 async def test_mark_ledger_sent_updates_status(worker_db):
     async with aiosqlite.connect(worker_db) as db:
-        ctx = {"db": db, "enqueue": lambda *a: None}
+        ctx = {
+            "db": db,
+            "enqueue": lambda *a: None,
+            "scorer": lambda user_id, job: 85,
+        }
         await score_and_ingest(
             ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
         )
@@ -225,7 +258,11 @@ async def test_mark_ledger_sent_updates_status(worker_db):
 @pytest.mark.asyncio
 async def test_mark_ledger_failed_increments_retry(worker_db):
     async with aiosqlite.connect(worker_db) as db:
-        ctx = {"db": db, "enqueue": lambda *a: None}
+        ctx = {
+            "db": db,
+            "enqueue": lambda *a: None,
+            "scorer": lambda user_id, job: 85,
+        }
         await score_and_ingest(
             ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
         )
