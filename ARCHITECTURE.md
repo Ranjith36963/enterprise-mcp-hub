@@ -8,17 +8,17 @@ Job360 is a UK-focused job search aggregator that fetches jobs from 48 sources, 
 User Input                    Pipeline                         Output
 -----------                   --------                         ------
                           +-> Sources (48) --+
-CLI / Dashboard --+       |   (async fetch)  |
+CLI / Frontend   --+       |   (async fetch)  |
                   |       |                  v
 Profile (CV+Prefs)+--> main.py ---------> Scorer ---------> Deduplicator
-  + LinkedIn ZIP  |   (orchestrator)    (0-100 score)     (normalized_key)
+  + LinkedIn PDF  |   (orchestrator)    (0-100 score)     (normalized_key)
   + GitHub API    |                                            |
 .env (API keys) --+                                            v
                                                           SQLite DB
                                                                |
-                                          +--------------------+--------------------+
-                                          |          |         |         |          |
-                                        Email     Slack    Discord     CSV     Dashboard
+                                  +----------------------------+------------------------------+
+                                  |        |        |        |        |                      |
+                                Email    Slack   Discord   CSV   FastAPI  -->  Next.js Frontend
 ```
 
 ---
@@ -29,9 +29,9 @@ Profile (CV+Prefs)+--> main.py ---------> Scorer ---------> Deduplicator
 job360/
 +-- backend/src/
 |   +-- main.py              # Orchestrator: run_search(), _build_sources(), SOURCE_REGISTRY (48)
-|   +-- cli.py               # Click CLI: run, dashboard, status, sources, view, setup-profile
+|   +-- cli.py               # Click CLI: run, api, status, sources, view, setup-profile
 |   +-- cli_view.py          # Rich terminal table viewer
-|   +-- dashboard.py         # Streamlit web UI with profile setup sidebar
+|   +-- api/                 # FastAPI backend consumed by the Next.js frontend
 |   +-- models.py            # Job dataclass with normalized_key()
 |   +-- config/
 |   |   +-- settings.py      # Env vars, paths, RATE_LIMITS (48 entries), thresholds
@@ -43,7 +43,7 @@ job360/
 |   |   +-- preferences.py   # Form validation, CV+preferences merge
 |   |   +-- storage.py       # JSON persistence (backend/data/user_profile.json)
 |   |   +-- keyword_generator.py  # UserProfile -> SearchConfig conversion
-|   |   +-- linkedin_parser.py    # LinkedIn ZIP export parser
+|   |   +-- linkedin_parser.py    # LinkedIn profile PDF parser (pdfplumber sections + LLM)
 |   |   +-- github_enricher.py    # GitHub public API enricher
 |   |   +-- llm_provider.py       # Multi-provider LLM client (Gemini/Groq/Cerebras) for CV parsing
 |   +-- sources/
@@ -368,9 +368,9 @@ UserProfile
   |     +-- education: list[str]
   |     +-- certifications: list[str]
   |     +-- summary: str
-  |     +-- linkedin_positions: list[dict]      # From LinkedIn ZIP
-  |     +-- linkedin_skills: list[str]           # From LinkedIn ZIP
-  |     +-- linkedin_industry: str               # From LinkedIn ZIP
+  |     +-- linkedin_positions: list[dict]      # From LinkedIn profile PDF
+  |     +-- linkedin_skills: list[str]           # From LinkedIn profile PDF
+  |     +-- linkedin_industry: str               # From LinkedIn profile PDF
   |     +-- github_languages: dict[str, int]     # From GitHub API
   |     +-- github_topics: list[str]             # From GitHub API
   |     +-- github_skills_inferred: list[str]    # From GitHub API
@@ -408,14 +408,19 @@ UserProfile -> keyword_generator.generate_search_config() -> SearchConfig
 ### LinkedIn Parser Pipeline
 
 ```
-LinkedIn ZIP -> parse_linkedin_zip() -> dict
+LinkedIn profile PDF -> parse_linkedin_pdf() -> dict
   |
-  +-> positions.csv -> job titles, companies, date ranges
-  +-> skills.csv -> endorsed skills list
-  +-> education.csv -> degrees, institutions
+  +-> pdfplumber text extraction (all pages)
+  +-> is_linkedin_pdf() 2-of-3 heuristic (URL / headings / footer)
+  +-> _split_sections() by known heading vocabulary
+  +-> Deterministic: summary, skills (one per line), headline, industry
+  +-> LLM (Gemini -> Groq -> Cerebras) in parallel for:
+  |     - Experience -> [{title, company, start, end, description}, ...]
+  |     - Education  -> [{school, degree, start, end, notes}, ...]
+  |     - Certifications -> [{name, authority, start, end}, ...]
   |
   enrich_cv_from_linkedin(cv_data, linkedin_data) -> CVData
-  # Merges LinkedIn data into existing CVData fields
+  # Merges LinkedIn data into existing CVData fields (same as old ZIP path)
 ```
 
 ### GitHub Enricher Pipeline
@@ -616,9 +621,7 @@ Each source has configured `concurrent` (max parallel requests) and `delay` (sec
 | python-dotenv >=1.0.0 | .env file loading |
 | jinja2 >=3.1.0 | HTML report templates |
 | click >=8.1.0 | CLI framework |
-| streamlit >=1.30.0 | Web dashboard |
-| pandas >=2.0.0 | Data manipulation in dashboard |
-| plotly >=5.18.0 | Charts in dashboard |
+| pandas >=2.0.0 | DataFrame support for python-jobspy (Indeed/Glassdoor) |
 | pdfplumber >=0.10.0 | PDF text extraction (CV parsing) |
 | python-docx >=1.1.0 | DOCX text extraction (CV parsing) |
 | rich >=13.0.0 | Terminal table rendering |

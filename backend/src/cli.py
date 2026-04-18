@@ -1,8 +1,6 @@
 """Job360 CLI — command-line interface for the job search system."""
 
 import asyncio
-import subprocess
-import sys
 
 import click
 
@@ -23,8 +21,7 @@ def cli():
               default="INFO", help="Set logging verbosity.")
 @click.option("--db-path", default=None, help="Override database file path.")
 @click.option("--no-email", is_flag=True, help="Skip all notifications (email, Slack, Discord).")
-@click.option("--dashboard", is_flag=True, help="Launch Streamlit dashboard after the run.")
-def run(source, dry_run, log_level, db_path, no_email, dashboard):
+def run(source, dry_run, log_level, db_path, no_email):
     """Run the job search pipeline."""
     try:
         stats = asyncio.run(run_search(
@@ -33,26 +30,18 @@ def run(source, dry_run, log_level, db_path, no_email, dashboard):
             dry_run=dry_run,
             log_level=log_level,
             no_notify=no_email,
-            launch_dashboard=dashboard,
         ))
         # C1: Exit with error message if no profile was found
         if stats.get("error") == "no_profile":
             click.secho("\nERROR: No user profile found. Job360 needs your CV to match jobs.", fg="red", err=True)
             click.echo("")
             click.echo("  python -m src.cli setup-profile --cv path/to/your_cv.pdf")
-            click.echo("  python -m src.cli dashboard  # then use Profile sidebar")
+            click.echo("  Or use the frontend at http://localhost:3000/profile")
             raise SystemExit(2)
         click.echo(f"Done: {stats['total_found']} found, {stats['new_jobs']} new, {stats['sources_queried']} sources.")
     except KeyboardInterrupt:
         click.echo("\nJob360: Search interrupted. Exiting gracefully.")
         raise SystemExit(130)
-
-
-@cli.command()
-def dashboard():
-    """Launch the Streamlit web dashboard."""
-    click.echo("Starting Job360 Dashboard...")
-    subprocess.run([sys.executable, "-m", "streamlit", "run", "src/dashboard.py"], check=True)
 
 
 @cli.command()
@@ -147,7 +136,7 @@ def setup_profile(cv_path, linkedin_path, github_username):
         if cv_data.job_titles:
             click.echo(f"  Found {len(cv_data.job_titles)} job titles: {', '.join(cv_data.job_titles[:5])}")
     else:
-        click.echo("No CV provided. You can add one later via the dashboard.")
+        click.echo("No CV provided. You can add one later via the frontend at http://localhost:3000/profile.")
 
     # Parse LinkedIn PDF if provided
     if linkedin_path:

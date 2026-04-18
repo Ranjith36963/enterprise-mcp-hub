@@ -158,7 +158,7 @@ async def parse_cv_async(file_path: str) -> CVData:
 
 
 def parse_cv(file_path: str) -> CVData:
-    """Synchronous wrapper for parse_cv_async (used by CLI and Streamlit)."""
+    """Synchronous wrapper for parse_cv_async (used by CLI)."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -173,46 +173,8 @@ def parse_cv(file_path: str) -> CVData:
         return asyncio.run(parse_cv_async(file_path))
 
 
-def _coerce_str_list(value) -> list[str]:
-    """Defensive coercion of LLM output to a clean list[str].
-
-    Handles weaker models that may return strings, None, dicts, or mixed types
-    for fields that should be list[str]. Never raises — always returns a list.
-    """
-    if value is None:
-        return []
-    if isinstance(value, str):
-        # Weaker models sometimes return comma-separated strings
-        return [s.strip() for s in value.split(",") if s.strip()]
-    if isinstance(value, dict):
-        # Model confused the schema — return values as strings
-        return [str(v) for v in value.values() if v]
-    if isinstance(value, list):
-        result = []
-        for item in value:
-            if isinstance(item, str):
-                if item.strip():
-                    result.append(item.strip())
-            elif isinstance(item, dict):
-                # Extract "name" field if present, else stringify
-                name = item.get("name") or item.get("skill") or item.get("title")
-                if name:
-                    result.append(str(name))
-            elif item is not None:
-                result.append(str(item))
-        return result
-    return []
-
-
-def _coerce_str(value) -> str:
-    """Defensive coercion to a string."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (list, dict)):
-        return ""  # Wrong type — don't use
-    return str(value)
+from src.services.profile._llm_utils import coerce_str as _coerce_str
+from src.services.profile._llm_utils import coerce_str_list as _coerce_str_list
 
 
 def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
@@ -294,20 +256,3 @@ def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
     )
 
 
-def parse_cv_from_bytes(content: bytes, filename: str) -> CVData:
-    """Parse CV from in-memory bytes (for Streamlit file_uploader)."""
-    import tempfile
-    import os
-
-    suffix = Path(filename).suffix
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        return parse_cv(tmp_path)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass

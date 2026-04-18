@@ -1,12 +1,12 @@
 # Job360
 
-Automated UK job search system supporting any professional domain. Aggregates jobs from 48 sources, scores them 0-100 against your profile (CV, LinkedIn, GitHub, or manual preferences), deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Streamlit dashboard. Without a profile, defaults to AI/ML job search.
+Automated UK job search system supporting any professional domain. Aggregates jobs from 48 sources, scores them 0-100 against your profile (CV, LinkedIn, GitHub, or manual preferences), deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Next.js frontend (backed by FastAPI). Without a profile, defaults to AI/ML job search.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    CLI["CLI (Click)\njob360 run / view / dashboard / status / sources / setup-profile"]
+    CLI["CLI (Click)\njob360 run / view / api / status / sources / setup-profile"]
     Cron["Cron 4AM/4PM\nEurope/London"]
 
     subgraph Sources["48 Job Sources"]
@@ -87,7 +87,7 @@ flowchart TD
     DB --> CSV[CSV Export]
     DB --> Report[Markdown Report]
     DB --> RichTable[Rich Terminal Table\ncli view]
-    DB --> Dashboard[Streamlit Dashboard]
+    DB --> NextJS[Next.js Frontend\nvia FastAPI]
 ```
 
 ## Features
@@ -103,7 +103,7 @@ flowchart TD
 
 ### Profile System (any domain)
 - **CV parsing**: Upload PDF or DOCX, extracts skills, job titles, education, certifications
-- **LinkedIn enrichment**: Import LinkedIn data export ZIP (positions, skills, education)
+- **LinkedIn enrichment**: Import a LinkedIn profile PDF (profile → More → Save to PDF) — positions, skills, education
 - **GitHub enrichment**: Fetch public repos, infer skills from languages and topics
 - **Interactive preferences**: Target titles, skills, locations, salary range, work arrangement
 - **Dynamic keywords**: Profile generates personalised search queries, relevance keywords, and scoring criteria
@@ -130,23 +130,19 @@ flowchart TD
 - **NotificationChannel ABC** — add a new channel (e.g. Telegram) by implementing one class
 
 ### CLI (Click)
-- `run` — full pipeline with `--source`, `--dry-run`, `--log-level`, `--db-path`, `--no-email`, `--dashboard` options
+- `run` — full pipeline with `--source`, `--dry-run`, `--log-level`, `--db-path`, `--no-email` options
 - `view` — Rich terminal table with `--hours`, `--min-score`, `--source`, `--visa-only`, `--db-path` filters
 - `setup-profile` — interactive profile wizard with `--cv`, `--linkedin`, `--github` options
-- `dashboard` — launch Streamlit web UI
+- `api` — start the FastAPI backend server (consumed by the Next.js frontend)
 - `status` — show last run stats from database
 - `sources` — list all 48 available sources
 
-### Dashboard (Streamlit)
-- Sidebar filters: text search, score range, source, location, visa sponsorship
-- Profile setup: CV upload + LinkedIn ZIP + GitHub username + preferences form
-- KPI row: total jobs, avg score, top score, visa sponsors, sources count
-- Score distribution histogram + jobs by source pie chart
-- Sortable job listings table with clickable apply links
-- CSV export button
-- Run history with timeline chart
-- Previous exports file browser
-- Trigger new search from UI
+### Frontend (Next.js + FastAPI)
+- Next.js 16 + React 19 + Tailwind 4 + shadcn at `frontend/`
+- Talks to FastAPI (`backend/src/api/`) over HTTP — 25 routes (health, jobs, actions, profile, search, pipeline)
+- Job list with filters, score radar, time buckets
+- Profile setup: CV upload, LinkedIn profile PDF import, GitHub username, preferences form
+- Application pipeline Kanban board
 
 ### Infrastructure
 - **Deduplication** — same job from different sources merged by normalised company+title
@@ -161,13 +157,13 @@ flowchart TD
 - **Split requirements** — prod deps in `backend/pyproject.toml`, dev/test in `requirements-dev.txt`
 - **Hardened setup** — Python 3.9+ version check, idempotent installs, .env validation
 
-### Testing (412 tests)
+### Testing (406 tests)
 
 | Test file | Count | What it covers |
 |-----------|-------|----------------|
 | `test_sources.py` | 71 | All 48 sources with mocked HTTP |
 | `test_profile.py` | 55 | CV parser, preferences, keyword generator, JobScorer |
-| `test_linkedin_github.py` | 54 | LinkedIn ZIP parsing, GitHub API enrichment |
+| `test_linkedin_github.py` | 58 | LinkedIn PDF parsing (section-split + LLM), GitHub API enrichment |
 | `test_scorer.py` | 53 | Scoring algorithm, penalties, recency tiers, edge cases |
 | `test_time_buckets.py` | 33 | Time bucket grouping logic |
 | `test_models.py` | 21 | Job dataclass, normalisation, company cleaning |
@@ -181,7 +177,6 @@ flowchart TD
 | `test_notification_base.py` | 7 | ABC, format_salary, channel discovery |
 | `test_setup.py` | 6 | setup.sh validation |
 | `test_reports.py` | 6 | Markdown + HTML report generation |
-| `test_dashboard.py` | 6 | URL sanitization (`_safe_url`) for XSS prevention |
 | `test_rate_limiter.py` | 5 | Async rate limiter (acquire/release, concurrency, delay) |
 | `test_cron.py` | 5 | cron_setup.sh validation |
 | `test_cli_view.py` | 5 | Rich terminal table viewer |
@@ -208,13 +203,14 @@ python -m src.cli run --dry-run --log-level DEBUG
 
 # 5. Set up a personalised profile
 python -m src.cli setup-profile --cv path/to/cv.pdf
-python -m src.cli setup-profile --cv cv.pdf --linkedin linkedin-export.zip --github yourusername
+python -m src.cli setup-profile --cv cv.pdf --linkedin linkedin-profile.pdf --github yourusername
 
 # 6. View results in terminal
 python -m src.cli view --hours 24 --min-score 50
 
-# 7. Launch dashboard
-python -m src.cli dashboard
+# 7. Start the API + frontend
+python -m src.cli api            # FastAPI on :8000
+# (in another terminal) cd frontend && npm run dev   # Next.js on :3000
 
 # 8. Schedule (optional)
 bash cron_setup.sh
@@ -236,9 +232,6 @@ python -m src.cli run --dry-run
 # Skip email notifications
 python -m src.cli run --no-email
 
-# Launch dashboard after pipeline completes
-python -m src.cli run --dashboard
-
 # Debug logging
 python -m src.cli run --log-level DEBUG
 
@@ -250,9 +243,9 @@ python -m src.cli run --source greenhouse --dry-run --log-level DEBUG
 
 # Set up user profile (personalise for any domain)
 python -m src.cli setup-profile --cv path/to/cv.pdf
-python -m src.cli setup-profile --cv cv.pdf --linkedin linkedin-export.zip
+python -m src.cli setup-profile --cv cv.pdf --linkedin linkedin-profile.pdf
 python -m src.cli setup-profile --cv cv.pdf --github yourusername
-python -m src.cli setup-profile --linkedin data.zip --github user
+python -m src.cli setup-profile --linkedin linkedin-profile.pdf --github user
 
 # View jobs in Rich terminal table
 python -m src.cli view
@@ -260,8 +253,8 @@ python -m src.cli view --hours 24 --min-score 50
 python -m src.cli view --source reed --visa-only
 python -m src.cli view --db-path /tmp/test.db
 
-# Launch Streamlit dashboard
-python -m src.cli dashboard
+# Start the FastAPI backend (consumed by the Next.js frontend)
+python -m src.cli api
 
 # Show last run stats
 python -m src.cli status
@@ -365,10 +358,10 @@ for channel in get_configured_channels():
 job360/
 ├── backend/src/
 │   ├── main.py                  # Central orchestrator (run_search, SOURCE_REGISTRY)
-│   ├── cli.py                   # Click CLI (run, view, dashboard, status, sources, setup-profile)
+│   ├── cli.py                   # Click CLI (run, view, api, status, sources, setup-profile)
 │   ├── cli_view.py              # Rich terminal table viewer (time-bucketed)
 │   ├── models.py                # Job dataclass with company normalisation
-│   ├── dashboard.py             # Streamlit web dashboard (filters, charts, KPIs, profile setup)
+│   ├── api/                     # FastAPI backend consumed by the Next.js frontend
 │   ├── config/
 │   │   ├── settings.py          # Env vars, rate limits, timeouts, thresholds
 │   │   ├── keywords.py          # Default AI/ML keywords (KNOWN_SKILLS and KNOWN_TITLE_PATTERNS removed in commit 3ba1342)
@@ -380,7 +373,7 @@ job360/
 │   │   ├── preferences.py       # Form validation, CV+preferences merge
 │   │   ├── storage.py           # JSON persistence (backend/data/user_profile.json)
 │   │   ├── keyword_generator.py # UserProfile -> SearchConfig conversion
-│   │   ├── linkedin_parser.py   # LinkedIn data export ZIP parser
+│   │   ├── linkedin_parser.py   # LinkedIn profile PDF parser (pdfplumber + LLM)
 │   │   └── github_enricher.py   # GitHub public API enricher
 │   ├── sources/
 │   │   ├── base.py              # Abstract base with retry logic + rate limiting
@@ -401,11 +394,11 @@ job360/
 │       ├── logger.py            # Rotating file + console logging
 │       ├── rate_limiter.py      # Async semaphore + delay rate limiter
 │       └── time_buckets.py      # Time bucket grouping for CLI view
-├── backend/tests/                       # 412 tests across 21 files
+├── backend/tests/                       # 406 tests across 20 files
 │   ├── conftest.py              # Shared fixtures (sample jobs)
-│   └── test_*.py                # 21 test modules
+│   └── test_*.py                # 20 test modules
 ├── backend/data/                        # Exports, reports, logs (gitignored)
-├── backend/pyproject.toml             # Production dependencies (19 packages)
+├── backend/pyproject.toml             # Production dependencies (17 packages)
 ├── requirements-dev.txt         # Dev/test dependencies (pytest, aioresponses, fpdf2)
 ├── .env.example                 # Template for API keys and webhooks
 ├── setup.sh                     # Setup script (Python 3.9+ check, venv, deps)
@@ -415,7 +408,7 @@ job360/
 ## Testing
 
 ```bash
-# Run all 412 tests
+# Run all 406 tests
 python -m pytest backend/tests/ -v
 
 # Run specific test file
@@ -425,7 +418,7 @@ python -m pytest backend/tests/test_scorer.py -v
 python -m pytest backend/tests/ -v -s
 ```
 
-All 412 tests pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
+All 406 tests pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
 
 ## Output
 
@@ -439,6 +432,6 @@ Each run produces:
 | Email | Inbox | HTML digest with top jobs + CSV attachment |
 | Slack | Channel | Block Kit message with top 10 jobs |
 | Discord | Channel | Embed message with top 10 jobs |
-| Dashboard | `http://localhost:8501` | Interactive Streamlit UI |
+| Frontend | `http://localhost:3000` | Next.js UI (requires FastAPI on `:8000`) |
 | Console | Terminal | Time-bucketed summary of new jobs found |
 | Logs | `backend/data/logs/job360.log` | Rotating log file (5MB, 3 backups) |

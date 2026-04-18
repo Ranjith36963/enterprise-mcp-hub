@@ -26,7 +26,6 @@
 | BaseJobSource properties | `backend/src/sources/base.py` | Done -- `self.relevance_keywords`, `self.job_titles`, `self.search_queries` |
 | 47 source file refactor | `backend/src/sources/*.py` | Done -- all use `self.*` properties instead of direct imports |
 | Orchestrator wiring | `backend/src/main.py` | Done -- loads profile, creates scorer, passes config |
-| Dashboard Profile UI | `backend/src/dashboard.py` | Done -- sidebar expander with CV upload + form |
 | CLI setup-profile | `backend/src/cli.py` | Done -- interactive profile wizard |
 | Profile tests | `backend/tests/test_profile.py` | Done -- 56 tests covering all profile modules |
 | Dependencies | `backend/pyproject.toml` | Done -- added pdfplumber, python-docx |
@@ -41,9 +40,11 @@
 
 ---
 
-## Phase 2: LinkedIn ZIP + GitHub API -- COMPLETE
+## Phase 2: LinkedIn + GitHub API -- COMPLETE (LinkedIn ingest later replaced with PDF)
 
-**Goal:** Enrich user profiles with LinkedIn data export and GitHub public repos.
+**Goal:** Enrich user profiles with LinkedIn data and GitHub public repos.
+
+**Superseded note:** the original phase-2 ingest was a LinkedIn Data Export ZIP of CSVs. This was later replaced with a LinkedIn "Save to PDF" parser (`parse_linkedin_pdf` in `backend/src/services/profile/linkedin_parser.py`) — same output schema, same `enrich_cv_from_linkedin()` merge logic. The rest of this section describes the historical ZIP flow.
 
 ### What was built
 
@@ -80,7 +81,7 @@
 
 | Component | File(s) | Status |
 |-----------|---------|--------|
-| DB error logging | `backend/src/cli_view.py`, `backend/src/dashboard.py` | Done -- `except Exception` blocks now log errors before returning empty |
+| DB error logging | `backend/src/cli_view.py` | Done -- `except Exception` blocks now log errors before returning empty |
 | Magic number elimination | `backend/src/main.py`, `backend/tests/test_main.py` | Done -- `SOURCE_INSTANCE_COUNT` constant replaces hard-coded 47 |
 | Schema migration | `backend/src/storage/database.py` | Done -- `_migrate()` method uses PRAGMA table_info + ALTER TABLE for future columns |
 | Source health tracking | `backend/src/main.py`, `backend/src/storage/database.py` | Done -- detects sources returning 0 that previously had jobs, warns in logs |
@@ -112,9 +113,9 @@
 - Deduplication merges same jobs from different sources
 - SQLite database with auto-purge (30 days)
 - Email, Slack, Discord notifications (when configured)
-- CLI commands: run, view, dashboard, status, sources, setup-profile
-- Streamlit dashboard with filters, charts, profile setup
-- 412 tests pass (3 skip on Windows)
+- CLI commands: run, view, api, status, sources, setup-profile
+- Next.js frontend (at `frontend/`) + FastAPI backend (at `backend/src/api/`) deliver the interactive UI
+- 406 tests pass (3 skip on Windows)
 
 ---
 
@@ -167,19 +168,17 @@
 | `test_notification_base.py` | Channel base + discovery | 7 |
 | `test_reports.py` | Report generation | 6 |
 | `test_setup.py` | setup.sh + requirements | 6 |
-| `test_dashboard.py` | URL sanitization (`_safe_url`) for XSS prevention | 6 |
 | `test_rate_limiter.py` | `rate_limiter.py` | 5 |
 | `test_cron.py` | cron_run.sh | 5 |
 | `test_cli_view.py` | `cli_view.py` | 5 |
 | `test_csv_export.py` | CSV export | 4 |
-| **Total** | | **412** (3 skip on Windows) |
+| **Total** | | **406** (3 skip on Windows) |
 
 ### Not covered or lightly covered
 
-- `backend/src/dashboard.py` — Streamlit UI is not unit-tested (would need Streamlit testing framework)
 - `backend/src/utils/rate_limiter.py` — now has 5 dedicated tests in `test_rate_limiter.py`
 - Live HTTP behavior — all tests use mocked responses, so real API format changes are not caught by tests
-- Profile dashboard sidebar — interactive Streamlit profile form is not tested
+- Next.js frontend at `frontend/` — no automated UI tests yet (would need Playwright or similar)
 - Edge cases in LinkedIn ZIP parsing — malformed ZIPs, missing CSVs tested but exotic edge cases possible
 
 ---
