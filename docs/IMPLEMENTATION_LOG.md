@@ -140,12 +140,19 @@ Before merging to `main`, each batch must:
 
 | Metric | Baseline (clean-main, pre-Batch-1) | After Batch 1 | Delta |
 |---|---:|---:|---:|
-| Passing | **371** | **414** | **+43** |
+| Passing | **371** | **420** | **+49** |
 | Failing | **24** (all in 4 pre-existing buckets) | **24** (same 4 buckets) | 0 |
 | Skipped | **3** | **3** | 0 |
-| Run time | 169.53s | 170.39s | +0.86s |
+| Run time | 169.53s | 164.80s | −4.73s |
 
-**Zero regressions.** Every one of the 24 remaining failures was present at baseline and falls into one of the four pre-existing buckets (API sqlite init, cron/setup path drift, 7 source parsers, 3 matched_skills stale assertions). The +43 delta is entirely new Batch 1 tests (`test_date_schema.py` ×13 · `test_ghost_detection.py` ×18 · `test_kpi_exporter.py` ×4 · `test_models.py` ×2 · `test_scorer.py` ×7 · `test_sources.py` ×3 new assertion blocks, counted inline with their existing test function).
+**Zero regressions.** Every one of the 24 remaining failures was present at baseline and falls into one of the four pre-existing buckets (API sqlite init, cron/setup path drift, 7 source parsers, 3 `matched_skills` stale assertions). The +49 delta is entirely new Batch 1 tests:
+
+- `test_date_schema.py` × 13
+- `test_ghost_detection.py` × 21 (includes 3 new integration tests for `_ghost_detection_pass`)
+- `test_kpi_exporter.py` × 7 (includes 3 new regression tests for the `bucket_accuracy` circularity fix)
+- `test_models.py` × 2
+- `test_scorer.py` × 7
+- `test_sources.py` × 3 new assertion blocks (inline, not new test functions — counted for correctness not for the +49 total)
 
 **New tests added in Batch 1:**
 - `tests/test_date_schema.py` — 13 tests covering the 5-column additive migration + idempotency
