@@ -117,7 +117,7 @@ def list_sources():
 @click.option("--cv", "cv_path", default=None, type=click.Path(exists=True),
               help="Path to CV file (PDF or DOCX).")
 @click.option("--linkedin", "linkedin_path", default=None, type=click.Path(exists=True),
-              help="Path to LinkedIn data export ZIP.")
+              help="Path to LinkedIn profile PDF (profile page → More → Save to PDF).")
 @click.option("--github", "github_username", default=None,
               help="GitHub username to fetch public repos.")
 def setup_profile(cv_path, linkedin_path, github_username):
@@ -149,15 +149,18 @@ def setup_profile(cv_path, linkedin_path, github_username):
     else:
         click.echo("No CV provided. You can add one later via the dashboard.")
 
-    # Parse LinkedIn export if provided
+    # Parse LinkedIn PDF if provided
     if linkedin_path:
-        from src.services.profile.linkedin_parser import parse_linkedin_zip, enrich_cv_from_linkedin
-        click.echo(f"\nParsing LinkedIn export: {linkedin_path}")
-        linkedin_data = parse_linkedin_zip(linkedin_path)
+        from src.services.profile.linkedin_parser import parse_linkedin_pdf, enrich_cv_from_linkedin
+        click.echo(f"\nParsing LinkedIn PDF: {linkedin_path}")
+        linkedin_data = parse_linkedin_pdf(linkedin_path)
         cv_data = enrich_cv_from_linkedin(cv_data, linkedin_data)
         n_skills = len(linkedin_data.get("skills", []))
         n_positions = len(linkedin_data.get("positions", []))
-        click.echo(f"  LinkedIn: {n_skills} skills, {n_positions} positions")
+        if not (n_skills or n_positions):
+            click.echo("  Warning: no LinkedIn data extracted. Confirm the file is a profile PDF (not a CV).")
+        else:
+            click.echo(f"  LinkedIn: {n_skills} skills, {n_positions} positions")
 
     # Fetch GitHub data if username provided
     if github_username:

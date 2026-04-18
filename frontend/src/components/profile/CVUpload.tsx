@@ -375,9 +375,9 @@ export function CVUpload({
               <Link2 className="h-4 w-4 text-[#0A66C2]" />
             </div>
             <div className="flex-1 min-w-0">
-              <Label className="text-sm font-medium">LinkedIn Export</Label>
+              <Label className="text-sm font-medium">LinkedIn Profile PDF</Label>
               <p className="text-xs text-muted-foreground">
-                Upload your LinkedIn data ZIP
+                Your profile → More → Save to PDF
               </p>
             </div>
             {profile?.has_linkedin && (
@@ -388,7 +388,7 @@ export function CVUpload({
             <input
               ref={linkedinInputRef}
               type="file"
-              accept=".zip"
+              accept=".pdf"
               onChange={handleLinkedinUpload}
               className="hidden"
             />

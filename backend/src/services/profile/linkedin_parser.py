@@ -1,159 +1,370 @@
-"""Parse LinkedIn data export ZIP to extract structured career data."""
+"""Parse a LinkedIn 'Save to PDF' profile export to structured career data.
+
+Replaces the older LinkedIn Data Export (ZIP of CSVs) flow. Produces the
+exact same output dict schema so downstream code (``enrich_cv_from_linkedin``,
+``keyword_generator.generate_search_config``) is unchanged.
+
+Strategy (two-layer):
+  1. Deterministic pdfplumber text extraction + heading-based section split.
+     Covers ``headline``, ``summary``, ``skills``, ``industry``.
+  2. LLM extraction for prose-heavy sections (``Experience``, ``Education``,
+     ``Certifications``) where dates and bullets need structured parsing.
+
+All failure modes return the empty-data dict (never raises).
+"""
 
 from __future__ import annotations
 
-import csv
-import io
+import asyncio
 import logging
-import zipfile
+import re
+from typing import Any
 
+from src.services.profile._llm_utils import coerce_str, coerce_str_list
 from src.services.profile.models import CVData
 
 logger = logging.getLogger("job360.profile.linkedin")
 
 
-def _find_csv_in_zip(zf: zipfile.ZipFile, target: str) -> str | None:
-    """Find a CSV by name, handling both flat and nested ZIP structures."""
-    for name in zf.namelist():
-        if ".." in name or name.startswith("/"):
-            continue
-        if name.endswith(target) or name.endswith(f"/{target}"):
-            return name
-    return None
+# ── Section vocabulary ───────────────────────────────────────────
+
+# Exact-match (case-insensitive) standalone heading lines that LinkedIn's
+# "Save to PDF" uses. Order is not significant for split, but present here
+# so detection and split share one source of truth.
+_SECTION_HEADINGS = (
+    "Contact",
+    "Summary",
+    "Experience",
+    "Education",
+    "Skills",
+    "Top Skills",
+    "Certifications",
+    "Licenses & Certifications",
+    "Languages",
+    "Honors-Awards",
+    "Honors & Awards",
+    "Publications",
+    "Volunteer Experience",
+    "Projects",
+    "Recommendations",
+    "Interests",
+    "Courses",
+    "Organizations",
+    "Patents",
+    "Test Scores",
+)
+
+# Case-insensitive lookup.
+_HEADING_SET = {h.lower() for h in _SECTION_HEADINGS}
+
+_LINKEDIN_URL_RE = re.compile(r"linkedin\.com/in/[\w\-]+", re.IGNORECASE)
+_PAGE_FOOTER_RE = re.compile(r"Page\s+\d+\s+of\s+\d+", re.IGNORECASE)
 
 
-def _read_csv(zf: zipfile.ZipFile, filename: str) -> list[dict]:
-    """Read a CSV from the ZIP and return a list of row dicts."""
-    path = _find_csv_in_zip(zf, filename)
-    if not path:
-        return []
+# ── Text extraction (thin wrapper over pdfplumber) ────────────────
+
+def _extract_text(file_path: str) -> str:
+    """Read all pages of a PDF into one newline-joined string. Empty on failure."""
     try:
-        raw = zf.read(path).decode("utf-8-sig")
-        reader = csv.DictReader(io.StringIO(raw))
-        return list(reader)
+        import pdfplumber
+    except ImportError:
+        logger.error("pdfplumber not installed. Run: pip install pdfplumber")
+        return ""
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            parts = [p.extract_text() or "" for p in pdf.pages]
+        return "\n".join(parts)
     except Exception as e:
-        logger.warning("Failed to read %s: %s", filename, e)
+        logger.warning("Failed to read LinkedIn PDF %s: %s", file_path, e)
+        return ""
+
+
+# ── LinkedIn-PDF detection ────────────────────────────────────────
+
+def is_linkedin_pdf(file_path: str) -> bool:
+    """Return True iff the file looks like a LinkedIn 'Save to PDF' export.
+
+    Heuristic: at least 2 of 3 markers present — linkedin.com/in/<slug> URL,
+    three or more known section headings, or a 'Page N of M' footer.
+    """
+    text = _extract_text(file_path)
+    return _looks_like_linkedin(text)
+
+
+def _looks_like_linkedin(text: str) -> bool:
+    if not text:
+        return False
+    markers = 0
+    if _LINKEDIN_URL_RE.search(text):
+        markers += 1
+    heading_hits = 0
+    for line in text.splitlines():
+        if line.strip().lower() in _HEADING_SET:
+            heading_hits += 1
+            if heading_hits >= 3:
+                break
+    if heading_hits >= 3:
+        markers += 1
+    if _PAGE_FOOTER_RE.search(text):
+        markers += 1
+    return markers >= 2
+
+
+# ── Section split ─────────────────────────────────────────────────
+
+def _split_sections(text: str) -> dict[str, str]:
+    """Split extracted text into {heading_lower: body}. Pre-heading text lives under 'header'."""
+    sections: dict[str, list[str]] = {"header": []}
+    current = "header"
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if _PAGE_FOOTER_RE.search(stripped):
+            continue
+        key = stripped.lower()
+        if stripped and key in _HEADING_SET:
+            current = key
+            sections.setdefault(current, [])
+            continue
+        sections.setdefault(current, []).append(raw_line)
+    return {k: "\n".join(v).strip() for k, v in sections.items()}
+
+
+# ── Deterministic field extraction ────────────────────────────────
+
+def _extract_header_fields(header_text: str) -> dict[str, str]:
+    """Pull name and headline from the pre-first-section block.
+
+    Convention: first non-empty line is the name, next non-empty line is
+    the headline. Industry is best-effort — the trailing comma-segment of
+    the headline if present (e.g. 'ML Engineer, Technology').
+    """
+    lines = [ln.strip() for ln in header_text.splitlines() if ln.strip()]
+    # Drop lines that are clearly footers or URLs from the header region.
+    lines = [ln for ln in lines if not _PAGE_FOOTER_RE.search(ln) and not _LINKEDIN_URL_RE.search(ln)]
+    name = lines[0] if lines else ""
+    headline = lines[1] if len(lines) > 1 else ""
+    industry = ""
+    if "," in headline:
+        industry = headline.rsplit(",", 1)[-1].strip()
+    return {"name": name, "headline": headline, "industry": industry}
+
+
+def _extract_skills(skills_text: str) -> list[str]:
+    """LinkedIn lists one skill per line under 'Skills' / 'Top Skills'."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in skills_text.splitlines():
+        item = line.strip()
+        if not item:
+            continue
+        # Skip endorsement counts like '(12)' that sometimes tag along
+        item = re.sub(r"\s*\(\d+\)\s*$", "", item).strip()
+        key = item.lower()
+        if item and key not in seen:
+            out.append(item)
+            seen.add(key)
+    return out
+
+
+# ── LLM extraction for prose sections ─────────────────────────────
+
+_LINKEDIN_SYSTEM = (
+    "You are an expert LinkedIn profile parser. You read raw text from one "
+    "section of a LinkedIn 'Save to PDF' export and return a strictly-typed "
+    "JSON object. You do not invent data — if a field is absent in the text, "
+    "leave it as an empty string. You return JSON only."
+)
+
+_EXPERIENCE_PROMPT = """Extract every position/role from the LinkedIn Experience section text below.
+Return JSON: {{"positions": [{{"title": str, "company": str, "start": str, "end": str, "description": str}}, ...]}}
+
+Rules:
+- One object per role, in the order written.
+- "start"/"end" verbatim as written (e.g. "Jan 2020", "Present"). Empty string if missing.
+- "description" = concatenated bullet points / paragraph for that role. Empty string if missing.
+- Strip role duration annotations like "(3 yrs 2 mos)".
+
+TEXT:
+---
+{text}
+---"""
+
+_EDUCATION_PROMPT = """Extract every education entry from the LinkedIn Education section text below.
+Return JSON: {{"education": [{{"school": str, "degree": str, "start": str, "end": str, "notes": str}}, ...]}}
+
+Rules:
+- "school" = institution name. "degree" = qualification (e.g. "MSc Computer Science").
+- "start"/"end" verbatim (e.g. "2016", "2018"). Empty if missing.
+- "notes" = activities/coursework/dissertation, empty if none.
+
+TEXT:
+---
+{text}
+---"""
+
+_CERTIFICATIONS_PROMPT = """Extract every certification from the LinkedIn certifications section text below.
+Return JSON: {{"certifications": [{{"name": str, "authority": str, "start": str, "end": str}}, ...]}}
+
+Rules:
+- "name" = certification name. "authority" = issuing body (e.g. "Amazon Web Services").
+- "start" = issued date, "end" = expiry/renewal date. Empty if missing.
+
+TEXT:
+---
+{text}
+---"""
+
+
+async def _llm_json(prompt: str) -> dict[str, Any]:
+    """Call the shared LLM provider; return {} on any failure."""
+    if not prompt.strip():
+        return {}
+    try:
+        from src.services.profile.llm_provider import llm_extract
+        return await llm_extract(prompt, system=_LINKEDIN_SYSTEM)
+    except Exception as e:
+        logger.warning("LinkedIn LLM extraction failed: %s", e)
+        return {}
+
+
+def _coerce_positions(raw: Any) -> list[dict]:
+    """Shape a list-of-dicts LLM result into the canonical positions schema."""
+    if not isinstance(raw, list):
         return []
-
-
-def _parse_positions(rows: list[dict]) -> list[dict]:
-    """Extract structured position data from Positions.csv rows."""
-    positions = []
-    for row in rows:
-        title = row.get("Title", "").strip()
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = coerce_str(item.get("title"))
         if not title:
             continue
-        positions.append({
-            "title": title,
-            "company": row.get("Company Name", "").strip(),
-            "start": row.get("Started On", "").strip(),
-            "end": row.get("Finished On", "").strip(),
-            "description": row.get("Description", "").strip(),
+        out.append({
+            "title": title.strip(),
+            "company": coerce_str(item.get("company")).strip(),
+            "start": coerce_str(item.get("start")).strip(),
+            "end": coerce_str(item.get("end")).strip(),
+            "description": coerce_str(item.get("description")).strip(),
         })
-    return positions
+    return out
 
 
-def _parse_skills(rows: list[dict]) -> list[str]:
-    """Extract skill names from Skills.csv rows."""
-    skills = []
-    seen = set()
-    for row in rows:
-        name = row.get("Name", "").strip()
-        if name and name.lower() not in seen:
-            skills.append(name)
-            seen.add(name.lower())
-    return skills
-
-
-def _parse_education(rows: list[dict]) -> list[dict]:
-    """Extract education entries from Education.csv rows."""
-    entries = []
-    for row in rows:
-        school = row.get("School Name", "").strip()
+def _coerce_education(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        school = coerce_str(item.get("school")).strip()
         if not school:
             continue
-        entries.append({
+        out.append({
             "school": school,
-            "degree": row.get("Degree Name", "").strip(),
-            "start": row.get("Start Date", "").strip(),
-            "end": row.get("End Date", "").strip(),
-            "notes": row.get("Notes", "").strip(),
+            "degree": coerce_str(item.get("degree")).strip(),
+            "start": coerce_str(item.get("start")).strip(),
+            "end": coerce_str(item.get("end")).strip(),
+            "notes": coerce_str(item.get("notes")).strip(),
         })
-    return entries
+    return out
 
 
-def _parse_certifications(rows: list[dict]) -> list[dict]:
-    """Extract certification entries from Certifications.csv rows."""
-    certs = []
-    for row in rows:
-        name = row.get("Name", "").strip()
+def _coerce_certifications(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = coerce_str(item.get("name")).strip()
         if not name:
             continue
-        certs.append({
+        out.append({
             "name": name,
-            "authority": row.get("Authority", "").strip(),
-            "start": row.get("Started On", "").strip(),
-            "end": row.get("Finished On", "").strip(),
+            "authority": coerce_str(item.get("authority")).strip(),
+            "start": coerce_str(item.get("start")).strip(),
+            "end": coerce_str(item.get("end")).strip(),
         })
-    return certs
-
-
-def _parse_profile(rows: list[dict]) -> dict:
-    """Extract profile summary from Profile.csv rows."""
-    if not rows:
-        return {"summary": "", "industry": "", "headline": ""}
-    row = rows[0]
-    return {
-        "summary": row.get("Summary", "").strip(),
-        "industry": row.get("Industry", "").strip(),
-        "headline": row.get("Headline", "").strip(),
-    }
+    return out
 
 
 def _empty_linkedin_data() -> dict:
-    """Return an empty LinkedIn data structure."""
-    return {"positions": [], "skills": [], "education": [], "certifications": [],
-            "summary": "", "industry": "", "headline": ""}
-
-
-def parse_linkedin_zip(file_path: str) -> dict:
-    """Parse LinkedIn ZIP export and return structured data dict."""
-    try:
-        with zipfile.ZipFile(file_path, "r") as zf:
-            return _parse_zip(zf)
-    except (zipfile.BadZipFile, Exception) as e:
-        logger.warning("Failed to parse LinkedIn ZIP: %s", e)
-        return _empty_linkedin_data()
-
-
-def parse_linkedin_zip_from_bytes(content: bytes) -> dict:
-    """Parse from in-memory bytes (for Streamlit file_uploader)."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
-            return _parse_zip(zf)
-    except (zipfile.BadZipFile, Exception) as e:
-        logger.warning("Failed to parse LinkedIn ZIP: %s", e)
-        return _empty_linkedin_data()
-
-
-def _parse_zip(zf: zipfile.ZipFile) -> dict:
-    """Internal: parse all CSVs from an open ZipFile."""
-    positions = _parse_positions(_read_csv(zf, "Positions.csv"))
-    skills = _parse_skills(_read_csv(zf, "Skills.csv"))
-    education = _parse_education(_read_csv(zf, "Education.csv"))
-    certifications = _parse_certifications(_read_csv(zf, "Certifications.csv"))
-    profile = _parse_profile(_read_csv(zf, "Profile.csv"))
-
     return {
-        "positions": positions,
-        "skills": skills,
-        "education": education,
-        "certifications": certifications,
-        "summary": profile["summary"],
-        "industry": profile["industry"],
-        "headline": profile["headline"],
+        "positions": [],
+        "skills": [],
+        "education": [],
+        "certifications": [],
+        "summary": "",
+        "industry": "",
+        "headline": "",
     }
 
+
+# ── Public async/sync parse API ───────────────────────────────────
+
+async def parse_linkedin_pdf_async(file_path: str) -> dict:
+    """Parse a LinkedIn 'Save to PDF' export into the canonical dict schema.
+
+    Returns an empty-data dict on failure (missing pdfplumber, corrupt PDF,
+    non-LinkedIn PDF, LLM unavailable) — never raises.
+    """
+    text = _extract_text(file_path)
+    if not text or not _looks_like_linkedin(text):
+        if text:
+            logger.info("PDF at %s does not look like a LinkedIn export; skipping", file_path)
+        return _empty_linkedin_data()
+
+    sections = _split_sections(text)
+    header = _extract_header_fields(sections.get("header", ""))
+    summary = sections.get("summary", "").strip()
+    skills = _extract_skills(
+        sections.get("skills", "") or sections.get("top skills", "")
+    )
+    experience_text = sections.get("experience", "")
+    education_text = sections.get("education", "")
+    certs_text = (
+        sections.get("certifications", "")
+        or sections.get("licenses & certifications", "")
+    )
+
+    # Three LLM calls in parallel — only the ones with text.
+    async def _maybe(prompt_template: str, text: str, key: str):
+        if not text.strip():
+            return {key: []}
+        return await _llm_json(prompt_template.format(text=text))
+
+    exp_task = _maybe(_EXPERIENCE_PROMPT, experience_text, "positions")
+    edu_task = _maybe(_EDUCATION_PROMPT, education_text, "education")
+    cert_task = _maybe(_CERTIFICATIONS_PROMPT, certs_text, "certifications")
+    exp_raw, edu_raw, cert_raw = await asyncio.gather(exp_task, edu_task, cert_task)
+
+    return {
+        "positions": _coerce_positions(exp_raw.get("positions") if isinstance(exp_raw, dict) else None),
+        "skills": skills,
+        "education": _coerce_education(edu_raw.get("education") if isinstance(edu_raw, dict) else None),
+        "certifications": _coerce_certifications(
+            cert_raw.get("certifications") if isinstance(cert_raw, dict) else None
+        ),
+        "summary": summary,
+        "industry": header.get("industry", ""),
+        "headline": header.get("headline", ""),
+    }
+
+
+def parse_linkedin_pdf(file_path: str) -> dict:
+    """Synchronous wrapper for ``parse_linkedin_pdf_async`` (used by CLI + route)."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(lambda: asyncio.run(parse_linkedin_pdf_async(file_path))).result()
+    return asyncio.run(parse_linkedin_pdf_async(file_path))
+
+
+# ── Merge into CVData (UNCHANGED — contract with downstream) ─────
 
 def enrich_cv_from_linkedin(cv: CVData, linkedin_data: dict) -> CVData:
     """Merge LinkedIn data into existing CVData, deduplicating."""

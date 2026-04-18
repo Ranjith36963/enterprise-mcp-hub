@@ -1,10 +1,13 @@
-"""Tests for LinkedIn ZIP parser and GitHub profile enricher (Phase 2)."""
+"""Tests for LinkedIn PDF parser and GitHub profile enricher.
 
-import csv
-import io
+LinkedIn input format is a profile PDF (LinkedIn's "Save to PDF" export),
+not a ZIP of CSVs. The enrichment dict schema and ``enrich_cv_from_linkedin``
+signature are preserved, so downstream tests (``TestEnrichCVFromLinkedIn``,
+``TestKeywordGeneratorWithEnrichedData``) are unchanged.
+"""
+
+import asyncio
 import json
-import zipfile
-from dataclasses import fields
 from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 
@@ -12,15 +15,17 @@ import pytest
 
 from src.services.profile.models import CVData, UserPreferences, UserProfile, SearchConfig
 from src.services.profile.linkedin_parser import (
-    parse_linkedin_zip,
-    parse_linkedin_zip_from_bytes,
+    parse_linkedin_pdf,
+    parse_linkedin_pdf_async,
     enrich_cv_from_linkedin,
-    _find_csv_in_zip,
-    _parse_positions,
-    _parse_skills,
-    _parse_education,
-    _parse_certifications,
-    _parse_profile,
+    is_linkedin_pdf,
+    _split_sections,
+    _extract_header_fields,
+    _extract_skills,
+    _looks_like_linkedin,
+    _coerce_positions,
+    _coerce_education,
+    _coerce_certifications,
 )
 from src.services.profile.github_enricher import (
     fetch_github_profile,
@@ -34,186 +39,359 @@ from src.services.profile.storage import save_profile, load_profile
 
 
 # ---------------------------------------------------------------------------
-# Helpers — create LinkedIn ZIP in memory
+# Helpers — build LinkedIn-shaped PDFs in memory
 # ---------------------------------------------------------------------------
 
-def _make_csv_bytes(headers: list[str], rows: list[list[str]]) -> bytes:
-    """Create CSV content as UTF-8-BOM bytes."""
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(headers)
-    for row in rows:
-        writer.writerow(row)
-    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+def _make_linkedin_pdf(
+    tmp_path: Path,
+    name: str = "John Doe",
+    headline: str = "ML Engineer, Technology",
+    location: str = "London, United Kingdom",
+    url: str = "linkedin.com/in/johndoe",
+    summary: str = "Experienced ML engineer",
+    experience: list[str] | None = None,
+    education: list[str] | None = None,
+    skills: list[str] | None = None,
+    certifications: list[str] | None = None,
+    include_footer: bool = True,
+    filename: str = "linkedin.pdf",
+) -> Path:
+    """Render a PDF that mimics LinkedIn's 'Save to PDF' layout."""
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=11)
+
+    def _line(text: str) -> None:
+        pdf.cell(0, 6, text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    if include_footer:
+        _line(url)
+    _line(name)
+    _line(headline)
+    _line(location)
+    _line("")
+
+    if summary:
+        _line("Summary")
+        for para_line in summary.splitlines():
+            _line(para_line)
+        _line("")
+
+    if experience:
+        _line("Experience")
+        for exp_line in experience:
+            _line(exp_line)
+        _line("")
+
+    if education:
+        _line("Education")
+        for edu_line in education:
+            _line(edu_line)
+        _line("")
+
+    if skills:
+        _line("Skills")
+        for skill in skills:
+            _line(skill)
+        _line("")
+
+    if certifications:
+        _line("Certifications")
+        for cert in certifications:
+            _line(cert)
+        _line("")
+
+    if include_footer:
+        _line("Page 1 of 1")
+
+    path = tmp_path / filename
+    pdf.output(str(path))
+    return path
 
 
-def _make_linkedin_zip(files: dict[str, bytes]) -> bytes:
-    """Create an in-memory ZIP from a dict of filename -> csv bytes."""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for name, content in files.items():
-            zf.writestr(name, content)
-    return buf.getvalue()
+def _make_plain_cv_pdf(tmp_path: Path) -> Path:
+    """Render a PDF that does NOT look like LinkedIn (no URL, no footer, no headings)."""
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
 
-
-def _make_full_linkedin_zip() -> bytes:
-    """Create a realistic LinkedIn ZIP with all CSVs."""
-    positions = _make_csv_bytes(
-        ["Company Name", "Title", "Started On", "Finished On", "Description"],
-        [
-            ["Google", "Software Engineer", "Jan 2020", "Dec 2022", "Built ML pipelines"],
-            ["Meta", "Senior Engineer", "Jan 2023", "", "Leading AI team"],
-        ],
-    )
-    skills = _make_csv_bytes(
-        ["Name"],
-        [["Python"], ["SQL"], ["Machine Learning"], ["Docker"]],
-    )
-    education = _make_csv_bytes(
-        ["School Name", "Degree Name", "Start Date", "End Date", "Notes"],
-        [["MIT", "MSc Computer Science", "2016", "2018", ""]],
-    )
-    certifications = _make_csv_bytes(
-        ["Name", "Authority", "Started On", "Finished On"],
-        [["AWS Solutions Architect", "Amazon", "2021", "2024"]],
-    )
-    profile = _make_csv_bytes(
-        ["First Name", "Last Name", "Headline", "Summary", "Industry"],
-        [["John", "Doe", "ML Engineer", "Experienced ML engineer", "Technology"]],
-    )
-    return _make_linkedin_zip({
-        "Positions.csv": positions,
-        "Skills.csv": skills,
-        "Education.csv": education,
-        "Certifications.csv": certifications,
-        "Profile.csv": profile,
-    })
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=11)
+    for line in [
+        "Jane Smith",
+        "Senior Software Engineer",
+        "",
+        "A software engineer with 10 years of experience in distributed systems.",
+        "",
+        "Google, 2015-2020: Built large-scale infrastructure.",
+        "University of Cambridge, BSc Computer Science.",
+    ]:
+        pdf.cell(0, 6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    path = tmp_path / "plain_cv.pdf"
+    pdf.output(str(path))
+    return path
 
 
 # ---------------------------------------------------------------------------
-# LinkedIn Parser — Unit Tests
+# Detection
 # ---------------------------------------------------------------------------
 
-class TestLinkedInParsePositions:
-    def test_basic_positions(self):
-        rows = [
-            {"Title": "Engineer", "Company Name": "Google", "Started On": "2020", "Finished On": "2022", "Description": "Built stuff"},
-            {"Title": "Manager", "Company Name": "Meta", "Started On": "2023", "Finished On": "", "Description": ""},
-        ]
-        positions = _parse_positions(rows)
-        assert len(positions) == 2
-        assert positions[0]["title"] == "Engineer"
-        assert positions[0]["company"] == "Google"
-        assert positions[1]["title"] == "Manager"
+class TestLinkedInPdfDetection:
+    def test_full_linkedin_pdf_detected(self, tmp_path):
+        path = _make_linkedin_pdf(
+            tmp_path,
+            experience=["Engineer at Google", "Jan 2020 - Dec 2022"],
+            education=["MIT", "MSc Computer Science", "2016 - 2018"],
+            skills=["Python", "SQL"],
+        )
+        assert is_linkedin_pdf(str(path)) is True
 
-    def test_skips_empty_title(self):
-        rows = [{"Title": "", "Company Name": "Google", "Started On": "", "Finished On": "", "Description": ""}]
-        assert _parse_positions(rows) == []
+    def test_plain_cv_not_detected(self, tmp_path):
+        path = _make_plain_cv_pdf(tmp_path)
+        assert is_linkedin_pdf(str(path)) is False
+
+    def test_empty_text_not_detected(self):
+        assert _looks_like_linkedin("") is False
+
+    def test_requires_two_markers(self):
+        # Only a URL — not enough.
+        assert _looks_like_linkedin("linkedin.com/in/johndoe") is False
+        # URL + footer (2 markers, no headings) passes.
+        assert _looks_like_linkedin("linkedin.com/in/johndoe\nPage 1 of 2") is True
+        # Three headings alone (no URL, no footer) → only 1 marker.
+        assert _looks_like_linkedin("Summary\nExperience\nEducation") is False
+
+    def test_corrupt_file_not_detected(self, tmp_path):
+        path = tmp_path / "bad.pdf"
+        path.write_bytes(b"not a real pdf")
+        assert is_linkedin_pdf(str(path)) is False
 
 
-class TestLinkedInParseSkills:
-    def test_basic_skills(self):
-        rows = [{"Name": "Python"}, {"Name": "SQL"}, {"Name": "Docker"}]
-        skills = _parse_skills(rows)
+# ---------------------------------------------------------------------------
+# Section split & deterministic extraction
+# ---------------------------------------------------------------------------
+
+class TestSectionSplit:
+    def test_split_recognises_known_headings(self):
+        text = "John Doe\nML Engineer\n\nSummary\nI build models.\n\nExperience\nGoogle 2020-2022\n\nSkills\nPython\nSQL\n"
+        sections = _split_sections(text)
+        assert "summary" in sections
+        assert sections["summary"].strip() == "I build models."
+        assert "experience" in sections
+        assert "skills" in sections
+        assert "Python" in sections["skills"]
+
+    def test_split_preserves_header_block(self):
+        text = "John Doe\nSenior Engineer\n\nSummary\nHello"
+        sections = _split_sections(text)
+        header = sections["header"]
+        assert "John Doe" in header
+        assert "Summary" not in header  # heading itself isn't in the header block
+
+    def test_split_is_case_insensitive(self):
+        text = "SUMMARY\nMy summary.\nexperience\nRole details."
+        sections = _split_sections(text)
+        assert "summary" in sections and "experience" in sections
+
+
+class TestDeterministicExtraction:
+    def test_header_name_and_headline(self):
+        fields = _extract_header_fields(
+            "linkedin.com/in/johndoe\nJohn Doe\nML Engineer, Technology\nLondon\nPage 1 of 2"
+        )
+        assert fields["name"] == "John Doe"
+        assert fields["headline"] == "ML Engineer, Technology"
+        assert fields["industry"] == "Technology"
+
+    def test_header_without_industry_suffix(self):
+        fields = _extract_header_fields("Jane Doe\nEngineer")
+        assert fields["name"] == "Jane Doe"
+        assert fields["headline"] == "Engineer"
+        assert fields["industry"] == ""
+
+    def test_skills_one_per_line(self):
+        skills = _extract_skills("Python\nSQL\nDocker\n")
         assert skills == ["Python", "SQL", "Docker"]
 
-    def test_deduplicates_case_insensitive(self):
-        rows = [{"Name": "Python"}, {"Name": "python"}, {"Name": "PYTHON"}]
-        skills = _parse_skills(rows)
-        assert len(skills) == 1
-        assert skills[0] == "Python"
+    def test_skills_dedup_case_insensitive(self):
+        skills = _extract_skills("Python\npython\nSQL\n")
+        assert skills == ["Python", "SQL"]
 
-    def test_skips_empty(self):
-        rows = [{"Name": ""}, {"Name": "Python"}]
-        skills = _parse_skills(rows)
-        assert skills == ["Python"]
+    def test_skills_strip_endorsement_counts(self):
+        skills = _extract_skills("Python (24)\nSQL (8)\n")
+        assert skills == ["Python", "SQL"]
 
 
-class TestLinkedInParseEducation:
-    def test_basic_education(self):
-        rows = [{"School Name": "MIT", "Degree Name": "MSc CS", "Start Date": "2016", "End Date": "2018", "Notes": ""}]
-        entries = _parse_education(rows)
-        assert len(entries) == 1
-        assert entries[0]["school"] == "MIT"
-        assert entries[0]["degree"] == "MSc CS"
+class TestCoercionShaping:
+    def test_coerce_positions_drops_missing_title(self):
+        raw = [{"company": "Google"}, {"title": "Engineer", "company": "Meta"}]
+        assert _coerce_positions(raw) == [
+            {"title": "Engineer", "company": "Meta", "start": "", "end": "", "description": ""}
+        ]
+
+    def test_coerce_education_drops_missing_school(self):
+        raw = [{"degree": "MSc"}, {"school": "MIT", "degree": "MSc CS"}]
+        out = _coerce_education(raw)
+        assert len(out) == 1 and out[0]["school"] == "MIT"
+
+    def test_coerce_certifications_drops_missing_name(self):
+        raw = [{"authority": "AWS"}, {"name": "AWS SA", "authority": "Amazon"}]
+        out = _coerce_certifications(raw)
+        assert len(out) == 1 and out[0]["name"] == "AWS SA"
+
+    def test_coerce_handles_non_list(self):
+        assert _coerce_positions(None) == []
+        assert _coerce_education("oops") == []
+        assert _coerce_certifications({"not": "a list"}) == []
 
 
-class TestLinkedInParseCertifications:
-    def test_basic_certifications(self):
-        rows = [{"Name": "AWS SA", "Authority": "Amazon", "Started On": "2021", "Finished On": "2024"}]
-        certs = _parse_certifications(rows)
-        assert len(certs) == 1
-        assert certs[0]["name"] == "AWS SA"
-        assert certs[0]["authority"] == "Amazon"
+# ---------------------------------------------------------------------------
+# End-to-end parse_linkedin_pdf (with mocked LLM)
+# ---------------------------------------------------------------------------
 
-    def test_skips_empty_name(self):
-        rows = [{"Name": "", "Authority": "Amazon", "Started On": "", "Finished On": ""}]
-        assert _parse_certifications(rows) == []
+@pytest.fixture
+def mock_linkedin_llm():
+    """Mock llm_extract to return canned responses keyed on prompt section."""
+    async def fake_llm(prompt: str, system: str = "") -> dict:
+        if "Experience section" in prompt:
+            return {"positions": [
+                {"title": "Software Engineer", "company": "Google",
+                 "start": "Jan 2020", "end": "Dec 2022", "description": "Built ML pipelines"},
+                {"title": "Senior Engineer", "company": "Meta",
+                 "start": "Jan 2023", "end": "Present", "description": "Led AI team"},
+            ]}
+        if "Education section" in prompt:
+            return {"education": [
+                {"school": "MIT", "degree": "MSc Computer Science",
+                 "start": "2016", "end": "2018", "notes": ""}
+            ]}
+        if "certifications section" in prompt:
+            return {"certifications": [
+                {"name": "AWS Solutions Architect", "authority": "Amazon",
+                 "start": "2021", "end": "2024"}
+            ]}
+        return {}
+    # _llm_json imports llm_extract lazily from the provider module, so patching
+    # the provider module is what takes effect at call time.
+    with patch("src.services.profile.llm_provider.llm_extract", new=fake_llm):
+        yield
 
 
-class TestLinkedInParseProfile:
-    def test_basic_profile(self):
-        rows = [{"Summary": "I am an engineer", "Industry": "Technology", "Headline": "ML Engineer"}]
-        profile = _parse_profile(rows)
-        assert profile["summary"] == "I am an engineer"
-        assert profile["industry"] == "Technology"
-        assert profile["headline"] == "ML Engineer"
-
-    def test_empty_rows(self):
-        profile = _parse_profile([])
-        assert profile["summary"] == ""
-        assert profile["industry"] == ""
-
-
-class TestLinkedInZipParsing:
-    def test_parse_full_zip(self):
-        zip_bytes = _make_full_linkedin_zip()
-        data = parse_linkedin_zip_from_bytes(zip_bytes)
-        assert len(data["positions"]) == 2
-        assert len(data["skills"]) == 4
-        assert "Python" in data["skills"]
-        assert len(data["education"]) == 1
-        assert len(data["certifications"]) == 1
+class TestParseLinkedInPdfEndToEnd:
+    @pytest.mark.asyncio
+    async def test_full_parse(self, tmp_path, mock_linkedin_llm):
+        path = _make_linkedin_pdf(
+            tmp_path,
+            summary="Experienced ML engineer",
+            experience=["Software Engineer at Google", "Jan 2020 - Dec 2022", "Built ML pipelines"],
+            education=["MIT", "MSc Computer Science", "2016 - 2018"],
+            skills=["Python", "SQL", "Machine Learning", "Docker"],
+            certifications=["AWS Solutions Architect - Amazon - 2021"],
+        )
+        data = await parse_linkedin_pdf_async(str(path))
         assert data["summary"] == "Experienced ML engineer"
+        assert data["headline"] == "ML Engineer, Technology"
         assert data["industry"] == "Technology"
-        assert data["headline"] == "ML Engineer"
+        assert data["skills"] == ["Python", "SQL", "Machine Learning", "Docker"]
+        assert len(data["positions"]) == 2
+        assert data["positions"][0]["title"] == "Software Engineer"
+        assert data["positions"][0]["company"] == "Google"
+        assert len(data["education"]) == 1
+        assert data["education"][0]["school"] == "MIT"
+        assert len(data["certifications"]) == 1
+        assert data["certifications"][0]["name"] == "AWS Solutions Architect"
 
-    def test_parse_zip_with_missing_csvs(self):
-        """Should gracefully handle missing CSV files."""
-        zip_bytes = _make_linkedin_zip({
-            "Skills.csv": _make_csv_bytes(["Name"], [["Python"]]),
-        })
-        data = parse_linkedin_zip_from_bytes(zip_bytes)
+    def test_sync_wrapper_returns_same_shape(self, tmp_path, mock_linkedin_llm):
+        path = _make_linkedin_pdf(
+            tmp_path,
+            summary="x",
+            experience=["E"], education=["M"],
+            skills=["Python"], certifications=["Cert"],
+        )
+        data = parse_linkedin_pdf(str(path))
+        assert set(data.keys()) == {
+            "positions", "skills", "education", "certifications",
+            "summary", "industry", "headline",
+        }
         assert data["skills"] == ["Python"]
+
+    @pytest.mark.asyncio
+    async def test_skills_only_requires_no_llm(self, tmp_path):
+        """If only Skills section exists, no LLM call needed — still works offline."""
+        path = _make_linkedin_pdf(
+            tmp_path,
+            summary="",
+            experience=None, education=None,
+            skills=["Python", "Rust"],
+            certifications=None,
+        )
+        # No mock installed — should still succeed because no LLM calls fire.
+        data = await parse_linkedin_pdf_async(str(path))
+        assert data["skills"] == ["Python", "Rust"]
         assert data["positions"] == []
         assert data["education"] == []
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+class TestLinkedInPdfErrors:
+    def test_corrupt_pdf_returns_empty(self, tmp_path):
+        path = tmp_path / "bad.pdf"
+        path.write_bytes(b"this is not a pdf")
+        data = parse_linkedin_pdf(str(path))
+        assert data["positions"] == []
+        assert data["skills"] == []
         assert data["summary"] == ""
 
-    def test_parse_zip_nested_directory(self):
-        """LinkedIn sometimes puts CSVs in a subdirectory."""
-        skills_csv = _make_csv_bytes(["Name"], [["React"], ["Node.js"]])
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("Basic_LinkedInDataExport_01-01-2024/Skills.csv", skills_csv)
-        data = parse_linkedin_zip_from_bytes(buf.getvalue())
-        assert data["skills"] == ["React", "Node.js"]
+    def test_missing_file_returns_empty(self):
+        data = parse_linkedin_pdf("/path/does/not/exist.pdf")
+        assert data["positions"] == []
+        assert data["skills"] == []
 
-    def test_parse_zip_file_path(self, tmp_path):
-        """Test parsing from a file path."""
-        zip_bytes = _make_full_linkedin_zip()
-        path = tmp_path / "linkedin.zip"
-        path.write_bytes(zip_bytes)
-        data = parse_linkedin_zip(str(path))
-        assert len(data["positions"]) == 2
-        assert len(data["skills"]) == 4
+    def test_non_linkedin_pdf_returns_empty(self, tmp_path):
+        path = _make_plain_cv_pdf(tmp_path)
+        data = parse_linkedin_pdf(str(path))
+        assert data["positions"] == []
+        assert data["skills"] == []
+        assert data["summary"] == ""
 
+    @pytest.mark.asyncio
+    async def test_llm_failure_returns_partial_data(self, tmp_path):
+        """If the LLM provider raises, deterministic fields still populate."""
+        path = _make_linkedin_pdf(
+            tmp_path,
+            summary="Hello world",
+            experience=["Some role"],
+            skills=["Python"],
+        )
+
+        async def boom(*_a, **_kw):
+            raise RuntimeError("llm down")
+
+        with patch("src.services.profile.llm_provider.llm_extract", new=boom):
+            data = await parse_linkedin_pdf_async(str(path))
+        assert data["summary"] == "Hello world"
+        assert data["skills"] == ["Python"]
+        # LLM-sourced fields stay empty, not crashed:
+        assert data["positions"] == []
+        assert data["education"] == []
+        assert data["certifications"] == []
+
+
+# ---------------------------------------------------------------------------
+# Enrichment — contract with downstream is unchanged
+# ---------------------------------------------------------------------------
 
 class TestEnrichCVFromLinkedIn:
     def test_merges_skills(self):
         cv = CVData(skills=["Python", "Java"])
         linkedin_data = {"skills": ["Python", "SQL", "Docker"], "positions": [], "education": [], "certifications": []}
         cv = enrich_cv_from_linkedin(cv, linkedin_data)
-        # Python deduped, SQL and Docker added to linkedin_skills
         assert "SQL" in cv.linkedin_skills
         assert "Docker" in cv.linkedin_skills
 
@@ -229,7 +407,6 @@ class TestEnrichCVFromLinkedIn:
         }
         cv = enrich_cv_from_linkedin(cv, linkedin_data)
         assert "Senior Engineer" in cv.job_titles
-        # "Software Engineer" not duplicated
         assert cv.job_titles.count("Software Engineer") == 1
 
     def test_merges_education(self):
@@ -269,18 +446,31 @@ class TestEnrichCVFromLinkedIn:
         cv = enrich_cv_from_linkedin(cv, linkedin_data)
         assert cv.linkedin_industry == "Technology"
 
+    def test_double_enrich_no_dupes(self):
+        cv = CVData(skills=["Python"])
+        linkedin_data = {
+            "skills": ["SQL", "Docker"],
+            "positions": [{"title": "Engineer", "company": "Google"}],
+            "education": [], "certifications": [],
+            "industry": "Tech",
+        }
+        cv = enrich_cv_from_linkedin(cv, linkedin_data)
+        assert len(cv.linkedin_skills) == 2
+        cv = enrich_cv_from_linkedin(cv, linkedin_data)
+        assert len(cv.linkedin_skills) == 2
+
 
 # ---------------------------------------------------------------------------
-# GitHub Enricher — Unit Tests
+# GitHub Enricher — unchanged
 # ---------------------------------------------------------------------------
 
 class TestInferSkills:
     def test_languages_mapped(self):
         languages = {"Python": 50000, "JavaScript": 30000, "HCL": 10000}
         skills = _infer_skills(languages, set())
-        assert skills[0] == "Python"  # highest bytes
+        assert skills[0] == "Python"
         assert "JavaScript" in skills
-        assert "Terraform" in skills  # HCL -> Terraform
+        assert "Terraform" in skills
 
     def test_topics_mapped(self):
         topics = {"react", "docker", "machine-learning"}
@@ -292,44 +482,28 @@ class TestInferSkills:
     def test_deduplicates_across_lang_and_topic(self):
         languages = {"Python": 50000}
         topics = {"docker"}
-        # Dockerfile language also maps to Docker
         languages["Dockerfile"] = 5000
         skills = _infer_skills(languages, topics)
-        docker_count = sum(1 for s in skills if s == "Docker")
-        assert docker_count == 1
+        assert sum(1 for s in skills if s == "Docker") == 1
 
     def test_empty_inputs(self):
         assert _infer_skills({}, set()) == []
 
     def test_unknown_language_skipped(self):
-        skills = _infer_skills({"COBOL": 1000}, set())
-        assert skills == []
+        assert _infer_skills({"COBOL": 1000}, set()) == []
 
     def test_unknown_topic_skipped(self):
-        skills = _infer_skills({}, {"some-random-topic"})
-        assert skills == []
+        assert _infer_skills({}, {"some-random-topic"}) == []
 
 
 class TestFetchGitHubProfile:
     @pytest.mark.asyncio
     async def test_fetch_repos_and_languages(self):
         mock_repos = [
-            {
-                "name": "ml-project",
-                "language": "Python",
-                "description": "ML pipeline",
-                "stargazers_count": 10,
-                "topics": ["machine-learning", "pytorch"],
-                "fork": False,
-            },
-            {
-                "name": "web-app",
-                "language": "TypeScript",
-                "description": "React app",
-                "stargazers_count": 5,
-                "topics": ["react", "nextjs"],
-                "fork": False,
-            },
+            {"name": "ml-project", "language": "Python", "description": "ML pipeline",
+             "stargazers_count": 10, "topics": ["machine-learning", "pytorch"], "fork": False},
+            {"name": "web-app", "language": "TypeScript", "description": "React app",
+             "stargazers_count": 5, "topics": ["react", "nextjs"], "fork": False},
         ]
         mock_languages_ml = {"Python": 50000, "Jupyter Notebook": 10000}
         mock_languages_web = {"TypeScript": 30000, "CSS": 5000}
@@ -418,7 +592,6 @@ class TestEnrichCVFromGitHub:
         cv = enrich_cv_from_github(cv, github_data)
         assert "TypeScript" in cv.github_skills_inferred
         assert "Docker" in cv.github_skills_inferred
-        # Python already in cv.skills, not duplicated
         assert "Python" not in cv.github_skills_inferred
 
     def test_stores_languages_and_topics(self):
@@ -434,7 +607,7 @@ class TestEnrichCVFromGitHub:
 
 
 # ---------------------------------------------------------------------------
-# Integration — Storage with new fields
+# Storage with new fields
 # ---------------------------------------------------------------------------
 
 class TestStorageWithNewFields:
@@ -467,7 +640,6 @@ class TestStorageWithNewFields:
             assert loaded.preferences.github_username == "testuser"
 
     def test_load_old_profile_without_new_fields(self, tmp_path):
-        """Old profiles without LinkedIn/GitHub fields should load fine."""
         old_profile_data = {
             "cv_data": {"raw_text": "Old CV", "skills": ["Java"], "job_titles": [],
                         "education": [], "certifications": [], "summary": ""},
@@ -487,7 +659,6 @@ class TestStorageWithNewFields:
             assert loaded.preferences.github_username == ""
 
     def test_load_profile_with_unknown_keys(self, tmp_path):
-        """Profile with extra keys from future versions shouldn't crash."""
         future_data = {
             "cv_data": {"raw_text": "CV", "skills": ["Python"], "future_field": "something"},
             "preferences": {"target_job_titles": ["Engineer"], "unknown_pref": True},
@@ -501,21 +672,14 @@ class TestStorageWithNewFields:
 
 
 # ---------------------------------------------------------------------------
-# Integration — Keyword generator with LinkedIn + GitHub data
+# Keyword generator with LinkedIn + GitHub data
 # ---------------------------------------------------------------------------
 
 class TestKeywordGeneratorWithEnrichedData:
     def test_linkedin_skills_in_search_config(self):
         profile = UserProfile(
-            cv_data=CVData(
-                raw_text="test",
-                skills=["Python"],
-                linkedin_skills=["SQL", "Docker"],
-            ),
-            preferences=UserPreferences(
-                target_job_titles=["Data Engineer"],
-                additional_skills=["Spark"],
-            ),
+            cv_data=CVData(raw_text="test", skills=["Python"], linkedin_skills=["SQL", "Docker"]),
+            preferences=UserPreferences(target_job_titles=["Data Engineer"], additional_skills=["Spark"]),
         )
         config = generate_search_config(profile)
         all_skills = config.primary_skills + config.secondary_skills + config.tertiary_skills
@@ -526,14 +690,8 @@ class TestKeywordGeneratorWithEnrichedData:
 
     def test_github_skills_in_search_config(self):
         profile = UserProfile(
-            cv_data=CVData(
-                raw_text="test",
-                skills=["Python"],
-                github_skills_inferred=["TypeScript", "React"],
-            ),
-            preferences=UserPreferences(
-                target_job_titles=["Full Stack Developer"],
-            ),
+            cv_data=CVData(raw_text="test", skills=["Python"], github_skills_inferred=["TypeScript", "React"]),
+            preferences=UserPreferences(target_job_titles=["Full Stack Developer"]),
         )
         config = generate_search_config(profile)
         all_skills = config.primary_skills + config.secondary_skills + config.tertiary_skills
@@ -549,9 +707,7 @@ class TestKeywordGeneratorWithEnrichedData:
                     {"title": "Tech Lead", "company": "Meta"},
                 ],
             ),
-            preferences=UserPreferences(
-                target_job_titles=["Software Engineer"],
-            ),
+            preferences=UserPreferences(target_job_titles=["Software Engineer"]),
         )
         config = generate_search_config(profile)
         assert "Software Engineer" in config.job_titles
@@ -560,13 +716,8 @@ class TestKeywordGeneratorWithEnrichedData:
 
     def test_linkedin_industry_in_relevance_keywords(self):
         profile = UserProfile(
-            cv_data=CVData(
-                raw_text="test",
-                linkedin_industry="Information Technology",
-            ),
-            preferences=UserPreferences(
-                target_job_titles=["Engineer"],
-            ),
+            cv_data=CVData(raw_text="test", linkedin_industry="Information Technology"),
+            preferences=UserPreferences(target_job_titles=["Engineer"]),
         )
         config = generate_search_config(profile)
         assert "information" in config.relevance_keywords
@@ -580,21 +731,16 @@ class TestKeywordGeneratorWithEnrichedData:
                 linkedin_skills=["Python", "Docker"],
                 github_skills_inferred=["Python", "SQL", "Go"],
             ),
-            preferences=UserPreferences(
-                target_job_titles=["Engineer"],
-                additional_skills=["Python"],
-            ),
+            preferences=UserPreferences(target_job_titles=["Engineer"], additional_skills=["Python"]),
         )
         config = generate_search_config(profile)
         all_skills = config.primary_skills + config.secondary_skills + config.tertiary_skills
-        # Each skill should appear exactly once
         assert all_skills.count("Python") == 1
         assert all_skills.count("SQL") == 1
         assert "Docker" in all_skills
         assert "Go" in all_skills
 
     def test_empty_enrichment_fields_no_change(self):
-        """When LinkedIn/GitHub fields are empty, behavior is same as Phase 1."""
         profile = UserProfile(
             cv_data=CVData(raw_text="test", skills=["Python", "SQL"]),
             preferences=UserPreferences(target_job_titles=["Engineer"]),
@@ -605,92 +751,28 @@ class TestKeywordGeneratorWithEnrichedData:
 
 
 # ---------------------------------------------------------------------------
-# Async context manager helper for mocking aiohttp
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# LinkedIn ZIP Error Handling (BUG-3 regression tests)
-# ---------------------------------------------------------------------------
-
-class TestLinkedInZipErrors:
-    def test_corrupt_zip_returns_empty_dict(self):
-        """BadZipFile should be handled gracefully."""
-        result = parse_linkedin_zip_from_bytes(b"not a valid zip file")
-        assert result["positions"] == []
-        assert result["skills"] == []
-        assert result["summary"] == ""
-        assert result["industry"] == ""
-
-    def test_empty_bytes_returns_empty_dict(self):
-        """Zero-length input should return empty data."""
-        result = parse_linkedin_zip_from_bytes(b"")
-        assert result["positions"] == []
-        assert result["skills"] == []
-
-    def test_corrupt_zip_file_path(self, tmp_path):
-        """Corrupt ZIP on disk should return empty data."""
-        path = tmp_path / "bad.zip"
-        path.write_bytes(b"corrupt data here")
-        result = parse_linkedin_zip(str(path))
-        assert result["positions"] == []
-        assert result["skills"] == []
-
-    def test_csv_with_missing_columns(self):
-        """Positions.csv without 'Title' column should produce empty positions."""
-        csv_bytes = _make_csv_bytes(
-            ["Company Name", "Started On"],
-            [["Google", "2020"]],
-        )
-        zip_bytes = _make_linkedin_zip({"Positions.csv": csv_bytes})
-        data = parse_linkedin_zip_from_bytes(zip_bytes)
-        assert data["positions"] == []
-
-    def test_double_enrich_linkedin_no_dupes(self):
-        """Calling enrich twice should replace, not accumulate linkedin_skills."""
-        cv = CVData(skills=["Python"])
-        linkedin_data = {
-            "skills": ["SQL", "Docker"],
-            "positions": [{"title": "Engineer", "company": "Google"}],
-            "education": [], "certifications": [],
-            "industry": "Tech",
-        }
-        cv = enrich_cv_from_linkedin(cv, linkedin_data)
-        assert len(cv.linkedin_skills) == 2
-        # Enrich again with same data
-        cv = enrich_cv_from_linkedin(cv, linkedin_data)
-        # Should replace, not double up
-        assert len(cv.linkedin_skills) == 2
-
-
-# ---------------------------------------------------------------------------
-# GitHub Error Handling (ROB-3 regression tests)
+# GitHub error handling + combined enrichment
 # ---------------------------------------------------------------------------
 
 class TestGitHubErrors:
     @pytest.mark.asyncio
     async def test_timeout_returns_empty(self):
-        """Network timeout should return empty profile."""
         async def mock_get(url, **kwargs):
             raise asyncio.TimeoutError("Timed out")
-
         session = AsyncMock()
         session.get = MagicMock(side_effect=lambda url, **kw: _async_context(mock_get(url, **kw)))
-
         result = await fetch_github_profile("testuser", session=session)
         assert result["repositories"] == []
         assert result["skills_inferred"] == []
 
     @pytest.mark.asyncio
     async def test_partial_language_fetch_failure(self):
-        """Some repo language fetches fail, others succeed."""
         mock_repos = [
             {"name": "repo1", "language": "Python", "description": "", "stargazers_count": 1, "topics": [], "fork": False},
             {"name": "repo2", "language": "Go", "description": "", "stargazers_count": 1, "topics": [], "fork": False},
         ]
 
-        call_count = 0
         async def mock_get(url, **kwargs):
-            nonlocal call_count
             resp = AsyncMock()
             resp.status = 200
             if "repos?per_page" in url:
@@ -705,14 +787,11 @@ class TestGitHubErrors:
 
         session = AsyncMock()
         session.get = MagicMock(side_effect=lambda url, **kw: _async_context(mock_get(url, **kw)))
-
         result = await fetch_github_profile("testuser", session=session)
         assert len(result["repositories"]) == 2
-        # Python should still be inferred even though repo2 failed
         assert "Python" in result["skills_inferred"]
 
     def test_double_enrich_github_no_dupes(self):
-        """Calling enrich twice should replace, not accumulate github_skills_inferred."""
         cv = CVData(skills=["Python"])
         github_data = {
             "skills_inferred": ["TypeScript", "Docker"],
@@ -721,21 +800,13 @@ class TestGitHubErrors:
         }
         cv = enrich_cv_from_github(cv, github_data)
         assert len(cv.github_skills_inferred) == 2
-        # Enrich again
         cv = enrich_cv_from_github(cv, github_data)
-        # Should replace, not double up
         assert len(cv.github_skills_inferred) == 2
 
 
-# ---------------------------------------------------------------------------
-# Combined Enrichment
-# ---------------------------------------------------------------------------
-
 class TestCombinedEnrichment:
     def test_linkedin_then_github_no_data_loss(self):
-        """Both enrichers on same CVData should retain all data."""
         cv = CVData(skills=["Python"])
-
         linkedin_data = {
             "skills": ["SQL"], "positions": [{"title": "Engineer", "company": "Co"}],
             "education": [{"school": "MIT", "degree": "MSc"}],
@@ -743,14 +814,12 @@ class TestCombinedEnrichment:
             "industry": "Tech", "summary": "Hi",
         }
         cv = enrich_cv_from_linkedin(cv, linkedin_data)
-
         github_data = {
             "skills_inferred": ["TypeScript", "Docker"],
             "languages": {"TypeScript": 30000},
             "topics": ["docker"],
         }
         cv = enrich_cv_from_github(cv, github_data)
-
         assert cv.linkedin_skills == ["SQL"]
         assert cv.linkedin_industry == "Tech"
         assert "TypeScript" in cv.github_skills_inferred
@@ -758,7 +827,6 @@ class TestCombinedEnrichment:
         assert "Engineer" in cv.job_titles
 
     def test_all_sources_skill_dedup_in_search_config(self):
-        """CV + LinkedIn + GitHub skills should dedup in SearchConfig."""
         profile = UserProfile(
             cv_data=CVData(
                 raw_text="test",
@@ -766,10 +834,7 @@ class TestCombinedEnrichment:
                 linkedin_skills=["Python", "Docker"],
                 github_skills_inferred=["Python", "SQL", "Go"],
             ),
-            preferences=UserPreferences(
-                target_job_titles=["Engineer"],
-                additional_skills=["Python"],
-            ),
+            preferences=UserPreferences(target_job_titles=["Engineer"], additional_skills=["Python"]),
         )
         config = generate_search_config(profile)
         all_skills = config.primary_skills + config.secondary_skills + config.tertiary_skills
@@ -780,36 +845,8 @@ class TestCombinedEnrichment:
 
 
 # ---------------------------------------------------------------------------
-# Path traversal defense (ROB-4)
-# ---------------------------------------------------------------------------
-
-class TestPathTraversalDefense:
-    def test_path_traversal_blocked(self):
-        """ZIP entries with '..' should be skipped."""
-        csv_bytes = _make_csv_bytes(["Name"], [["Python"]])
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("../../etc/passwd", b"bad data")
-            zf.writestr("Skills.csv", csv_bytes)
-        data = parse_linkedin_zip_from_bytes(buf.getvalue())
-        assert data["skills"] == ["Python"]
-
-    def test_absolute_path_blocked(self):
-        """ZIP entries starting with '/' should be skipped."""
-        csv_bytes = _make_csv_bytes(["Name"], [["React"]])
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("/etc/Skills.csv", csv_bytes)
-            zf.writestr("Skills.csv", csv_bytes)
-        data = parse_linkedin_zip_from_bytes(buf.getvalue())
-        assert data["skills"] == ["React"]
-
-
-# ---------------------------------------------------------------------------
 # Async context manager helper for mocking aiohttp
 # ---------------------------------------------------------------------------
-
-import asyncio
 
 class _async_context:
     """Wrap a coroutine as an async context manager for aiohttp mocking."""

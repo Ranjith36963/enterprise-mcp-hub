@@ -11,7 +11,7 @@ from src.api.dependencies import get_db, save_upload_to_temp
 from src.api.models import CVDetail, GitHubResponse, LinkedInResponse, ProfileResponse, ProfileSummary
 from src.services.profile.cv_parser import parse_cv_async
 from src.services.profile.github_enricher import enrich_cv_from_github, fetch_github_profile
-from src.services.profile.linkedin_parser import enrich_cv_from_linkedin, parse_linkedin_zip
+from src.services.profile.linkedin_parser import enrich_cv_from_linkedin, parse_linkedin_pdf
 from src.services.profile.models import UserPreferences, UserProfile
 from src.services.profile.preferences import merge_cv_and_preferences
 from src.services.profile.storage import load_profile, save_profile
@@ -121,20 +121,25 @@ async def upsert_profile(
 
 @router.post("/profile/linkedin", response_model=LinkedInResponse)
 async def upload_linkedin(file: UploadFile = File(...)):
-    """Enrich user profile with LinkedIn data export ZIP."""
+    """Enrich user profile with a LinkedIn 'Save to PDF' profile export."""
     content = await file.read()
-    tmp_path = save_upload_to_temp(content, ".zip")
+    suffix = os.path.splitext(file.filename or ".pdf")[1].lower() or ".pdf"
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="LinkedIn upload must be a PDF (profile → More → Save to PDF).")
+    tmp_path = save_upload_to_temp(content, suffix)
     try:
-        linkedin_data = parse_linkedin_zip(tmp_path)
-        profile = load_profile() or UserProfile()
-        profile.cv_data = enrich_cv_from_linkedin(profile.cv_data, linkedin_data)
-        save_profile(profile)
+        linkedin_data = parse_linkedin_pdf(tmp_path)
+        merged = bool(linkedin_data.get("skills") or linkedin_data.get("positions"))
+        if merged:
+            profile = load_profile() or UserProfile()
+            profile.cv_data = enrich_cv_from_linkedin(profile.cv_data, linkedin_data)
+            save_profile(profile)
     finally:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
-    return LinkedInResponse(ok=True, merged=True)
+    return LinkedInResponse(ok=True, merged=merged)
 
 
 @router.post("/profile/github", response_model=GitHubResponse)
