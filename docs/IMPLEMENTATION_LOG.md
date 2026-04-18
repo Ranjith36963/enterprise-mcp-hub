@@ -217,7 +217,7 @@ Reviewer: your worktree is `.claude/worktrees/reviewer` on `pillar3/batch-1-revi
 
 ## Batch 2 — Multi-User Delivery Layer
 
-**Status:** Ready for review (not yet merged to main)
+**Status:** MERGED to main 2026-04-18 via `6446feb` (`--no-ff` merge of `pillar3/batch-2` @ `d124ed5`) after 3 reviewer rounds (report: `docs/reviews/batch-2-review.md`, final verdict APPROVED at `f5c3395` on `pillar3/batch-2-review`).
 
 **Reference:** `docs/research/pillar_3_batch_2.md` · Plan: `docs/plans/batch-2-plan.md` · Decisions: `docs/plans/batch-2-decisions.md`
 
