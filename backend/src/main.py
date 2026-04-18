@@ -33,7 +33,6 @@ from src.sources.ats.greenhouse import GreenhouseSource
 from src.sources.ats.lever import LeverSource
 from src.sources.ats.workable import WorkableSource
 from src.sources.ats.ashby import AshbySource
-from src.sources.feeds.findajob import FindAJobSource
 from src.sources.apis_free.remotive import RemotiveSource
 from src.sources.apis_keyed.jooble import JoobleSource
 from src.sources.scrapers.linkedin import LinkedInSource
@@ -52,7 +51,6 @@ from src.sources.apis_keyed.careerjet import CareerjetSource
 from src.sources.apis_keyed.findwork import FindworkSource
 from src.sources.other.nofluffjobs import NoFluffJobsSource
 from src.sources.apis_free.hn_jobs import HNJobsSource
-from src.sources.apis_free.yc_companies import YCCompaniesSource
 from src.sources.feeds.jobs_ac_uk import JobsAcUkSource
 from src.sources.feeds.nhs_jobs import NHSJobsSource
 from src.sources.ats.personio import PersonioSource
@@ -68,7 +66,6 @@ from src.sources.feeds.uni_jobs import UniJobsSource
 from src.sources.ats.successfactors import SuccessFactorsSource
 from src.sources.scrapers.aijobs_global import AIJobsGlobalSource
 from src.sources.scrapers.aijobs_ai import AIJobsAISource
-from src.sources.other.nomis import NomisSource
 
 logger = logging.getLogger("job360.main")
 
@@ -85,7 +82,6 @@ SOURCE_REGISTRY = {
     "lever": LeverSource,
     "workable": WorkableSource,
     "ashby": AshbySource,
-    "findajob": FindAJobSource,
     "remotive": RemotiveSource,
     "jooble": JoobleSource,
     "linkedin": LinkedInSource,
@@ -106,7 +102,6 @@ SOURCE_REGISTRY = {
     "nofluffjobs": NoFluffJobsSource,
     # Phase 4: New free sources
     "hn_jobs": HNJobsSource,
-    "yc_companies": YCCompaniesSource,
     "jobs_ac_uk": JobsAcUkSource,
     "nhs_jobs": NHSJobsSource,
     "personio": PersonioSource,
@@ -122,7 +117,6 @@ SOURCE_REGISTRY = {
     "successfactors": SuccessFactorsSource,
     "aijobs_global": AIJobsGlobalSource,
     "aijobs_ai": AIJobsAISource,
-    "nomis": NomisSource,
 }
 
 # Number of unique source instances created by _build_sources().
@@ -211,8 +205,6 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         LeverSource(session, search_config=sc),
         WorkableSource(session, search_config=sc),
         AshbySource(session, search_config=sc),
-        # Group D: Government
-        FindAJobSource(session, search_config=sc),
         # Group E: New free APIs
         RemotiveSource(session, search_config=sc),
         JoobleSource(session, api_key=JOOBLE_API_KEY, search_config=sc),
@@ -238,7 +230,6 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         NoFluffJobsSource(session, search_config=sc),
         # Group K: Phase 4 new free sources
         HNJobsSource(session, search_config=sc),
-        YCCompaniesSource(session, search_config=sc),
         JobsAcUkSource(session, search_config=sc),
         NHSJobsSource(session, search_config=sc),
         PersonioSource(session, search_config=sc),
@@ -254,7 +245,6 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         SuccessFactorsSource(session, search_config=sc),
         AIJobsGlobalSource(session, search_config=sc),
         AIJobsAISource(session, search_config=sc),
-        NomisSource(session, search_config=sc),
     ]
     if source_filter:
         # Special case: glassdoor shares JobSpySource with indeed

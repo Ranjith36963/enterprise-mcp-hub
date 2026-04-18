@@ -14,7 +14,6 @@ from src.sources.ats.greenhouse import GreenhouseSource
 from src.sources.ats.lever import LeverSource
 from src.sources.ats.workable import WorkableSource
 from src.sources.ats.ashby import AshbySource
-from src.sources.feeds.findajob import FindAJobSource
 from src.sources.apis_free.remotive import RemotiveSource
 from src.sources.apis_keyed.jooble import JoobleSource
 from src.sources.scrapers.linkedin import LinkedInSource
@@ -33,7 +32,6 @@ from src.sources.apis_keyed.careerjet import CareerjetSource
 from src.sources.apis_keyed.findwork import FindworkSource
 from src.sources.other.nofluffjobs import NoFluffJobsSource
 from src.sources.apis_free.hn_jobs import HNJobsSource
-from src.sources.apis_free.yc_companies import YCCompaniesSource
 from src.sources.feeds.jobs_ac_uk import JobsAcUkSource
 from src.sources.feeds.nhs_jobs import NHSJobsSource
 from src.sources.ats.personio import PersonioSource
@@ -49,7 +47,6 @@ from src.sources.feeds.uni_jobs import UniJobsSource
 from src.sources.ats.successfactors import SuccessFactorsSource
 from src.sources.scrapers.aijobs_global import AIJobsGlobalSource
 from src.sources.scrapers.aijobs_ai import AIJobsAISource
-from src.sources.other.nomis import NomisSource
 from src.services.profile.models import SearchConfig
 
 
@@ -328,44 +325,6 @@ def test_ashby_parses_response():
                 jobs = await source.fetch_jobs()
                 assert len(jobs) >= 1
                 assert jobs[0].source == "ashby"
-        finally:
-            await session.close()
-    _run(_test())
-
-
-def test_findajob_parses_html():
-    async def _test():
-        session = aiohttp.ClientSession()
-        try:
-            html = """<html><body>
-            <div class="search-results">
-                <a href="/details/123">AI Engineer - Government Digital Service</a>
-                <li class="company">GDS</li>
-                <a href="/details/456">ML Engineer - HMRC</a>
-                <li class="company">HMRC</li>
-            </div>
-            </body></html>"""
-            with aioresponses() as m:
-                m.get(re.compile(r"https://findajob\.dwp\.gov\.uk/search.*"),
-                      body=html, content_type="text/html", repeat=True)
-                sc = _make_search_config(["AI engineer UK"])
-                source = FindAJobSource(session, search_config=sc)
-                jobs = await source.fetch_jobs()
-                assert len(jobs) >= 1
-                assert jobs[0].source == "findajob"
-                assert "findajob.dwp.gov.uk" in jobs[0].apply_url
-        finally:
-            await session.close()
-    _run(_test())
-
-
-def test_findajob_skips_without_queries():
-    async def _test():
-        session = aiohttp.ClientSession()
-        try:
-            source = FindAJobSource(session)
-            jobs = await source.fetch_jobs()
-            assert jobs == []
         finally:
             await session.close()
     _run(_test())
@@ -1262,47 +1221,6 @@ def test_hn_jobs_returns_empty_on_no_ids():
     _run(_test())
 
 
-# ---- YC Companies ----
-
-YC_COMPANIES_PAYLOAD = [
-    {
-        "name": "DeepMindClone",
-        "slug": "deepmindclone",
-        "website": "https://deepmindclone.com",
-        "long_description": "AI and machine learning research company",
-        "locations": ["London, UK"],
-        "tags": ["ai", "ml"],
-        "industries": ["Artificial Intelligence"],
-    },
-    {
-        "name": "USOnlyCo",
-        "slug": "usonlyco",
-        "website": "https://usonlyco.com",
-        "long_description": "US-only marketing company",
-        "locations": ["San Francisco, CA"],
-        "tags": ["marketing"],
-        "industries": ["Marketing"],
-    },
-]
-
-
-def test_yc_companies_parses_response():
-    async def _test():
-        session = aiohttp.ClientSession()
-        try:
-            with aioresponses() as m:
-                m.get("https://yc-oss.github.io/api/companies/all.json",
-                      payload=YC_COMPANIES_PAYLOAD)
-                source = YCCompaniesSource(session)
-                jobs = await source.fetch_jobs()
-                assert len(jobs) >= 1
-                assert jobs[0].source == "yc_companies"
-                assert "DeepMindClone" in jobs[0].company
-        finally:
-            await session.close()
-    _run(_test())
-
-
 # ---- jobs.ac.uk ----
 
 JOBS_AC_UK_RSS = """<?xml version="1.0" encoding="UTF-8"?>
@@ -1894,46 +1812,3 @@ def test_aijobs_ai_parses_html():
     _run(_test())
 
 
-# ---- Nomis ----
-
-NOMIS_PAYLOAD = {
-    "obs": [
-        {
-            "date": {"value": "2024-01", "label": "January 2024"},
-            "obs_value": {"value": "880"},
-        }
-    ]
-}
-
-
-def test_nomis_parses_response():
-    async def _test():
-        session = aiohttp.ClientSession()
-        try:
-            with aioresponses() as m:
-                m.get(re.compile(r"https://www\.nomisweb\.co\.uk/api/.*"),
-                      payload=NOMIS_PAYLOAD)
-                source = NomisSource(session)
-                jobs = await source.fetch_jobs()
-                assert len(jobs) >= 1
-                assert jobs[0].source == "nomis"
-                assert "880" in jobs[0].title
-                assert jobs[0].company == "ONS / Nomis"
-        finally:
-            await session.close()
-    _run(_test())
-
-
-def test_nomis_returns_empty_on_no_data():
-    async def _test():
-        session = aiohttp.ClientSession()
-        try:
-            with aioresponses() as m:
-                m.get(re.compile(r"https://www\.nomisweb\.co\.uk/api/.*"),
-                      payload={"obs": []})
-                source = NomisSource(session)
-                jobs = await source.fetch_jobs()
-                assert jobs == []
-        finally:
-            await session.close()
-    _run(_test())
