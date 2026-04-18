@@ -41,22 +41,30 @@ def test_sources_command():
         assert name in result.output
 
 
-def test_source_registry_has_48_sources():
-    """SOURCE_REGISTRY should have all 48 sources."""
-    assert len(SOURCE_REGISTRY) == 48
+def test_source_registry_has_50_sources():
+    """SOURCE_REGISTRY should have all 50 sources after Batch 3 (+5 -3 = 48 -> 50).
+
+    Per CLAUDE.md rule #8: when adding/removing sources, update this
+    assertion AND the expected set AND RATE_LIMITS entry AND
+    _build_sources() list. All four must agree.
+    """
+    assert len(SOURCE_REGISTRY) == 50
     expected = {"reed", "adzuna", "jsearch", "arbeitnow", "remoteok",
                 "jobicy", "himalayas", "greenhouse", "lever", "workable",
-                "ashby", "findajob", "remotive", "jooble", "linkedin",
+                "ashby", "remotive", "jooble", "linkedin",
                 "smartrecruiters", "pinpoint", "recruitee", "indeed", "glassdoor",
                 "workday", "google_jobs", "devitjobs", "landingjobs",
                 "aijobs", "themuse", "hackernews", "careerjet", "findwork",
                 "nofluffjobs",
-                # Phase 4 new sources
-                "hn_jobs", "yc_companies", "jobs_ac_uk", "nhs_jobs",
+                # Phase 4 new sources (minus Batch 3 drops: yc_companies, nomis, findajob)
+                "hn_jobs", "jobs_ac_uk", "nhs_jobs",
                 "personio", "workanywhere", "weworkremotely", "realworkfromanywhere",
                 "biospace", "jobtensor", "climatebase", "eightykhours",
                 "bcs_jobs", "uni_jobs", "successfactors", "aijobs_global",
-                "aijobs_ai", "nomis"}
+                "aijobs_ai",
+                # Batch 3 additions
+                "teaching_vacancies", "gov_apprenticeships", "nhs_jobs_xml",
+                "rippling", "comeet"}
     assert set(SOURCE_REGISTRY.keys()) == expected
 
 

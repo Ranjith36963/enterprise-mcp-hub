@@ -68,6 +68,12 @@ from src.sources.feeds.uni_jobs import UniJobsSource
 from src.sources.ats.successfactors import SuccessFactorsSource
 from src.sources.scrapers.aijobs_global import AIJobsGlobalSource
 from src.sources.scrapers.aijobs_ai import AIJobsAISource
+# Batch 3 additions
+from src.sources.apis_free.teaching_vacancies import TeachingVacanciesSource
+from src.sources.apis_free.gov_apprenticeships import GovApprenticeshipsSource
+from src.sources.feeds.nhs_jobs_xml import NHSJobsXMLSource
+from src.sources.ats.rippling import RipplingSource
+from src.sources.ats.comeet import ComeetSource
 
 logger = logging.getLogger("job360.main")
 
@@ -119,6 +125,12 @@ SOURCE_REGISTRY = {
     "successfactors": SuccessFactorsSource,
     "aijobs_global": AIJobsGlobalSource,
     "aijobs_ai": AIJobsAISource,
+    # Batch 3 additions
+    "teaching_vacancies": TeachingVacanciesSource,
+    "gov_apprenticeships": GovApprenticeshipsSource,
+    "nhs_jobs_xml": NHSJobsXMLSource,
+    "rippling": RipplingSource,
+    "comeet": ComeetSource,
 }
 
 # Number of unique source instances created by _build_sources().
@@ -247,6 +259,12 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         SuccessFactorsSource(session, search_config=sc),
         AIJobsGlobalSource(session, search_config=sc),
         AIJobsAISource(session, search_config=sc),
+        # Group L: Batch 3 additions
+        TeachingVacanciesSource(session, search_config=sc),
+        GovApprenticeshipsSource(session, search_config=sc),
+        NHSJobsXMLSource(session, search_config=sc),
+        RipplingSource(session, search_config=sc),
+        ComeetSource(session, search_config=sc),
     ]
     if source_filter:
         # Special case: glassdoor shares JobSpySource with indeed
