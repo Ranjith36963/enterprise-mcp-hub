@@ -134,9 +134,10 @@ SOURCE_REGISTRY = {
 }
 
 # Number of unique source instances created by _build_sources().
-# 47 not 48 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# 49 not 50 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# Used by test_main.py::test_source_instance_count_matches_build to catch drift.
 # Update this when adding/removing sources.
-SOURCE_INSTANCE_COUNT = 47
+SOURCE_INSTANCE_COUNT = 49
 
 
 async def _ghost_detection_pass(
