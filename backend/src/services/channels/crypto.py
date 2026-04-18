@@ -17,12 +17,20 @@ from cryptography.fernet import Fernet, InvalidToken
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
+    """Return the Fernet cipher for channel credentials.
+
+    Fail-closed: raises if ``CHANNEL_ENCRYPTION_KEY`` is unset. A committed
+    default key (we had one in round 1) is visible in git log and would
+    decrypt every stored credential on any deploy that forgot the env var.
+    Tests set the key via ``set_test_key()``.
+    """
     key = os.environ.get("CHANNEL_ENCRYPTION_KEY")
     if not key:
-        # Deterministic dev/test fallback. Never used in production — the
-        # env-driven path is the only real one. Tests overwrite via
-        # ``set_test_key()`` below.
-        key = "mIaARLi5Yd8zKLTZBtRGcKB6a83kfkSTEhtfcRwGmF4="
+        raise RuntimeError(
+            "CHANNEL_ENCRYPTION_KEY env var is required. Generate with: "
+            "python -c 'from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())'"
+        )
     return Fernet(key.encode("utf-8") if isinstance(key, str) else key)
 
 

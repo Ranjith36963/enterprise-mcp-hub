@@ -21,6 +21,12 @@ dependencies = [
     "google-generativeai>=0.8.0",
     "groq>=0.11.0",
     "cerebras-cloud-sdk>=1.0.0",
+    # Batch 2 — multi-user delivery layer (auth, channels, notifications).
+    "argon2-cffi>=23.1.0",          # password hashing (argon2id, OWASP-recommended)
+    "itsdangerous>=2.2.0",          # signed session cookies
+    "apprise>=1.7.0",               # multi-channel notification sending
+    "email-validator>=2.1.0",       # pydantic EmailStr (via pydantic[email])
+    "cryptography>=42.0.0",         # Fernet for user_channels credential storage
 ]
 
 [project.optional-dependencies]

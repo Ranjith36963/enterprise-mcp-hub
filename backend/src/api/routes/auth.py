@@ -1,6 +1,7 @@
 """Auth endpoints — register, login, logout, me."""
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Optional
 
@@ -37,12 +38,15 @@ class UserResponse(BaseModel):
 
 
 def _set_session_cookie(response: Response, cookie: str) -> None:
+    # Secure flag gates on JOB360_ENV so prod deploys don't serve bare cookies
+    # by accident. Any value other than "prod" falls back to dev-friendly.
+    secure = os.environ.get("JOB360_ENV") == "prod"
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=cookie,
         httponly=True,
         samesite="lax",
-        secure=False,  # flip to True behind TLS terminator in prod
+        secure=secure,
         max_age=60 * 60 * 24 * 30,
     )
 

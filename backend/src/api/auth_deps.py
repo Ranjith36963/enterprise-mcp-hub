@@ -21,11 +21,25 @@ from src.core.settings import DB_PATH
 from src.services.auth import sessions as auth_sessions
 
 SESSION_COOKIE_NAME = "job360_session"
-_DEFAULT_SECRET = "dev-insecure-" + "x" * 40  # override via SESSION_SECRET env var
 
 
 def _secret() -> str:
-    return os.environ.get("SESSION_SECRET") or _DEFAULT_SECRET
+    """Return the HMAC secret for session cookies.
+
+    Fail-closed: raises if ``SESSION_SECRET`` is unset. A committed default
+    would silently sign production cookies with a value visible in git log,
+    so we refuse to serve traffic without an explicit key. Tests must set
+    the env var (the fixtures in ``test_auth_routes.py`` /
+    ``test_channels_routes.py`` do this via ``monkeypatch.setenv``;
+    ``test_auth_sessions.py`` passes ``secret=`` explicitly).
+    """
+    secret = os.environ.get("SESSION_SECRET")
+    if not secret:
+        raise RuntimeError(
+            "SESSION_SECRET env var is required. Generate with: "
+            "python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+        )
+    return secret
 
 
 @dataclass(frozen=True)
