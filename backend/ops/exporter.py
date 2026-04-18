@@ -1,18 +1,21 @@
-"""Prometheus exporter for the 10 freshness KPIs (Pillar 3 Batch 1).
+"""Prometheus exporter for the freshness KPIs (Pillar 3 Batch 1).
 
-Per docs/research/pillar_3_batch_1.md §4:
+The full Batch 1 deliverable is 6 LIVE KPIs + 4 STUBS. The stubs will
+become live once Batch 2 lands the notification / pipeline audit log.
 
+  LIVE (implemented end-to-end in Batch 1):
    1. bucket_accuracy_24h        — target ≥ 90%
    2. bucket_accuracy_48h        — target ≥ 85%
    3. bucket_accuracy_7d         — target ≥ 80%
    4. bucket_accuracy_21d        — target ≥ 80%
    5. date_reliability_ratio     — target ≥ 70%
-   6. notification_latency p50   — target ≤ 4h
-       notification_latency p95  — target ≤ 12h
-   7. stale_listing_rate         — target ≤ 5%
-   8. crawl_freshness_lag        — per-source alert if > 2× interval
-   9. pipeline_end_to_end_latency p50 ≤ 15m, p95 ≤ 60m
-  10. notification_delivery_success_rate per-channel ≥ 99%
+   6. stale_listing_rate         — target ≤ 5%
+   7. crawl_freshness_lag        — per-source; alert if > 2× interval
+
+  STUBS (compute_kpis returns None / {} until Batch 2 audit log exists):
+   · notification_latency p50 / p95
+   · pipeline_end_to_end_latency p50 / p95
+   · notification_delivery_success_rate per-channel
 
 The `prometheus_client` dependency is optional (free-tier stack installs
 it separately). `compute_kpis()` returns a plain dict so the metrics can
@@ -57,29 +60,35 @@ async def _date_reliability_ratio(db: JobDatabase) -> float:
 
 
 async def _bucket_accuracy(db: JobDatabase, hours: int) -> float:
-    """Fraction of jobs in the `hours`-hour first_seen window whose effective
-    posting date actually falls within that window.
+    """Fraction of jobs in the `hours`-hour first_seen window whose **trustworthy
+    posted_at** falls within that window.
 
-    Effective posting date precedence: posted_at (if trustworthy) else first_seen.
+    Per pillar_3_batch_1.md §1 and §5, jobs with date_confidence='low' or
+    'fabricated' must NOT appear in the 24h bucket at all. The metric therefore
+    measures accuracy over trustworthy-dated rows only. The SQL filters to:
+
+        date_confidence IN ('high', 'medium', 'repost_backdated')
+        AND first_seen_at >= window_start
+
+    Low-confidence rows are intentionally excluded from both the numerator and
+    the denominator — they do not belong in the bucket in the first place, so
+    counting them as "accurate" by using first_seen as a fallback (the prior
+    behaviour) produced a circular 100% score.
     """
     now = datetime.now(timezone.utc)
     window_start = (now - timedelta(hours=hours)).isoformat()
     cursor = await db._conn.execute(
-        "SELECT posted_at, date_confidence, first_seen_at "
-        "FROM jobs WHERE first_seen_at >= ?",
+        "SELECT posted_at, first_seen_at FROM jobs "
+        "WHERE first_seen_at >= ? "
+        "AND date_confidence IN ('high', 'medium', 'repost_backdated')",
         (window_start,),
     )
     rows = await cursor.fetchall()
     if not rows:
         return 0.0
     in_window = 0
-    for row in rows:
-        posted_at, confidence, first_seen = row
-        effective = None
-        if posted_at and confidence in ("high", "medium", "repost_backdated"):
-            effective = posted_at
-        else:
-            effective = first_seen
+    for posted_at, first_seen in rows:
+        effective = posted_at or first_seen
         if not effective:
             continue
         try:

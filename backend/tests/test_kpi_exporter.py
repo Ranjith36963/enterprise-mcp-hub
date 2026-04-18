@@ -71,6 +71,72 @@ def test_date_reliability_ratio_with_mixed_confidence(db):
     assert kpis["date_reliability_ratio"] == pytest.approx(0.4, abs=1e-6)
 
 
+def test_bucket_accuracy_excludes_low_confidence_rows(db):
+    """REGRESSION: pre-fix, bucket_accuracy_24h reported ~1.0 for low-confidence
+    rows because `effective = first_seen` which was already in the window. Fix
+    filters those rows out of the metric — they should never enter the 24h bucket.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def _run():
+        # Two low-confidence rows with first_seen_at=now. Old code = 100% accuracy.
+        for i in range(2):
+            await db.insert_job(Job(
+                title=f"L{i}", company=f"Co{i}", apply_url=f"https://l{i}",
+                source="arbeitnow", date_found=now,
+                posted_at=None, date_confidence="low",
+            ))
+    asyncio.run(_run())
+    kpis = asyncio.run(compute_kpis(db))
+    # Low-confidence rows filtered out → no trustworthy rows to measure → 0.0
+    assert kpis["bucket_accuracy_24h"] == 0.0
+
+
+def test_bucket_accuracy_high_confidence_today_scores_full(db):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def _run():
+        await db.insert_job(Job(
+            title="H", company="Co", apply_url="https://h",
+            source="reed", date_found=now,
+            posted_at=now, date_confidence="high",
+        ))
+    asyncio.run(_run())
+    kpis = asyncio.run(compute_kpis(db))
+    assert kpis["bucket_accuracy_24h"] == 1.0
+
+
+def test_bucket_accuracy_mixed_confidence_measures_trustworthy_only(db):
+    """2 high-confidence rows (both in window) + 3 low-confidence rows
+    (all in window). Old buggy code = 5/5 = 100%. New code = 2/2 = 100%
+    over ONLY the trustworthy denominator — the low-confidence rows are
+    excluded from both numerator and denominator."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def _run():
+        for i in range(2):
+            await db.insert_job(Job(
+                title=f"H{i}", company=f"HCo{i}", apply_url=f"https://h{i}",
+                source="reed", date_found=now,
+                posted_at=now, date_confidence="high",
+            ))
+        for i in range(3):
+            await db.insert_job(Job(
+                title=f"L{i}", company=f"LCo{i}", apply_url=f"https://l{i}",
+                source="arbeitnow", date_found=now,
+                posted_at=None, date_confidence="low",
+            ))
+    asyncio.run(_run())
+    kpis = asyncio.run(compute_kpis(db))
+    # Denominator is 2 trustworthy rows, both in window → 1.0
+    assert kpis["bucket_accuracy_24h"] == 1.0
+    # Reliability ratio still reflects the 2/5 mix
+    assert kpis["date_reliability_ratio"] == pytest.approx(0.4, abs=1e-6)
+
+
 def test_crawl_freshness_lag_per_source(db):
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
