@@ -21,6 +21,8 @@ from src.services.profile.storage import load_profile
 from src.services.profile.keyword_generator import generate_search_config
 from src.services.notifications.report_generator import generate_markdown_report
 from src.services.notifications.base import get_configured_channels
+from src.services.circuit_breaker import default_registry as default_breaker_registry
+from src.services.circuit_breaker import BreakerState
 
 from src.sources.apis_keyed.reed import ReedSource
 from src.sources.apis_keyed.adzuna import AdzunaSource
@@ -33,7 +35,6 @@ from src.sources.ats.greenhouse import GreenhouseSource
 from src.sources.ats.lever import LeverSource
 from src.sources.ats.workable import WorkableSource
 from src.sources.ats.ashby import AshbySource
-from src.sources.feeds.findajob import FindAJobSource
 from src.sources.apis_free.remotive import RemotiveSource
 from src.sources.apis_keyed.jooble import JoobleSource
 from src.sources.scrapers.linkedin import LinkedInSource
@@ -52,7 +53,6 @@ from src.sources.apis_keyed.careerjet import CareerjetSource
 from src.sources.apis_keyed.findwork import FindworkSource
 from src.sources.other.nofluffjobs import NoFluffJobsSource
 from src.sources.apis_free.hn_jobs import HNJobsSource
-from src.sources.apis_free.yc_companies import YCCompaniesSource
 from src.sources.feeds.jobs_ac_uk import JobsAcUkSource
 from src.sources.feeds.nhs_jobs import NHSJobsSource
 from src.sources.ats.personio import PersonioSource
@@ -68,7 +68,12 @@ from src.sources.feeds.uni_jobs import UniJobsSource
 from src.sources.ats.successfactors import SuccessFactorsSource
 from src.sources.scrapers.aijobs_global import AIJobsGlobalSource
 from src.sources.scrapers.aijobs_ai import AIJobsAISource
-from src.sources.other.nomis import NomisSource
+# Batch 3 additions
+from src.sources.apis_free.teaching_vacancies import TeachingVacanciesSource
+from src.sources.apis_free.gov_apprenticeships import GovApprenticeshipsSource
+from src.sources.feeds.nhs_jobs_xml import NHSJobsXMLSource
+from src.sources.ats.rippling import RipplingSource
+from src.sources.ats.comeet import ComeetSource
 
 logger = logging.getLogger("job360.main")
 
@@ -85,7 +90,6 @@ SOURCE_REGISTRY = {
     "lever": LeverSource,
     "workable": WorkableSource,
     "ashby": AshbySource,
-    "findajob": FindAJobSource,
     "remotive": RemotiveSource,
     "jooble": JoobleSource,
     "linkedin": LinkedInSource,
@@ -106,7 +110,6 @@ SOURCE_REGISTRY = {
     "nofluffjobs": NoFluffJobsSource,
     # Phase 4: New free sources
     "hn_jobs": HNJobsSource,
-    "yc_companies": YCCompaniesSource,
     "jobs_ac_uk": JobsAcUkSource,
     "nhs_jobs": NHSJobsSource,
     "personio": PersonioSource,
@@ -122,13 +125,19 @@ SOURCE_REGISTRY = {
     "successfactors": SuccessFactorsSource,
     "aijobs_global": AIJobsGlobalSource,
     "aijobs_ai": AIJobsAISource,
-    "nomis": NomisSource,
+    # Batch 3 additions
+    "teaching_vacancies": TeachingVacanciesSource,
+    "gov_apprenticeships": GovApprenticeshipsSource,
+    "nhs_jobs_xml": NHSJobsXMLSource,
+    "rippling": RipplingSource,
+    "comeet": ComeetSource,
 }
 
 # Number of unique source instances created by _build_sources().
-# 47 not 48 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# 49 not 50 because "indeed" and "glassdoor" both map to JobSpySource (one instance).
+# Used by test_main.py::test_source_instance_count_matches_build to catch drift.
 # Update this when adding/removing sources.
-SOURCE_INSTANCE_COUNT = 47
+SOURCE_INSTANCE_COUNT = 49
 
 
 async def _ghost_detection_pass(
@@ -211,8 +220,6 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         LeverSource(session, search_config=sc),
         WorkableSource(session, search_config=sc),
         AshbySource(session, search_config=sc),
-        # Group D: Government
-        FindAJobSource(session, search_config=sc),
         # Group E: New free APIs
         RemotiveSource(session, search_config=sc),
         JoobleSource(session, api_key=JOOBLE_API_KEY, search_config=sc),
@@ -238,7 +245,6 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         NoFluffJobsSource(session, search_config=sc),
         # Group K: Phase 4 new free sources
         HNJobsSource(session, search_config=sc),
-        YCCompaniesSource(session, search_config=sc),
         JobsAcUkSource(session, search_config=sc),
         NHSJobsSource(session, search_config=sc),
         PersonioSource(session, search_config=sc),
@@ -254,7 +260,12 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         SuccessFactorsSource(session, search_config=sc),
         AIJobsGlobalSource(session, search_config=sc),
         AIJobsAISource(session, search_config=sc),
-        NomisSource(session, search_config=sc),
+        # Group L: Batch 3 additions
+        TeachingVacanciesSource(session, search_config=sc),
+        GovApprenticeshipsSource(session, search_config=sc),
+        NHSJobsXMLSource(session, search_config=sc),
+        RipplingSource(session, search_config=sc),
+        ComeetSource(session, search_config=sc),
     ]
     if source_filter:
         # Special case: glassdoor shares JobSpySource with indeed
@@ -366,22 +377,37 @@ async def run_search(
             if failed_sources:
                 logger.warning("Failed sources (%s): %s", len(failed_sources), ", ".join(failed_sources))
 
-            # Source health: detect sources returning 0 that previously returned jobs
+            # Source health: per-source circuit breakers replace the former
+            # `newly_empty` heuristic. A source that returns 0 jobs or raises
+            # an exception increments its breaker's failure counter; after N
+            # consecutive failures the breaker trips OPEN and future ticks
+            # skip the fetch until the cooldown elapses (half-open probe).
+            # See services/circuit_breaker.py and pillar_3_batch_3.md §"Circuit
+            # breakers replace the newly_empty flag".
+            registry = default_breaker_registry()
             try:
                 history = await db.get_last_source_counts(7)
-                newly_empty = []
-                for name, count in per_source.items():
-                    if count == 0 and name in history:
-                        past_counts = history[name]
-                        if any(c > 0 for c in past_counts):
-                            newly_empty.append(name)
-                if newly_empty:
-                    logger.warning(
-                        "Sources returning 0 that previously had jobs: %s", ", ".join(newly_empty)
-                    )
             except Exception as e:
-                logger.warning("Source health check skipped: %s", e)
+                logger.warning("Source history fetch skipped: %s", e)
                 history = {}
+
+            newly_opened: list[str] = []
+            for source, result in zip(sources, results):
+                breaker = registry.get(source.name)
+                fetch_failed = isinstance(result, BaseException) or result is None or not result
+                if fetch_failed:
+                    previous_state = breaker.state
+                    breaker.record_failure()
+                    if breaker.state == BreakerState.OPEN and previous_state != BreakerState.OPEN:
+                        newly_opened.append(source.name)
+                else:
+                    breaker.record_success()
+
+            if newly_opened:
+                logger.warning(
+                    "Circuit breaker OPEN for source(s) after consecutive failures: %s",
+                    ", ".join(newly_opened),
+                )
 
             # Ghost detection: update last_seen for observed jobs; mark absent jobs as missed.
             # Per pillar_3_batch_1.md §3 Step 1, skip the absence sweep for any source whose

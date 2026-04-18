@@ -362,17 +362,120 @@ Reviewer: your worktree is `.claude/worktrees/reviewer` on `pillar3/batch-2-revi
 
 ## Batch 3 — Tiered Polling + Source Expansion
 
-**Status:** Blocked on Batch 2
+**Status:** READY_FOR_REVIEW 2026-04-18
 
-**Reference:** `docs/research/pillar_3_batch_3.md`
+**Reference:** `docs/research/pillar_3_batch_3.md` · Plan: `docs/plans/batch-3-plan.md`
 
-**Scope:** Tiered polling scheduler (60s for ATS / 5min for Reed / 15min for Workday / etc.), conditional fetching layer, 5 new sources (Teaching Vacancies, GOV.UK Apprenticeships, NHS XML, Rippling, Comeet), slug expansion 104 → 500+, drop YC Companies + Nomis + FindAJob, circuit breakers replacing "newly_empty".
+**Scope:** Tiered polling scheduler (60s ATS / 5m Reed / 15m Workday+RSS / 60m scrapers), ETag/Last-Modified conditional fetch, +5 new sources (Teaching Vacancies, GOV.UK Apprenticeships, NHS Jobs XML, Rippling, Comeet), −3 drops (YC Companies, Nomis, FindAJob), ATS slug catalog 104 → 268, per-source circuit breakers replacing `newly_empty`.
 
+**Branch:** `pillar3/batch-3` — 9 commits on top of Batch 2 merge
+
+---
+
+## Batch 3 — Completion Entry (DRAFT — reviewer validates before merge)
+
+**Generated:** 2026-04-18 (generator worktree on `pillar3/batch-3`)
 **Branch:** `pillar3/batch-3`
+**Base:** `main` @ Batch 2 merge
+**Commit range (9 commits):**
 
-**Pre-flight:** Update `len(SOURCE_REGISTRY) == N` assertion in `test_cli.py` per CLAUDE.md rule #8.
+| Commit | Subject |
+|---|---|
+| `040842e` | docs(pillar3): Batch 3 plan + POST-BATCH-2 baseline locked |
+| `81c532a` | refactor(sources): drop YC Companies, Nomis, FindAJob (Batch 3 scope) |
+| (C)      | feat(sources): ETag/Last-Modified conditional fetch in BaseJobSource |
+| (D)      | feat(resilience): per-source circuit breakers replace newly_empty flag |
+| (E)      | feat(scheduler): tiered polling replaces twice-daily cron |
+| (F)      | feat(sources): add 5 new sources (Batch 3 scope) |
+| `3ed58d7` | feat(companies): expand ATS slug catalog 104 -> 268 (Batch 3) |
+| `c62b98b` | chore(registry): rotate source count 48 -> 50 (CLAUDE.md #8) |
+| (I)      | docs(pillar3): Batch 3 completion entry + CLAUDE.md appendix |
 
-_Completion entry will be appended here when merged._
+### Test deltas
+
+| Metric | Baseline (post-Batch-2) | After Batch 3 | Delta |
+|---|---:|---:|---:|
+| Passing | **498** | **529** | **+31** |
+| Failing | **24** (pre-existing 5 buckets) | **24** (unchanged, same buckets) | 0 |
+| Skipped | **3** | **3** | 0 |
+| Run time | 184.91s | 225.88s | +40.97s |
+
+**Zero regressions.** Every one of the 24 remaining failures was present at baseline and falls into the pre-existing buckets documented in Batch 1 (§ API sqlite init / setup path drift / cron path drift / source parsers / matched_skills stale).
+
+**New test files + block totals (31 new passing tests):**
+
+- `tests/test_conditional_fetch.py` — 4 (first-fetch ETag, 304-roundtrip, Last-Modified, no-validator)
+- `tests/test_circuit_breaker.py` — 7 (CLOSED start, 5-fail trip, OPEN rejects, cooldown→HALF_OPEN, HALF_OPEN success closes, HALF_OPEN failure reopens, registry scoping)
+- `tests/test_scheduler.py` — 6 (tier resolution, 60s/3600s cadence, tier fairness, breaker integration, force-mode)
+- `tests/test_companies_slugs.py` — 4 (count ≥250, no dups, Workday fields, SuccessFactors fields)
+- `tests/test_sources.py` — 15 new (3 each for teaching_vacancies, gov_apprenticeships, nhs_jobs_xml, rippling, comeet)
+- 5 tests **removed** along with the dropped sources (findajob × 2, yc_companies × 1, nomis × 2)
+
+Net: 36 new tests added − 5 tests removed with dropped sources = **+31 passing**, exactly matching the measured delta.
+
+### KPI deltas (where measurable)
+
+- **Source count:** 48 → 50 (+5 −3). ATS slug catalog 104 → 268 (+158%).
+- **Polling freshness:** twice-daily cron (broken per CurrentStatus.md §13 #3) → tiered: ATS 60s / Reed 5m / Workday+RSS 15m / Scrapers 60m. Measurable via `scheduler.tick()` cadence logging once deployed.
+- **Source reliability:** `newly_empty` post-hoc warning → active circuit-breaker protection (OPEN breaker blocks subsequent fetches until cooldown). Observable via the scheduler's skip-log lines.
+- **Bandwidth:** ETag/Last-Modified conditional fetches opt-in per source; not wired into any existing source in this batch (pure infra). Phase F/post-merge sources can opt in by calling `_get_json_conditional()` instead of `_get_json()`.
+- **bucket_accuracy_24h / date_reliability_ratio:** 4 of the 5 new sources (`teaching_vacancies`, `gov_apprenticeships`, `nhs_jobs_xml`, `rippling`, `comeet`) produce real `posted_at` with `date_confidence='high'` when the upstream feed includes a timestamp — small but honest uplift to the fabrication ratio once the scheduler is running.
+
+### What shipped
+
+1. **Tiered polling scheduler** (`backend/src/services/scheduler.py`) with `resolve_tier_seconds()` + `TieredScheduler.tick(now, force=False)` + `run_forever()`. Injectable `clock` for deterministic tests (no freezegun needed). Consults the breaker registry and skips OPEN sources without dispatch.
+2. **Per-source circuit breakers** (`backend/src/services/circuit_breaker.py`): CLOSED / HALF_OPEN / OPEN state machine with injectable clock, 5-failure threshold, 300s cooldown defaults. `BreakerRegistry.get(name)` lazy factory for shared state. Wired into `main.py::run_search` replacing the `newly_empty` heuristic.
+3. **Conditional-fetch layer** (`backend/src/services/conditional_cache.py` + `BaseJobSource._get_json_conditional`): FIFO-bounded (256-entry) cache; opt-in per URL. Backwards-compatible — all 47 existing sources keep using plain `_get_json()`.
+4. **5 new sources** (full `BaseJobSource` pattern, all honouring the Batch 1 `posted_at`/`date_confidence` contract):
+   - `TeachingVacanciesSource` (UK DfE schema.org JobPosting, OGL v3.0)
+   - `GovApprenticeshipsSource` (GOV.UK Find an Apprenticeship, 150 req/5 min cap)
+   - `NHSJobsXMLSource` (all-current-vacancies XML feed, `<createdDate>` → high confidence)
+   - `RipplingSource` (Rippling ATS `/api/board/{slug}/jobs`)
+   - `ComeetSource` (Comeet ATS `/careers-api/2.0/company/{slug}/positions`)
+5. **3 drops:** YC Companies (covered by HN Jobs + Ashby), Nomis (ONS macro-statistics, not a jobs feed — miscategorised), FindAJob (HTML-scrape of an endpoint powered by Adzuna under the hood — double-counting).
+6. **ATS slug catalog 104 → 268** hand-curated across Greenhouse (25→82), Lever (12→35), Workable (8→25), Ashby (9→25), SmartRecruiters (6→15), Pinpoint (8→15), Recruitee (8→20), Personio (10→18), Workday (15→20). Rippling (5 new) + Comeet (5 new) starter lists. `COMPANY_NAME_OVERRIDES` extended for the new additions.
+7. **Registry surface rotation:** `SOURCE_REGISTRY` 48→50 · `_build_sources` 47→49 instances · `RATE_LIMITS` +5 entries (3 removed) · `test_cli.py::test_source_registry_has_50_sources` · `test_api.py::test_sources_returns_50` · every hardcoded "48" in test_api.py updated to 50.
+8. **`docs/plans/batch-3-plan.md`** — the TDD plan this batch followed (378 lines), with POST-BATCH-2 baseline locked at the top.
+
+### What got deferred
+
+- **Full Feashliaa repo parse for 500+ slugs.** The Batch 3 ideal of 500+ slugs requires a dedicated clone + filter + validate pipeline (parse ~95K slugs, filter to ~2-5K UK, Google-dork validate to ~200-500). That is its own batch. Batch 3 ships 268 hand-curated slugs — well above the ≥250 plan-target, honest about the gap to the research ideal.
+- **Per-slug HTTP validation for the newly-added 164 slugs.** Batch 3 adds slugs but does not live-validate each one — that would break the pytest-offline contract (CLAUDE.md rule #4). Unknown or dead slugs no-op gracefully via `_request` → `None` → empty list at the source layer. Validation is a follow-up that can run as a one-shot `scripts/validate_slugs.py` job in staging.
+- **ARQ runtime wiring for the tiered scheduler.** `TieredScheduler.run_forever()` exists but is not attached to a system service (systemd/docker-compose/Render cron). The scheduler's `tick()` is callable from `run_search` or pytest today; productionising the long-running loop is Batch 4 "Launch readiness" scope.
+- **Wiring `_get_json_conditional` into the 47 existing sources.** Shipping the infra in this batch; adopting it per-source is a follow-up that can roll out source-by-source with low blast radius.
+- **Direct-URL 404→confirmed_expired ghost-detection verifier** (Batch 1 §deferred) — still deferred.
+- **Migration from `user_profile.json` to per-user `user_profiles` table** (Batch 2 §deferred) — still deferred.
+- **Postgres migration** (Batch 2 §D4) — still deferred.
+- **Wrapping `/api/jobs`, `/api/actions`, `/api/profile`, `/api/pipeline`, `/api/search` in `Depends(require_user)` + `user_id` params on `JobDatabase` action methods** (Batch 2.1 scope) — not in Batch 3 scope.
+
+### Surprises / lessons
+
+- **"NHS Jobs XML replaces the RSS-ish source" read as additive, not replacement.** The hard constraint said the registry must go 48 → 50 which is only arithmetically possible if the new NHS XML source is a **separate entry** alongside the existing `nhs_jobs.py`. That is how it ships — two NHS sources (`nhs_jobs` keyword-search + `nhs_jobs_xml` all-current-vacancies feed) with distinct registry keys and distinct upstream endpoints. The reviewer should confirm this was the intended reading.
+- **Two hardcoded source counts**, not one. The CLI test `test_source_registry_has_48_sources` was the obvious one called out in CLAUDE.md rule #8. The API test `test_sources_returns_48` (plus three `== 48` checks inside `test_status_returns_counts` and `test_full_api_workflow`) was a second, undocumented dependency. Both now say `== 50`. A rule-#8 note about this second surface would save the next batch-generator a round-trip.
+- **`SOURCE_INSTANCE_COUNT` drift — corrected in round 2 (commit below).** Initial Batch 3 push left the constant at 47 with a log claim that it was unused. The reviewer (`docs/reviews/batch-3-review.md` §P2) flagged that it IS used by `test_main.py::test_source_instance_count_matches_build` (+ 3 other call-sites in the same file) — a purpose-built drift-catcher. The constant was updated to 49 and this entry rewritten. `test_main.py` remains `--ignore`'d in the pytest baseline due to the pre-existing JobSpy live-HTTP leak, so the drift never affected CI gates, but the invariant is restored and the log claim is now accurate.
+- **Circuit-breaker and scheduler together > either alone.** The breaker in Phase D only *logs* newly-opened breakers in `run_search`; the scheduler in Phase E turns that observability into protection by calling `can_proceed()` before dispatching. Both land in the same batch to avoid shipping half-active defenses.
+- **Test-time clock injection beats freezegun for this domain.** Circuit breakers and scheduler tests pass in sub-200ms without `freezegun` because the `clock=lambda: now[0]` pattern costs nothing to the production code (defaults to `time.monotonic`) but gives tests deterministic advancement without patching the standard library.
+- **First commit accidentally bundled leftover Playwright/screenshot files** from a pre-Batch-3 session (the untracked leftovers the user's Step 1.5 message identified). Mitigated with `git reset --mixed HEAD^` and a scoped `git add backend/`; subsequent commits have been scoped-add from the start.
+
+### CLAUDE.md / docs updated
+
+- `docs/plans/batch-3-plan.md` — new (the TDD plan).
+- `docs/IMPLEMENTATION_LOG.md` — this completion entry.
+- `CLAUDE.md` — appended "Batch 3 additions" section (new modules, new rule note re: test_api.py source-count dependency, new rate-limit entries, new ATS slug counts).
+
+### Memory file saved
+
+- `project_pillar3_batch_3_done.md` — to be written by the reviewer after merge (generator worktree does not write into user memory directly).
+
+### Handoff
+
+Reviewer: your worktree is `.claude/worktrees/reviewer` on `pillar3/batch-3-review`. The audit checklist is in `docs/batch_prompts.md:275-299`. This completion entry is a DRAFT — please verify every claim against the actual diff and the final full-suite regression run before merging. Particular review targets:
+
+1. **The NHS Jobs "additive vs replacement" interpretation** — is a parallel `nhs_jobs_xml` entry the right call, or should the old `nhs_jobs.py` be removed and the count land at 49 + explicit rule rewrite?
+2. **Slug quality.** 164 new slugs were hand-curated from research-doc UK mentions. A spot-check sampling (e.g. pick 10 random slugs, attempt the real public API in staging) is worth doing before merge.
+3. **Scheduler is not yet wired to `run_search`.** Does the reviewer want that wired in Batch 3 or accept it as Batch 4 scope?
+4. **Conditional-fetch not wired to any existing source.** Same question.
+5. **`SOURCE_INSTANCE_COUNT` constant at `main.py:131`** — drift acceptable, or update to 49?
 
 ---
 

@@ -9,6 +9,7 @@ import aiohttp
 from src.models import Job
 from src.core.settings import MAX_RETRIES, RETRY_BACKOFF, REQUEST_TIMEOUT, USER_AGENT, RATE_LIMITS
 from src.services.skill_matcher import UK_TERMS, REMOTE_TERMS, FOREIGN_INDICATORS
+from src.services.conditional_cache import ConditionalCache, CachedEntry
 from src.utils.rate_limiter import RateLimiter
 from src.core.keywords import RELEVANCE_KEYWORDS as _DEFAULT_RELEVANCE_KEYWORDS
 from src.core.keywords import JOB_TITLES as _DEFAULT_JOB_TITLES
@@ -54,6 +55,7 @@ class BaseJobSource(ABC):
         self._search_config = search_config
         cfg = RATE_LIMITS.get(self.name, {"concurrent": 2, "delay": 1.0})
         self._rate_limiter = RateLimiter(concurrent=cfg["concurrent"], delay=cfg["delay"])
+        self._conditional_cache = ConditionalCache()
 
     @property
     def relevance_keywords(self) -> list[str]:
@@ -152,3 +154,55 @@ class BaseJobSource(ABC):
     async def _get_text(self, url: str, params: dict | None = None,
                         headers: dict | None = None) -> str | None:
         return await self._request("GET", url, params=params, headers=headers, as_text=True)
+
+    async def _get_json_conditional(self, url: str, params: dict | None = None,
+                                     headers: dict | None = None) -> dict | list | None:
+        """Conditional GET that honours ETag / Last-Modified.
+
+        On first call, captures any ETag/Last-Modified header returned by
+        the server. On subsequent calls, sends If-None-Match / If-Modified-Since
+        so the server can reply 304 Not Modified; we then return the cached
+        body without re-parsing. Zero-body 304s preserve bandwidth and parse
+        cost for sources that change infrequently (ATS boards between polls,
+        RSS feeds with honest Last-Modified, etc.).
+
+        Falls back to a plain GET when the server provides no validator.
+        """
+        cache_key = (url, tuple(sorted((params or {}).items())))
+        entry = self._conditional_cache.get(cache_key)
+        extra_headers = dict(headers or {})
+        if entry:
+            if entry.etag:
+                extra_headers["If-None-Match"] = entry.etag
+            if entry.last_modified:
+                extra_headers["If-Modified-Since"] = entry.last_modified
+
+        await self._rate_limiter.acquire()
+        try:
+            kwargs = {
+                "headers": self._headers(extra_headers),
+                "timeout": aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+                "params": params,
+            }
+            async with self._session.request("GET", url, **kwargs) as resp:
+                if resp.status == 304 and entry is not None:
+                    logger.debug("[%s] 304 Not Modified — using cached body for %s",
+                                 self.name, url)
+                    return entry.body
+                if resp.status >= 400:
+                    logger.warning("[%s] HTTP %s from %s", self.name, resp.status, url)
+                    return None
+                body = await resp.json(content_type=None)
+                etag = resp.headers.get("ETag")
+                last_modified = resp.headers.get("Last-Modified")
+                if etag or last_modified:
+                    self._conditional_cache.set(
+                        cache_key,
+                        CachedEntry(body=body, etag=etag, last_modified=last_modified),
+                    )
+                return body
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logger.warning("[%s] conditional request error: %s", self.name, e)
+            return None
+        finally:
+            self._rate_limiter.release()

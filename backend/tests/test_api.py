@@ -24,16 +24,17 @@ async def test_status_returns_counts():
     assert resp.status_code == 200
     data = resp.json()
     assert "jobs_total" in data
-    assert data["sources_total"] == 48
+    assert data["sources_total"] == 50
 
 
 @pytest.mark.asyncio
-async def test_sources_returns_48():
+async def test_sources_returns_50():
+    """Batch 3 raised the source count from 48 to 50 (+5 new -3 dropped)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/sources")
     assert resp.status_code == 200
-    assert len(resp.json()["sources"]) == 48
+    assert len(resp.json()["sources"]) == 50
 
 
 @pytest.mark.asyncio
@@ -94,12 +95,12 @@ async def test_full_api_workflow():
         # Status
         resp = await client.get("/api/status")
         assert resp.status_code == 200
-        assert resp.json()["sources_total"] == 48
+        assert resp.json()["sources_total"] == 50
 
         # Sources
         resp = await client.get("/api/sources")
         assert resp.status_code == 200
-        assert len(resp.json()["sources"]) == 48
+        assert len(resp.json()["sources"]) == 50
 
         # Jobs (empty DB)
         resp = await client.get("/api/jobs")
