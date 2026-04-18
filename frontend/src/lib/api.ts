@@ -26,13 +26,19 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // ---------------------------------------------------------------------------
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, init);
+  // credentials: 'include' so the session cookie rides on every call.
+  const res = await fetch(`${API}${path}`, {
+    credentials: "include",
+    ...init,
+  });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
       `API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${body}`
     );
   }
+  // 204 No Content — logout returns empty body
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -228,4 +234,77 @@ export async function getPipelineReminders(): Promise<{
 
 export async function getPipelineCounts(): Promise<Record<string, number>> {
   return request<Record<string, number>>("/api/pipeline/counts");
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Batch 2)
+// ---------------------------------------------------------------------------
+
+export type User = { id: string; email: string };
+
+export async function register(email: string, password: string): Promise<User> {
+  return request<User>("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function login(email: string, password: string): Promise<User> {
+  return request<User>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request<void>("/api/auth/logout", { method: "POST" });
+}
+
+export async function me(): Promise<User | null> {
+  try {
+    return await request<User>("/api/auth/me");
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Channel config (Batch 2)
+// ---------------------------------------------------------------------------
+
+export type Channel = {
+  id: number;
+  channel_type: "email" | "slack" | "discord" | "telegram" | "webhook";
+  display_name: string;
+  enabled: boolean;
+};
+
+export type ChannelTestResult = { ok: boolean; error: string | null };
+
+export async function listChannels(): Promise<Channel[]> {
+  return request<Channel[]>("/api/settings/channels");
+}
+
+export async function createChannel(body: {
+  channel_type: Channel["channel_type"];
+  display_name: string;
+  credential: string;
+}): Promise<Channel> {
+  return request<Channel>("/api/settings/channels", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteChannel(id: number): Promise<void> {
+  await request<void>(`/api/settings/channels/${id}`, { method: "DELETE" });
+}
+
+export async function testChannel(id: number): Promise<ChannelTestResult> {
+  return request<ChannelTestResult>(`/api/settings/channels/${id}/test`, {
+    method: "POST",
+  });
 }
