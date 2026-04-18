@@ -1,0 +1,98 @@
+"""Signed-cookie session management.
+
+Cookie layout: ``<session_id>.<hmac>`` — the signature is verified FIRST,
+before any DB lookup, so tampered cookies never hit SQLite. On verified
+cookies we then fetch the row, check ``expires_at``, and return the user id.
+
+Security properties:
+- ``itsdangerous`` signing (HMAC-SHA256) — constant-time compare.
+- Session id is a 128-bit uuid4 hex (collision-resistant).
+- Revocation is durable — logout deletes the row, subsequent resolves fail.
+- Absolute expiry of 30 days (config via ``SESSION_MAX_AGE_DAYS``).
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import aiosqlite
+from itsdangerous import BadSignature, TimestampSigner
+
+SESSION_MAX_AGE_DAYS = 30
+
+
+def _signer(secret: str) -> TimestampSigner:
+    return TimestampSigner(secret, salt="job360.session")
+
+
+async def create_session(
+    db_path: str,
+    *,
+    user_id: str,
+    secret: str,
+    user_agent: Optional[str] = None,
+    ip_hash: Optional[str] = None,
+) -> str:
+    """Create a session row and return the signed cookie value."""
+    sid = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=SESSION_MAX_AGE_DAYS)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO sessions(id, user_id, expires_at, user_agent, ip_hash)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (sid, user_id, expires.isoformat(), user_agent, ip_hash),
+        )
+        await db.commit()
+    signed = _signer(secret).sign(sid.encode("ascii")).decode("ascii")
+    return signed
+
+
+def _unsign(cookie: str, secret: str) -> Optional[str]:
+    """Return the raw session id if the cookie signature is valid, else None."""
+    try:
+        raw = _signer(secret).unsign(cookie.encode("ascii"), max_age=None)
+    except BadSignature:
+        return None
+    return raw.decode("ascii")
+
+
+async def resolve_session(
+    db_path: str, cookie: str, *, secret: str
+) -> Optional[str]:
+    """Return the ``user_id`` for a valid, unexpired session cookie, else None.
+
+    Signature is verified before any DB lookup.
+    """
+    sid = _unsign(cookie, secret)
+    if sid is None:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT user_id, expires_at FROM sessions WHERE id = ?", (sid,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        if row["expires_at"] <= now:
+            return None
+        # Slide last_seen; best-effort — ignore commit contention.
+        await db.execute(
+            "UPDATE sessions SET last_seen = ? WHERE id = ?", (now, sid)
+        )
+        await db.commit()
+    return row["user_id"]
+
+
+async def revoke_session(db_path: str, cookie: str, *, secret: str) -> None:
+    sid = _unsign(cookie, secret)
+    if sid is None:
+        return
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+        await db.commit()
