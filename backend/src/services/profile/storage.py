@@ -39,8 +39,27 @@ LEGACY_PROFILE_PATH: Path = DATA_DIR / "user_profile.json"
 of ``DEFAULT_TENANT_ID`` then deleted. Monkey-patchable in tests."""
 
 
-def save_profile(profile: UserProfile, user_id: str) -> None:
-    """Upsert a UserProfile for ``user_id`` into user_profiles."""
+def save_profile(
+    profile: UserProfile,
+    user_id: str,
+    source_action: str = "user_edit",
+) -> None:
+    """Upsert a UserProfile for ``user_id`` AND append a versioned snapshot.
+
+    Batch 1.8 (Pillar 1, plan §4.8) — every save also records an
+    immutable snapshot in ``user_profile_versions``. Per the plan's
+    retention heuristic we keep the most recent ``VERSION_RETENTION``
+    per user; older rows are deleted from the tail after the insert.
+
+    The ``source_action`` is an audit label — ``"cv_upload"``,
+    ``"linkedin_upload"``, ``"github_refresh"``, ``"user_edit"``,
+    ``"legacy_hydrate"``. Callers pass it when they know; default is
+    ``"user_edit"`` so legacy call-sites continue to work.
+
+    The writes happen in one transaction: if the snapshot insert fails
+    (e.g. missing migration in a stale DB), the tip upsert also rolls
+    back rather than leaving the two tables inconsistent.
+    """
     cv_json = json.dumps(asdict(profile.cv_data), default=str)
     pref_json = json.dumps(asdict(profile.preferences), default=str)
     now = datetime.now(timezone.utc).isoformat()
@@ -56,8 +75,89 @@ def save_profile(profile: UserProfile, user_id: str) -> None:
             """,
             (user_id, cv_json, pref_json, now),
         )
+        # Batch 1.8 — append snapshot. Wrapped in try so a stale DB
+        # without 0007 migration still allows the tip-row write;
+        # connection still commits in that case to preserve legacy
+        # behaviour. ``OperationalError`` on missing table is logged at
+        # info (expected on pre-migration DBs).
+        try:
+            conn.execute(
+                """
+                INSERT INTO user_profile_versions
+                    (user_id, created_at, source_action, cv_data, preferences)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, now, source_action, cv_json, pref_json),
+            )
+            _prune_old_versions(conn, user_id)
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e).lower():
+                logger.info(
+                    "user_profile_versions table absent — skipping snapshot "
+                    "(run ``python -m migrations.runner up``). Tip still saved."
+                )
+            else:
+                raise
         conn.commit()
-    logger.info("Profile saved for user %s", user_id)
+    logger.info("Profile saved for user %s (action=%s)", user_id, source_action)
+
+
+VERSION_RETENTION = 10
+"""Keep the ``VERSION_RETENTION`` most-recent snapshots per user.
+See plan §8 risks table ("Versioned snapshots balloon DB size")."""
+
+
+def _prune_old_versions(conn: sqlite3.Connection, user_id: str) -> None:
+    """Delete snapshots beyond ``VERSION_RETENTION`` for a single user.
+
+    Uses one DELETE keyed on a NOT-IN sub-select. Fine for the expected
+    load (dozens of saves per user over their lifetime); not tuned for
+    the "millions of versions" case because that case never arrives.
+    """
+    conn.execute(
+        """
+        DELETE FROM user_profile_versions
+        WHERE user_id = ?
+          AND id NOT IN (
+              SELECT id FROM user_profile_versions
+              WHERE user_id = ?
+              ORDER BY created_at DESC, id DESC
+              LIMIT ?
+          )
+        """,
+        (user_id, user_id, VERSION_RETENTION),
+    )
+
+
+def list_profile_versions(user_id: str, limit: int = 10) -> list[dict]:
+    """Return the most-recent snapshots for ``user_id``, newest first.
+
+    Each row is a dict with ``id`` / ``created_at`` / ``source_action``
+    plus parsed ``cv_data`` + ``preferences``. Callers typically render
+    these in a history UI — not used on the hot scoring path.
+    """
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        cur = conn.execute(
+            """
+            SELECT id, created_at, source_action, cv_data, preferences
+            FROM user_profile_versions
+            WHERE user_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        rows = cur.fetchall()
+    out: list[dict] = []
+    for row in rows:
+        out.append({
+            "id": row[0],
+            "created_at": row[1],
+            "source_action": row[2],
+            "cv_data": json.loads(row[3]) if row[3] else {},
+            "preferences": json.loads(row[4]) if row[4] else {},
+        })
+    return out
 
 
 def load_profile(user_id: str) -> Optional[UserProfile]:

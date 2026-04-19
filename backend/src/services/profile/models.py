@@ -49,6 +49,71 @@ class CVData:
     # archetype-aware scoring (Pillar 1 #10 / Pillar 2).
     career_domain: Optional[str] = None
 
+    def to_json_resume(self) -> dict:
+        """Batch 1.8 — return a JSON Resume canonical-schema dict.
+
+        Additive export (read-only). Does NOT rename existing fields,
+        so callers that depend on the raw dataclass layout keep
+        working. Schema follows https://jsonresume.org/schema/: root
+        keys ``basics`` / ``work`` / ``education`` / ``skills`` /
+        ``languages`` / ``projects`` / ``volunteer`` / ``certificates``.
+        Custom provenance (``career_domain``, ``github_frameworks``)
+        rides under the ``meta`` key — reserved in the schema for
+        extensions.
+        """
+        return {
+            "basics": {
+                "name": self.name,
+                "label": self.headline,
+                "summary": self.summary,
+                "location": {"address": self.location} if self.location else {},
+            },
+            "work": [
+                {
+                    "name": pos.get("company", ""),
+                    "position": pos.get("title", ""),
+                    "startDate": pos.get("start", ""),
+                    "endDate": pos.get("end", ""),
+                    "summary": pos.get("description", ""),
+                }
+                for pos in self.linkedin_positions
+            ],
+            "education": [{"institution": line} for line in self.education],
+            "skills": [{"name": s, "level": "", "keywords": []} for s in self.skills],
+            "languages": [
+                {"language": lang.get("language", ""), "fluency": lang.get("proficiency", "")}
+                for lang in self.linkedin_languages
+            ],
+            "projects": [
+                {
+                    "name": p.get("title", ""),
+                    "description": p.get("description", ""),
+                    "startDate": p.get("start", ""),
+                    "endDate": p.get("end", ""),
+                    "url": p.get("url", ""),
+                }
+                for p in self.linkedin_projects
+            ],
+            "volunteer": [
+                {
+                    "organization": v.get("organisation", ""),
+                    "position": v.get("role", ""),
+                    "startDate": v.get("start", ""),
+                    "endDate": v.get("end", ""),
+                    "summary": v.get("description", ""),
+                }
+                for v in self.linkedin_volunteer
+            ],
+            "certificates": [{"name": c} for c in self.certifications],
+            "meta": {
+                "career_domain": self.career_domain,
+                "github_languages": self.github_languages,
+                "github_topics": self.github_topics,
+                "github_frameworks": self.github_frameworks,
+                "industry": self.linkedin_industry,
+            },
+        }
+
     @property
     def highlights(self) -> list[str]:
         """All terms to highlight in the CV viewer (scoring-safe aggregation)."""
