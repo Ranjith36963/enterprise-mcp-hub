@@ -14,7 +14,8 @@ Run 2026-04-19 on `pillar3/batch-3.5` HEAD (branched from `origin/main` @ `fad17
 
 ```
 Command: cd backend && python -m pytest tests/ --ignore=tests/test_main.py -q
-Result:  [to be filled from /tmp/pytest_baseline_3_5.log on completion]
+Result:  24 failed, 529 passed, 3 skipped in 228.14s
+Log:     /tmp/pytest_baseline_3_5.log
 ```
 
 All regression claims below compare against this number. Do not trust counts from prior memory files.
