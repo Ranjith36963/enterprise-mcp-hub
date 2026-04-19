@@ -23,3 +23,7 @@ Thumbs.db
 *.log
 data/
 .secrets/
+
+# Playwright MCP cache + ad-hoc test screenshots
+.playwright-mcp/
+test-*.png

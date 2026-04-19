@@ -132,7 +132,10 @@
       "Bash(where write-good:*)",
       "Bash(npm list:*)",
       "Bash(mv data:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(tee /tmp/pytest_baseline_3_5_4.log)",
+      "Bash(cp .claude/settings.local.json /tmp/settings.local.json.bak)",
+      "Bash(cp /tmp/settings.local.json.bak .claude/settings.local.json)"
     ]
   },
   "disabledMcpjsonServers": [
