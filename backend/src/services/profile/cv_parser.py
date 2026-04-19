@@ -100,6 +100,43 @@ def extract_text_from_pdf(file_path: str) -> str:
     return "\n".join(text_parts)
 
 
+def extract_sections_from_pdf(file_path: str) -> dict[str, str] | None:
+    """Batch 1.7 — layout-aware PDF section extraction.
+
+    Pulls word-level metadata (``fontname``, ``size``, ``top``, ``x0``)
+    from each page and hands it to ``layout.segment_sections_from_words``
+    for font-size clustering. Returns ``None`` (not empty-dict) when the
+    PDF can't be opened — that lets callers fall back to the flat
+    ``extract_text_from_pdf`` path without ambiguity.
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        return None
+
+    from src.services.profile.layout import segment_sections_from_words
+
+    all_words: list[dict] = []
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page_idx, page in enumerate(pdf.pages):
+                try:
+                    page_words = page.extract_words(extra_attrs=["fontname", "size"])
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("extract_words failed on page %d of %s: %s", page_idx, file_path, e)
+                    continue
+                for w in page_words:
+                    w["page"] = page_idx
+                all_words.extend(page_words)
+    except Exception as e:
+        logger.warning("Failed to read PDF for layout extraction %s: %s", file_path, e)
+        return None
+
+    if not all_words:
+        return None
+    return segment_sections_from_words(all_words)
+
+
 def extract_text_from_docx(file_path: str) -> str:
     """Extract text from a DOCX file using python-docx."""
     try:
