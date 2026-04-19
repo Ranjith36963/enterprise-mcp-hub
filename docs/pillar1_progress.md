@@ -78,7 +78,25 @@
 
 ---
 
-## Batches 1.4 – 1.8 · pending
+## Batch 1.5 — Expanded LinkedIn PDF sections · ⚡ SHIPPED pending full-suite commit
+
+**Scope per plan §4.5:** 4 new LLM prompts for LinkedIn sections whose bodies were previously discarded (`:316-327` in pre-batch `linkedin_parser.py`) — Languages, Projects, Volunteer Experience, Courses.
+
+**Scope delivered:**
+- `backend/src/services/profile/linkedin_parser.py` — 4 new LLM prompt templates (`_LANGUAGES_PROMPT`, `_PROJECTS_PROMPT`, `_VOLUNTEER_PROMPT`, `_COURSES_PROMPT`), 4 new coercers (`_coerce_languages/projects/volunteer/courses`), `_empty_linkedin_data()` extended with 4 keys, `parse_linkedin_pdf_async()` now runs 7 LLM calls in parallel (was 3) — only those with non-empty section text, empty sections short-circuit before calling the LLM.
+- `backend/src/services/profile/models.py` — `CVData` gains `linkedin_languages`, `linkedin_projects`, `linkedin_volunteer`, `linkedin_courses` (all `list[dict]`).
+- `backend/src/services/profile/linkedin_parser.py::enrich_cv_from_linkedin` — overwrites (not merges) the 4 new fields so re-parse reflects current LinkedIn state.
+- `backend/tests/test_linkedin_expanded.py` NEW — 10 tests: 4 coercer units, `_empty_linkedin_data` shape, enrich writes new fields + overwrite-on-rerun, end-to-end with mocked LLM populating all new sections, empty-section-skips-LLM-call.
+- `backend/tests/test_linkedin_github.py::test_sync_wrapper_returns_same_shape` — canonical dict key assertion updated to include the 4 new keys.
+
+**Acceptance check** (plan §10 Batch 1.5):
+- ✅ Sample LinkedIn PDF with `Languages`, `Projects`, `Volunteer Experience`, `Courses` sections produces non-empty fields for each (`test_parse_linkedin_pdf_populates_all_new_sections`).
+
+**Deferred per plan §4.5 "Out of scope":** `Recommendations`, `Patents`, `Test Scores`, `Honors-Awards` — low signal-to-noise. Detect-only (heading still in `_SECTION_HEADINGS`), parse pending.
+
+---
+
+## Batches 1.4, 1.7, 1.8 · pending · 1.3b · pending · 1.6 / 1.9 / 1.10 deferred per plan
 
 Will log one section per batch on completion. Each entry must include:
 - Commit SHA + message header

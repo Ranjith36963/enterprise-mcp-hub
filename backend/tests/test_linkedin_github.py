@@ -312,9 +312,13 @@ class TestParseLinkedInPdfEndToEnd:
             skills=["Python"], certifications=["Cert"],
         )
         data = parse_linkedin_pdf(str(path))
+        # Batch 1.5 expanded the canonical dict with 4 new section keys
+        # (languages, projects, volunteer, courses). The assertion is
+        # updated rather than relaxed so the shape remains explicit.
         assert set(data.keys()) == {
             "positions", "skills", "education", "certifications",
             "summary", "industry", "headline",
+            "languages", "projects", "volunteer", "courses",
         }
         assert data["skills"] == ["Python"]
 

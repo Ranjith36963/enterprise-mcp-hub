@@ -215,6 +215,63 @@ TEXT:
 ---"""
 
 
+# ── Batch 1.5 — expanded LinkedIn sections ────────────────────────
+
+_LANGUAGES_PROMPT = """Extract every human language from the LinkedIn Languages section text below.
+Return JSON: {{"languages": [{{"language": str, "proficiency": str}}, ...]}}
+
+Rules:
+- "language" = the language name (e.g. "English", "Mandarin Chinese", "Spanish").
+- "proficiency" = the proficiency level as written (e.g. "Native or bilingual", "Professional working", "Elementary"). Empty string if missing.
+
+TEXT:
+---
+{text}
+---"""
+
+_PROJECTS_PROMPT = """Extract every portfolio/personal project from the LinkedIn Projects section text below.
+Return JSON: {{"projects": [{{"title": str, "description": str, "start": str, "end": str, "url": str}}, ...]}}
+
+Rules:
+- "title" = project name.
+- "description" = the prose body (bullets concatenated). Empty if none.
+- "start"/"end" verbatim as written (e.g. "Mar 2022", "Present"). Empty if missing.
+- "url" = associated link if present in the text; empty otherwise.
+
+TEXT:
+---
+{text}
+---"""
+
+_VOLUNTEER_PROMPT = """Extract every volunteer role from the LinkedIn Volunteer Experience section text below.
+Return JSON: {{"volunteer": [{{"role": str, "organisation": str, "cause": str, "start": str, "end": str, "description": str}}, ...]}}
+
+Rules:
+- "role" = the volunteer position title.
+- "organisation" = the organisation/charity name.
+- "cause" = the stated cause if present (e.g. "Education", "Environment"). Empty if missing.
+- "start"/"end" verbatim. Empty if missing.
+- "description" = concatenated bullets/paragraph. Empty if missing.
+
+TEXT:
+---
+{text}
+---"""
+
+_COURSES_PROMPT = """Extract every course from the LinkedIn Courses section text below.
+Return JSON: {{"courses": [{{"title": str, "institution": str, "date": str}}, ...]}}
+
+Rules:
+- "title" = course name as written.
+- "institution" = the awarding body if present (e.g. "Coursera", "MIT OpenCourseWare"). Empty if missing.
+- "date" = date/term written. Empty if missing.
+
+TEXT:
+---
+{text}
+---"""
+
+
 async def _llm_json(prompt: str) -> dict[str, Any]:
     """Call the shared LLM provider; return {} on any failure."""
     if not prompt.strip():
@@ -287,6 +344,85 @@ def _coerce_certifications(raw: Any) -> list[dict]:
     return out
 
 
+# Batch 1.5 coercers — one per new section ───────────────────────────
+
+def _coerce_languages(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        lang = coerce_str(item.get("language")).strip()
+        if not lang:
+            continue
+        out.append({
+            "language": lang,
+            "proficiency": coerce_str(item.get("proficiency")).strip(),
+        })
+    return out
+
+
+def _coerce_projects(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = coerce_str(item.get("title")).strip()
+        if not title:
+            continue
+        out.append({
+            "title": title,
+            "description": coerce_str(item.get("description")).strip(),
+            "start": coerce_str(item.get("start")).strip(),
+            "end": coerce_str(item.get("end")).strip(),
+            "url": coerce_str(item.get("url")).strip(),
+        })
+    return out
+
+
+def _coerce_volunteer(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        role = coerce_str(item.get("role")).strip()
+        org = coerce_str(item.get("organisation")).strip() or coerce_str(item.get("organization")).strip()
+        if not role and not org:
+            continue
+        out.append({
+            "role": role,
+            "organisation": org,
+            "cause": coerce_str(item.get("cause")).strip(),
+            "start": coerce_str(item.get("start")).strip(),
+            "end": coerce_str(item.get("end")).strip(),
+            "description": coerce_str(item.get("description")).strip(),
+        })
+    return out
+
+
+def _coerce_courses(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = coerce_str(item.get("title")).strip()
+        if not title:
+            continue
+        out.append({
+            "title": title,
+            "institution": coerce_str(item.get("institution")).strip(),
+            "date": coerce_str(item.get("date")).strip(),
+        })
+    return out
+
+
 def _empty_linkedin_data() -> dict:
     return {
         "positions": [],
@@ -296,6 +432,11 @@ def _empty_linkedin_data() -> dict:
         "summary": "",
         "industry": "",
         "headline": "",
+        # Batch 1.5 — expanded sections
+        "languages": [],
+        "projects": [],
+        "volunteer": [],
+        "courses": [],
     }
 
 
@@ -325,8 +466,13 @@ async def parse_linkedin_pdf_async(file_path: str) -> dict:
         sections.get("certifications", "")
         or sections.get("licenses & certifications", "")
     )
+    # Batch 1.5 — four additional sections.
+    languages_text = sections.get("languages", "")
+    projects_text = sections.get("projects", "")
+    volunteer_text = sections.get("volunteer experience", "")
+    courses_text = sections.get("courses", "")
 
-    # Three LLM calls in parallel — only the ones with text.
+    # Seven LLM calls in parallel — only the ones with text.
     async def _maybe(prompt_template: str, text: str, key: str):
         if not text.strip():
             return {key: []}
@@ -335,18 +481,35 @@ async def parse_linkedin_pdf_async(file_path: str) -> dict:
     exp_task = _maybe(_EXPERIENCE_PROMPT, experience_text, "positions")
     edu_task = _maybe(_EDUCATION_PROMPT, education_text, "education")
     cert_task = _maybe(_CERTIFICATIONS_PROMPT, certs_text, "certifications")
-    exp_raw, edu_raw, cert_raw = await asyncio.gather(exp_task, edu_task, cert_task)
+    lang_task = _maybe(_LANGUAGES_PROMPT, languages_text, "languages")
+    proj_task = _maybe(_PROJECTS_PROMPT, projects_text, "projects")
+    vol_task = _maybe(_VOLUNTEER_PROMPT, volunteer_text, "volunteer")
+    course_task = _maybe(_COURSES_PROMPT, courses_text, "courses")
+
+    (
+        exp_raw, edu_raw, cert_raw,
+        lang_raw, proj_raw, vol_raw, course_raw,
+    ) = await asyncio.gather(
+        exp_task, edu_task, cert_task,
+        lang_task, proj_task, vol_task, course_task,
+    )
+
+    def _get(r: Any, key: str) -> Any:
+        return r.get(key) if isinstance(r, dict) else None
 
     return {
-        "positions": _coerce_positions(exp_raw.get("positions") if isinstance(exp_raw, dict) else None),
+        "positions": _coerce_positions(_get(exp_raw, "positions")),
         "skills": skills,
-        "education": _coerce_education(edu_raw.get("education") if isinstance(edu_raw, dict) else None),
-        "certifications": _coerce_certifications(
-            cert_raw.get("certifications") if isinstance(cert_raw, dict) else None
-        ),
+        "education": _coerce_education(_get(edu_raw, "education")),
+        "certifications": _coerce_certifications(_get(cert_raw, "certifications")),
         "summary": summary,
         "industry": header.get("industry", ""),
         "headline": header.get("headline", ""),
+        # Batch 1.5 — expanded sections
+        "languages": _coerce_languages(_get(lang_raw, "languages")),
+        "projects": _coerce_projects(_get(proj_raw, "projects")),
+        "volunteer": _coerce_volunteer(_get(vol_raw, "volunteer")),
+        "courses": _coerce_courses(_get(course_raw, "courses")),
     }
 
 
@@ -408,5 +571,13 @@ def enrich_cv_from_linkedin(cv: CVData, linkedin_data: dict) -> CVData:
     cv.linkedin_positions = linkedin_data.get("positions", [])
     cv.linkedin_skills = new_linkedin_skills
     cv.linkedin_industry = linkedin_data.get("industry", "")
+
+    # Batch 1.5 — expanded sections. Overwrite rather than merge: LinkedIn
+    # is the canonical source for these, and re-parsing a profile should
+    # reflect the new state rather than accumulate stale entries.
+    cv.linkedin_languages = linkedin_data.get("languages", [])
+    cv.linkedin_projects = linkedin_data.get("projects", [])
+    cv.linkedin_volunteer = linkedin_data.get("volunteer", [])
+    cv.linkedin_courses = linkedin_data.get("courses", [])
 
     return cv

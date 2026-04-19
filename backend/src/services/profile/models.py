@@ -26,6 +26,15 @@ class CVData:
     linkedin_positions: list[dict] = field(default_factory=list)
     linkedin_skills: list[str] = field(default_factory=list)
     linkedin_industry: str = ""
+    # Batch 1.5 — expanded LinkedIn sections (Languages, Projects,
+    # Volunteer Experience, Courses). All are LinkedIn-sourced display
+    # fields: they inform the CV viewer and feed relevance keywords
+    # but do NOT contribute to ``skills`` — they're separate signals
+    # so downstream can opt-in rather than polluting primary tiering.
+    linkedin_languages: list[dict] = field(default_factory=list)
+    linkedin_projects: list[dict] = field(default_factory=list)
+    linkedin_volunteer: list[dict] = field(default_factory=list)
+    linkedin_courses: list[dict] = field(default_factory=list)
     # GitHub-sourced data
     github_languages: dict[str, int] = field(default_factory=dict)
     github_topics: list[str] = field(default_factory=list)
