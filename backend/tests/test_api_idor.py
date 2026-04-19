@@ -133,6 +133,14 @@ def _register(client, email, password="s3cretpassword"):
     ("GET",  "/api/pipeline/reminders"),
     ("POST", "/api/pipeline/1"),
     ("POST", "/api/pipeline/1/advance"),
+    # Batch 3.5.1 — close the profile + search gaps the 2026-04-19
+    # CurrentStatus re-audit §7 identified.
+    ("GET",  "/api/profile"),
+    ("POST", "/api/profile"),
+    ("POST", "/api/profile/linkedin"),
+    ("POST", "/api/profile/github"),
+    ("POST", "/api/search"),
+    ("GET",  "/api/search/abc123/status"),
 ])
 def test_per_user_endpoint_requires_auth(api, method, path):
     if method == "POST" and "action" in path:
@@ -330,3 +338,63 @@ def test_action_roundtrip_for_authenticated_user(api):
 
     r4 = api.get("/api/actions")
     assert r4.json().get("actions", []) == []
+
+
+# ---------------------------------------------------------------------------
+# Batch 3.5.1 — search run_id user-scoping (existence-hiding via 404)
+# ---------------------------------------------------------------------------
+
+
+def test_search_run_id_is_scoped_by_user(api, monkeypatch):
+    """Alice creates a run; Bob hitting that run_id's status must 404.
+
+    The POST handler stores `user_id` on the _runs[run_id] record; the
+    GET handler returns 404 (not 403) when run["user_id"] != user.id,
+    so an attacker cannot distinguish "does not exist" from "exists but
+    not mine" — no oracle for run_id enumeration.
+    """
+    # Stub run_search so the background task completes instantly and
+    # predictably — we are testing the gate, not the pipeline.
+    async def _fake_run_search(**kwargs):
+        return {
+            "total_found": 0,
+            "new_jobs": 0,
+            "sources_queried": 0,
+            "per_source": {},
+        }
+
+    import src.api.routes.search as search_route
+    monkeypatch.setattr(search_route, "run_search", _fake_run_search)
+    # Reset module-level _runs dict so prior tests don't leak run_ids.
+    monkeypatch.setattr(search_route, "_runs", {}, raising=True)
+
+    _register(api, "alice@example.com")
+    r = api.post("/api/search")
+    assert r.status_code == 200, r.text
+    run_id = r.json()["run_id"]
+
+    # Alice can read her own run (positive control)
+    r_alice = api.get(f"/api/search/{run_id}/status")
+    assert r_alice.status_code == 200
+    assert r_alice.json()["run_id"] == run_id
+
+    # Switch to Bob
+    api.post("/api/auth/logout")
+    api.cookies.clear()
+    _register(api, "bob@example.com")
+
+    r_bob = api.get(f"/api/search/{run_id}/status")
+    assert r_bob.status_code == 404, (
+        f"cross-user read of alice's run_id should 404 "
+        f"(existence hiding), got {r_bob.status_code}: {r_bob.text}"
+    )
+
+
+def test_search_status_for_unknown_run_id_returns_404(api, monkeypatch):
+    """Unknown run_id → 404 for an authenticated user."""
+    import src.api.routes.search as search_route
+    monkeypatch.setattr(search_route, "_runs", {}, raising=True)
+
+    _register(api, "alice@example.com")
+    r = api.get("/api/search/nonexistent123/status")
+    assert r.status_code == 404
