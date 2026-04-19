@@ -46,6 +46,15 @@ dev = [
 indeed = [
     "python-jobspy",
 ]
+# Batch 1.3b (Pillar 1) — ESCO skill normalisation. Heavy deps
+# (~300 MB for sentence-transformers + torch CPU wheel); keep optional.
+# Enable with ``pip install '.[esco]'`` then run
+# ``python scripts/build_esco_index.py --esco-csv skills_en.csv``
+# to generate ``backend/data/esco/{labels.json,embeddings.npy}``.
+esco = [
+    "sentence-transformers>=2.2",
+    "numpy>=1.24",
+]
 
 [project.scripts]
 job360 = "src.cli:cli"
