@@ -258,7 +258,7 @@ Key test files:
 - `test_notifications.py` — 19 tests: Email, Slack, Discord sending
 - `test_deduplicator.py` — 13 tests: dedup logic, company suffix stripping
 - `test_main.py` — 12 tests: orchestrator with mocked sources
-- `test_cli.py` — 11 tests: CLI commands, `len(SOURCE_REGISTRY) == 48` assertion (update when adding/removing sources)
+- `test_cli.py` — 11 tests: CLI commands, `len(SOURCE_REGISTRY) == 50` assertion (update when adding/removing sources — also see rule #13 for `test_api.py`)
 - `test_database.py` — 9 tests: SQLite operations, migrations, source history
 - `test_api.py` — 9 tests: FastAPI endpoints (health, status, sources, jobs, actions, profile, pipeline, integration)
 - `test_llm_provider.py` — 8 tests: multi-provider LLM client for CV parsing
@@ -315,10 +315,111 @@ Key test files:
 5. **Always run the relevant test suite** after any change: `python -m pytest tests/ -v` for broad changes, or the specific test file for targeted changes.
 6. **Read a file fully before editing it.** Understand the existing logic, imports, and how other modules depend on it.
 7. **Check if something exists before creating it.** Search for existing implementations before adding new files or functions.
-8. **When adding/removing sources:** Update `SOURCE_REGISTRY` dict, `_build_sources()` list, `RATE_LIMITS` dict, the test assertion `len(SOURCE_REGISTRY) == N` in `test_cli.py`, and the expected source set in the same file.
+8. **When adding/removing sources:** Update `SOURCE_REGISTRY` dict, `_build_sources()` list, `RATE_LIMITS` dict, the test assertion `len(SOURCE_REGISTRY) == N` in `test_cli.py`, and the expected source set in the same file. **Also** update the hardcoded `== N` checks in `test_api.py` (rule #13). Current count: **50** (Batch 3).
 9. **Scoring changes require test verification.** The scoring algorithm is tested with 53 tests across edge cases. Run `test_scorer.py` and `test_profile.py` after any change to `skill_matcher.py`.
+
+## Batch 2 additions (pillar 3 multi-user delivery layer)
+
+Multi-user delivery landed in `pillar3/batch-2` (see `docs/plans/batch-2-plan.md`).
+Key surfaces a future session needs to know:
+
+### New tables (managed by `backend/migrations/`)
+
+| Table | Owner migration | Purpose |
+|---|---|---|
+| `users` | `0001_auth` | authenticated users |
+| `sessions` | `0001_auth` | signed-cookie session rows (FK → users) |
+| `user_feed` | `0003_user_feed` | SSOT per-user view — dashboard + notification worker both read |
+| `notification_ledger` | `0004_notification_ledger` | per-channel idempotency + retry audit |
+| `user_channels` | `0005_user_channels` | Fernet-encrypted Apprise credentials |
+| `_schema_migrations` | `runner.py` on first run | applied-migration registry |
+
+`user_actions` and `applications` were rebuilt in `0002_multi_tenant` to add
+`user_id` + widen `UNIQUE(job_id)` → `UNIQUE(user_id, job_id)`. Pre-Batch-2
+rows were backfilled to the placeholder user
+`00000000-0000-0000-0000-000000000001` (see `src/core/tenancy.DEFAULT_TENANT_ID`).
+The `jobs` table is **unchanged** — it remains a shared catalog (rule #1).
+
+### New modules
+
+- `backend/migrations/runner.py` — forward/reverse SQL migration runner (CLI: `python -m migrations.runner {up|down|status} [db_path]`)
+- `src/services/auth/{passwords,sessions}.py` — argon2id + itsdangerous-signed cookies (30-day expiry)
+- `src/services/feed.py` — `FeedService` with `list_for_user`, `list_pending_notifications`, `mark_notified`, `update_status`, `cascade_stale`, `upsert_feed_row`
+- `src/services/prefilter.py` — 3-stage cascade (location → experience → skill overlap) — blueprint §2 99% elimination rule
+- `src/services/channels/{crypto,dispatcher}.py` — Fernet encryption + Apprise wrapper (lazy import; tests monkeypatch `apprise.Apprise`)
+- `src/workers/tasks.py` — `score_and_ingest`, `mark_ledger_sent/failed`, `idempotency_key` — pure async (no `arq` import) so pytest never touches Redis
+- `src/api/auth_deps.py` — `require_user` / `optional_user` FastAPI dependencies reading the `job360_session` cookie
+- `src/api/routes/{auth,channels}.py` — `/api/auth/*`, `/api/settings/channels/*`
+
+### New env vars
+
+| Var | Required | Default | Used by |
+|---|---|---|---|
+| `SESSION_SECRET` | Yes in prod | dev fallback | `itsdangerous` HMAC for session cookies |
+| `CHANNEL_ENCRYPTION_KEY` | Yes in prod | dev fallback | Fernet encryption of channel credentials |
+| `FRONTEND_ORIGIN` | No | `http://localhost:3000` | CORS allow-list (comma-sep) |
+| `REDIS_URL` | Only when running ARQ worker | `redis://localhost:6379` | ARQ broker (runtime only, tests skip) |
+
+### New deps
+
+- `argon2-cffi>=25.1.0` — argon2id password hashing
+- `itsdangerous>=2.2.0` — signed cookie HMAC
+- `apprise>=1.9.9` — multi-channel notification sending
+- `pydantic[email]` (via `email-validator>=2.3.0`) — `EmailStr` validation
+- `cryptography>=42.0.0` — Fernet (transitive already, now explicit)
+
+### How to run
+
+```bash
+# Apply Batch 2 migrations (idempotent — safe on every boot)
+cd backend && python -m migrations.runner up
+
+# FastAPI boot auto-runs the migration runner after legacy init_db()
+# — see src/api/dependencies.py
+
+# ARQ worker (not required for CLI / read-only usage):
+#   arq src.workers.settings.WorkerSettings       # to be added in follow-up
+```
+
+### Additional CLAUDE rules
+
+10. **Never INSERT into `jobs` with a `user_id` or `tenant_id` column** — it does not have one, by design. `jobs` is the shared catalog (blueprint §3). Per-user state lives in `user_feed`, `user_actions`, `applications`.
+11. **Never import `apprise` at module top level** in library code — Apprise pulls ~30 MB of deps. Import lazily inside the function that uses it (see `dispatcher._get_apprise_cls`). Tests monkeypatch `apprise.Apprise`; real sends happen only under ARQ worker context.
+12. **Every new per-user FastAPI route MUST take `user: CurrentUser = Depends(require_user)`** and scope queries by `user.id`. Never accept `user_id` from a URL parameter or body — that is a trivial IDOR vulnerability.
+
+## Batch 3 additions (pillar 3 tiered polling + source expansion)
+
+Batch 3 landed on `pillar3/batch-3` (see `docs/plans/batch-3-plan.md`).
+
+### New modules
+
+- `backend/src/services/scheduler.py` — `TieredScheduler` + `resolve_tier_seconds()` + `TIER_INTERVALS_SECONDS` map. Per-source interval tracker with async dispatch. Consults the breaker registry before each tick.
+- `backend/src/services/circuit_breaker.py` — `CircuitBreaker` state machine (CLOSED / HALF_OPEN / OPEN) + `BreakerRegistry.get(name)` lazy factory + module-level `default_registry()` singleton. 5-failure threshold + 300s cooldown defaults.
+- `backend/src/services/conditional_cache.py` — FIFO-bounded (256-entry) `ConditionalCache` for ETag / Last-Modified validators. Backed-in `BaseJobSource._get_json_conditional()` opt-in helper.
+
+### Source count: 48 → 50
+
++5 new: `teaching_vacancies`, `gov_apprenticeships`, `nhs_jobs_xml`, `rippling`, `comeet`
+−3 dropped: `yc_companies`, `nomis`, `findajob`
+
+### ATS slug catalog: 104 → 268
+
+Expanded across all 10 platforms. Rippling + Comeet are new ATS platforms with 5-slug starter lists each.
+
+### New rate-limit entries in `backend/src/core/settings.py`
+
+All 5 new sources registered with per-source `{concurrent, delay}` pairs. Tier targets are in `scheduler.TIER_INTERVALS_SECONDS`, not `RATE_LIMITS` — `RATE_LIMITS` is still the in-request concurrency/backoff surface.
+
+### Additional CLAUDE rules
+
+13. **When adding or removing a source, update FIVE load-bearing surfaces — not four.** CLAUDE.md rule #8 originally named four (`SOURCE_REGISTRY` dict, `_build_sources()` list, `RATE_LIMITS` dict, `tests/test_cli.py` assertion). A fifth surface exists: **`tests/test_api.py`** has hardcoded `== 48` checks inside `test_sources_returns_*` + `test_status_returns_counts` + `test_full_api_workflow`. Rotating the count requires all five to move together.
+14. **Sources opting into conditional fetch must call `self._get_json_conditional(url)` instead of `self._get_json(url)`.** The former goes through `ConditionalCache` + handles 304; the latter retains retry/429 handling but no caching. Not every source benefits — use the conditional path only for feeds whose upstream honours ETag or Last-Modified (ATS boards with CDN fronts, RSS feeds with honest headers). Sources that poll every 60s on endpoints without validators should stay on `_get_json()` to avoid filling the cache with un-validatable entries.
+15. **New sources MUST set `.category` to one of the scheduler's tier keys** (`"ats"`, `"rss"`, `"keyed_api"`, `"free_json"`, `"scrapers"`, `"other"`) or add a `NAME_TIER[source.name]` override in `scheduler.py`. An un-tiered source falls to the 60-min default — harmless but wastes the freshness upside of the tiered scheduler. Batch 3's new sources chose: teaching_vacancies/gov_apprenticeships/nhs_jobs_xml → `"rss"` (15-min tier); rippling/comeet → `"ats"` (60-sec tier).
 
 ## Related Documentation
 
 - `STATUS.md` — Project phase status, what's complete, what's next, known issues, test coverage table
 - `ARCHITECTURE.md` — Deep technical reference: data flow diagrams, directory structure, scoring algorithm detail, source categories, database schema, config variables, dependency list
+- `docs/IMPLEMENTATION_LOG.md` — pillar 3 batch-by-batch completion log (read FIRST for current state)
+- `docs/plans/batch-2-decisions.md` — irreversible architectural decisions (ARQ, Apprise, polling, session cookies, SQLite-for-now)
+- `docs/plans/batch-2-plan.md` — Batch 2 TDD implementation plan with locked baseline

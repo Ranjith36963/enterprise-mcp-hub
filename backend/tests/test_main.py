@@ -49,9 +49,6 @@ def _mock_free_sources(m, arbeitnow_payload=None):
     m.get(re.compile(r".*\.thalesgroup\.com/.*"), body="<urlset></urlset>", repeat=True)
     # Group D: HTML scrapers
     m.get(re.compile(r"https://www\.linkedin\.com/.*"), body="<html></html>", repeat=True)
-    m.get(re.compile(r"https://findajob\.dwp\.gov\.uk/.*"),
-          body="<html><body>No results</body></html>",
-          content_type="text/html", repeat=True)
     m.get(re.compile(r"https://jobtensor\.com/.*"), payload={"total": 0, "hits": []}, repeat=True)
     m.get(re.compile(r"https://climatebase\.org/.*"), body="<html></html>", repeat=True)
     m.get(re.compile(r"https://www\.bcs\.org/.*"), body="<html></html>", repeat=True)
@@ -74,9 +71,7 @@ def _mock_free_sources(m, arbeitnow_payload=None):
     m.get(re.compile(r"https://hacker-news\.firebaseio\.com/.*"), payload={"kids": []}, repeat=True)
     m.get(re.compile(r"https://hn\.algolia\.com/.*"), payload={"hits": []}, repeat=True)
     m.post(re.compile(r"https://w6km1udib3-dsn\.algolia\.net/.*"), payload={"hits": []}, repeat=True)
-    m.get(re.compile(r"https://yc-oss\.github\.io/.*"), payload=[], repeat=True)
     m.get(re.compile(r"https://nofluffjobs\.com/api/.*"), payload=[], repeat=True)
-    m.get(re.compile(r"https://www\.nomis\.co\.uk/.*"), payload={}, repeat=True)
     m.get(re.compile(r"https://www\.careerjet\.co\.uk/.*"), body="<html></html>", repeat=True)
 
 

@@ -38,6 +38,14 @@ class JobDatabase:
                 normalized_company TEXT NOT NULL,
                 normalized_title TEXT NOT NULL,
                 first_seen TEXT NOT NULL,
+                posted_at TEXT,
+                first_seen_at TEXT,
+                last_seen_at TEXT,
+                last_updated_at TEXT,
+                date_confidence TEXT DEFAULT 'low',
+                date_posted_raw TEXT,
+                consecutive_misses INTEGER DEFAULT 0,
+                staleness_state TEXT DEFAULT 'active',
                 UNIQUE(normalized_company, normalized_title)
             );
             CREATE TABLE IF NOT EXISTS run_log (
@@ -51,6 +59,8 @@ class JobDatabase:
             CREATE INDEX IF NOT EXISTS idx_jobs_date_found ON jobs(date_found);
             CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen);
             CREATE INDEX IF NOT EXISTS idx_jobs_match_score ON jobs(match_score);
+            CREATE INDEX IF NOT EXISTS idx_jobs_staleness_state ON jobs(staleness_state);
+            CREATE INDEX IF NOT EXISTS idx_jobs_last_seen_at ON jobs(last_seen_at);
             CREATE TABLE IF NOT EXISTS user_actions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_id INTEGER NOT NULL,
@@ -80,8 +90,15 @@ class JobDatabase:
         # Define columns added after initial schema.
         # Format: (column_name, column_definition)
         migrations = [
-            # Add future columns here, e.g.:
-            # ("salary_currency", "TEXT DEFAULT ''"),
+            # Pillar 3 Batch 1 — 5-column date model + ghost detection hooks.
+            ("posted_at",          "TEXT"),
+            ("first_seen_at",      "TEXT"),
+            ("last_seen_at",       "TEXT"),
+            ("last_updated_at",    "TEXT"),
+            ("date_confidence",    "TEXT DEFAULT 'low'"),
+            ("date_posted_raw",    "TEXT"),
+            ("consecutive_misses", "INTEGER DEFAULT 0"),
+            ("staleness_state",    "TEXT DEFAULT 'active'"),
         ]
         for col_name, col_def in migrations:
             if col_name not in existing:
@@ -119,17 +136,60 @@ class JobDatabase:
             """INSERT OR IGNORE INTO jobs
             (title, company, location, salary_min, salary_max, description,
              apply_url, source, date_found, match_score, visa_flag,
-             experience_level, normalized_company, normalized_title, first_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             experience_level, normalized_company, normalized_title, first_seen,
+             posted_at, first_seen_at, last_seen_at, date_confidence,
+             date_posted_raw)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.title, job.company, job.location,
                 job.salary_min, job.salary_max, job.description,
                 job.apply_url, job.source, job.date_found,
                 job.match_score, int(job.visa_flag),
                 job.experience_level, company, title, now,
+                job.posted_at, now, now, job.date_confidence,
+                job.date_posted_raw,
             ),
         )
         return cursor.rowcount > 0
+
+    async def update_last_seen(self, normalized_key: tuple[str, str]) -> None:
+        """Mark a job as re-seen this scrape cycle. Resets ghost-detection counters."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            "UPDATE jobs SET last_seen_at = ?, consecutive_misses = 0, "
+            "staleness_state = 'active' "
+            "WHERE normalized_company = ? AND normalized_title = ?",
+            (now, normalized_key[0], normalized_key[1]),
+        )
+        await self._conn.commit()
+
+    async def mark_missed_for_source(
+        self, source: str, seen_keys: set[tuple[str, str]]
+    ) -> int:
+        """Increment consecutive_misses for every job of `source` not in `seen_keys`.
+
+        Scrape-completeness gates (rolling-average checks) are the CALLER's
+        responsibility — only call this after a scrape is deemed healthy, per
+        pillar_3_batch_1.md §3 Step 1. Returns the count of jobs marked missed.
+        """
+        cursor = await self._conn.execute(
+            "SELECT id, normalized_company, normalized_title "
+            "FROM jobs WHERE source = ?",
+            (source,),
+        )
+        rows = await cursor.fetchall()
+        missed_ids = [
+            row[0] for row in rows
+            if (row[1], row[2]) not in seen_keys
+        ]
+        for job_id in missed_ids:
+            await self._conn.execute(
+                "UPDATE jobs SET consecutive_misses = consecutive_misses + 1 "
+                "WHERE id = ?",
+                (job_id,),
+            )
+        await self._conn.commit()
+        return len(missed_ids)
 
     async def commit(self):
         """Commit pending changes."""
@@ -213,67 +273,95 @@ class JobDatabase:
         return source_history
 
     # --- User Actions ---
+    #
+    # Batch 3.5 Deliverable C: every method now takes user_id and scopes
+    # queries by it. Schema UNIQUE(user_id, job_id) is from migration
+    # 0002_multi_tenant; this layer is the matching read/write surface.
 
-    async def insert_action(self, job_id: int, action: str, notes: str = "") -> dict:
+    async def insert_action(
+        self, job_id: int, action: str, user_id: str, notes: str = ""
+    ) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         await self._conn.execute(
-            "INSERT OR REPLACE INTO user_actions (job_id, action, notes, created_at) VALUES (?, ?, ?, ?)",
-            (job_id, action, notes, now),
+            """INSERT INTO user_actions (user_id, job_id, action, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, job_id)
+               DO UPDATE SET action = excluded.action,
+                             notes = excluded.notes,
+                             created_at = excluded.created_at""",
+            (user_id, job_id, action, notes, now),
         )
         await self._conn.commit()
         return {"job_id": job_id, "action": action, "notes": notes, "created_at": now}
 
-    async def delete_action(self, job_id: int) -> None:
-        await self._conn.execute("DELETE FROM user_actions WHERE job_id = ?", (job_id,))
+    async def delete_action(self, job_id: int, user_id: str) -> None:
+        await self._conn.execute(
+            "DELETE FROM user_actions WHERE user_id = ? AND job_id = ?",
+            (user_id, job_id),
+        )
         await self._conn.commit()
 
-    async def get_actions(self) -> list[dict]:
+    async def get_actions(self, user_id: str) -> list[dict]:
         cursor = await self._conn.execute(
-            "SELECT job_id, action, notes, created_at FROM user_actions ORDER BY created_at DESC"
+            """SELECT job_id, action, notes, created_at
+               FROM user_actions
+               WHERE user_id = ?
+               ORDER BY created_at DESC""",
+            (user_id,),
         )
         return [{"job_id": r[0], "action": r[1], "notes": r[2], "created_at": r[3]}
                 for r in await cursor.fetchall()]
 
-    async def get_action_counts(self) -> dict[str, int]:
+    async def get_action_counts(self, user_id: str) -> dict[str, int]:
         cursor = await self._conn.execute(
-            "SELECT action, COUNT(*) FROM user_actions GROUP BY action"
+            """SELECT action, COUNT(*) FROM user_actions
+               WHERE user_id = ? GROUP BY action""",
+            (user_id,),
         )
         return {r[0]: r[1] for r in await cursor.fetchall()}
 
-    async def get_action_for_job(self, job_id: int) -> str | None:
+    async def get_action_for_job(self, job_id: int, user_id: str) -> str | None:
         cursor = await self._conn.execute(
-            "SELECT action FROM user_actions WHERE job_id = ?", (job_id,)
+            "SELECT action FROM user_actions WHERE user_id = ? AND job_id = ?",
+            (user_id, job_id),
         )
         row = await cursor.fetchone()
         return row[0] if row else None
 
     # --- Applications (Pipeline) ---
+    #
+    # Batch 3.5 Deliverable C: same user_id-scoping treatment as actions.
 
-    async def create_application(self, job_id: int) -> dict:
+    async def create_application(self, job_id: int, user_id: str) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         await self._conn.execute(
-            "INSERT OR IGNORE INTO applications (job_id, stage, created_at, updated_at) VALUES (?, 'applied', ?, ?)",
-            (job_id, now, now),
+            """INSERT OR IGNORE INTO applications
+               (user_id, job_id, stage, created_at, updated_at)
+               VALUES (?, ?, 'applied', ?, ?)""",
+            (user_id, job_id, now, now),
         )
         await self._conn.commit()
-        return await self._get_application(job_id)
+        return await self._get_application(job_id, user_id)
 
-    async def advance_application(self, job_id: int, stage: str) -> dict:
+    async def advance_application(
+        self, job_id: int, stage: str, user_id: str
+    ) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         await self._conn.execute(
-            "UPDATE applications SET stage = ?, updated_at = ? WHERE job_id = ?",
-            (stage, now, job_id),
+            """UPDATE applications SET stage = ?, updated_at = ?
+               WHERE user_id = ? AND job_id = ?""",
+            (stage, now, user_id, job_id),
         )
         await self._conn.commit()
-        return await self._get_application(job_id)
+        return await self._get_application(job_id, user_id)
 
-    async def _get_application(self, job_id: int) -> dict:
+    async def _get_application(self, job_id: int, user_id: str) -> dict:
         cursor = await self._conn.execute(
             """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
                       j.title, j.company
                FROM applications a LEFT JOIN jobs j ON a.job_id = j.id
-               WHERE a.job_id = ?""",
-            (job_id,),
+               WHERE a.user_id = ? AND a.job_id = ?""",
+            (user_id, job_id),
         )
         row = await cursor.fetchone()
         if not row:
@@ -282,41 +370,52 @@ class JobDatabase:
                 "updated_at": row[3], "notes": row[4] or "",
                 "title": row[5] or "", "company": row[6] or ""}
 
-    async def get_applications(self, stage: str | None = None) -> list[dict]:
+    async def get_applications(
+        self, user_id: str, stage: str | None = None
+    ) -> list[dict]:
         if stage:
             cursor = await self._conn.execute(
                 """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
                           j.title, j.company
                    FROM applications a LEFT JOIN jobs j ON a.job_id = j.id
-                   WHERE a.stage = ? ORDER BY a.updated_at DESC""",
-                (stage,),
+                   WHERE a.user_id = ? AND a.stage = ?
+                   ORDER BY a.updated_at DESC""",
+                (user_id, stage),
             )
         else:
             cursor = await self._conn.execute(
                 """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
                           j.title, j.company
                    FROM applications a LEFT JOIN jobs j ON a.job_id = j.id
-                   ORDER BY a.updated_at DESC"""
+                   WHERE a.user_id = ?
+                   ORDER BY a.updated_at DESC""",
+                (user_id,),
             )
         return [{"job_id": r[0], "stage": r[1], "created_at": r[2], "updated_at": r[3],
                  "notes": r[4] or "", "title": r[5] or "", "company": r[6] or ""}
                 for r in await cursor.fetchall()]
 
-    async def get_application_counts(self) -> dict[str, int]:
+    async def get_application_counts(self, user_id: str) -> dict[str, int]:
         cursor = await self._conn.execute(
-            "SELECT stage, COUNT(*) FROM applications GROUP BY stage"
+            """SELECT stage, COUNT(*) FROM applications
+               WHERE user_id = ? GROUP BY stage""",
+            (user_id,),
         )
         return {r[0]: r[1] for r in await cursor.fetchall()}
 
-    async def get_stale_applications(self, days: int = 7) -> list[dict]:
+    async def get_stale_applications(
+        self, user_id: str, days: int = 7
+    ) -> list[dict]:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cursor = await self._conn.execute(
             """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
                       j.title, j.company
                FROM applications a LEFT JOIN jobs j ON a.job_id = j.id
-               WHERE a.updated_at < ? AND a.stage NOT IN ('offer', 'rejected')
+               WHERE a.user_id = ?
+                 AND a.updated_at < ?
+                 AND a.stage NOT IN ('offer', 'rejected')
                ORDER BY a.updated_at ASC""",
-            (cutoff,),
+            (user_id, cutoff),
         )
         return [{"job_id": r[0], "stage": r[1], "created_at": r[2], "updated_at": r[3],
                  "notes": r[4] or "", "title": r[5] or "", "company": r[6] or ""}

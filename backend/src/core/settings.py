@@ -62,7 +62,6 @@ RATE_LIMITS = {
     "lever": {"concurrent": 2, "delay": 1.5},
     "workable": {"concurrent": 2, "delay": 1.5},
     "ashby": {"concurrent": 2, "delay": 1.5},
-    "findajob": {"concurrent": 1, "delay": 3.0},
     "remotive": {"concurrent": 2, "delay": 1.0},
     "jooble": {"concurrent": 1, "delay": 2.0},
     "linkedin": {"concurrent": 1, "delay": 3.0},
@@ -83,7 +82,6 @@ RATE_LIMITS = {
     "nofluffjobs": {"concurrent": 2, "delay": 1.5},
     # New sources (Phase 4)
     "hn_jobs": {"concurrent": 3, "delay": 0.5},
-    "yc_companies": {"concurrent": 1, "delay": 1.0},
     "jobs_ac_uk": {"concurrent": 1, "delay": 2.0},
     "nhs_jobs": {"concurrent": 1, "delay": 2.0},
     "personio": {"concurrent": 1, "delay": 3.0},
@@ -99,7 +97,12 @@ RATE_LIMITS = {
     "successfactors": {"concurrent": 1, "delay": 2.0},
     "aijobs_global": {"concurrent": 2, "delay": 1.0},
     "aijobs_ai": {"concurrent": 1, "delay": 2.0},
-    "nomis": {"concurrent": 1, "delay": 5.0},
+    # Batch 3 additions — published rate-limits cited in each source's tests
+    "teaching_vacancies": {"concurrent": 1, "delay": 2.0},   # no stated cap, polite
+    "gov_apprenticeships": {"concurrent": 1, "delay": 2.0},  # 150 req / 5 min
+    "nhs_jobs_xml": {"concurrent": 1, "delay": 2.0},         # feed XML, 15-min tier
+    "rippling": {"concurrent": 2, "delay": 1.5},             # ATS, 60s tier
+    "comeet": {"concurrent": 2, "delay": 1.5},               # ATS, 60s tier
 }
 
 # Retry

@@ -7,6 +7,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from src.api.auth_deps import CurrentUser, require_user
 from src.api.dependencies import get_db, save_upload_to_temp
 from src.api.models import CVDetail, GitHubResponse, LinkedInResponse, ProfileResponse, ProfileSummary
 from src.services.profile.cv_parser import parse_cv_async
@@ -54,9 +55,14 @@ def _build_profile_response(profile: UserProfile) -> ProfileResponse:
 
 
 @router.get("/profile", response_model=ProfileResponse)
-async def get_profile():
-    """Return the current user profile summary."""
-    profile = load_profile()
+async def get_profile(user: CurrentUser = Depends(require_user)):
+    """Return the caller's profile summary.
+
+    Per-user storage landed in Batch 3.5.2 — each user has their own row
+    in ``user_profiles`` keyed by ``user.id``. No more silent overwrites
+    between authenticated users.
+    """
+    profile = load_profile(user.id)
     if profile is None:
         raise HTTPException(status_code=404, detail="No profile found")
     return _build_profile_response(profile)
@@ -66,9 +72,10 @@ async def get_profile():
 async def upsert_profile(
     cv: UploadFile = File(None),
     preferences: str = Form(None),
+    user: CurrentUser = Depends(require_user),
 ):
-    """Create or update the user profile with CV and/or preferences."""
-    profile = load_profile() or UserProfile()
+    """Create or update the caller's profile with CV and/or preferences."""
+    profile = load_profile(user.id) or UserProfile()
 
     # Parse CV if provided
     if cv is not None:
@@ -115,12 +122,15 @@ async def upsert_profile(
         )
         profile.preferences = merged_prefs
 
-    save_profile(profile)
+    save_profile(profile, user.id)
     return _build_profile_response(profile)
 
 
 @router.post("/profile/linkedin", response_model=LinkedInResponse)
-async def upload_linkedin(file: UploadFile = File(...)):
+async def upload_linkedin(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(require_user),
+):
     """Enrich user profile with a LinkedIn 'Save to PDF' profile export."""
     content = await file.read()
     suffix = os.path.splitext(file.filename or ".pdf")[1].lower() or ".pdf"
@@ -131,9 +141,9 @@ async def upload_linkedin(file: UploadFile = File(...)):
         linkedin_data = parse_linkedin_pdf(tmp_path)
         merged = bool(linkedin_data.get("skills") or linkedin_data.get("positions"))
         if merged:
-            profile = load_profile() or UserProfile()
+            profile = load_profile(user.id) or UserProfile()
             profile.cv_data = enrich_cv_from_linkedin(profile.cv_data, linkedin_data)
-            save_profile(profile)
+            save_profile(profile, user.id)
     finally:
         try:
             os.unlink(tmp_path)
@@ -143,11 +153,14 @@ async def upload_linkedin(file: UploadFile = File(...)):
 
 
 @router.post("/profile/github", response_model=GitHubResponse)
-async def upload_github(username: str = Form(...)):
-    """Enrich user profile with GitHub public data."""
+async def upload_github(
+    username: str = Form(...),
+    user: CurrentUser = Depends(require_user),
+):
+    """Enrich the caller's profile with GitHub public data."""
     github_data = await fetch_github_profile(username)
-    profile = load_profile() or UserProfile()
+    profile = load_profile(user.id) or UserProfile()
     profile.cv_data = enrich_cv_from_github(profile.cv_data, github_data)
     profile.preferences.github_username = username
-    save_profile(profile)
+    save_profile(profile, user.id)
     return GitHubResponse(ok=True, merged=True)
