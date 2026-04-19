@@ -56,6 +56,122 @@ class CVData:
     industries: list[str] = field(default_factory=list)
     cv_languages: list[str] = field(default_factory=list)
 
+    @classmethod
+    def from_json_resume(cls, data: dict) -> "CVData":
+        """Batch 1.8b — inverse of ``to_json_resume``. Build a CVData
+        from a JSON Resume–shaped dict.
+
+        Closes the plan §4.8 interop goal without a breaking rename:
+        callers that want to import a third-party JSON Resume export
+        (from jsonresume.org tooling, for example) get a canonical
+        loader that maps the standard root keys back onto the
+        existing CVData field layout. Unknown root keys are ignored.
+        Missing keys default to empty collections.
+        """
+        if not isinstance(data, dict):
+            return cls()
+        basics = data.get("basics") or {}
+        location_obj = basics.get("location") if isinstance(basics, dict) else None
+        loc = (
+            location_obj.get("address", "") if isinstance(location_obj, dict) else ""
+        )
+
+        linkedin_positions = [
+            {
+                "title": w.get("position", "") or "",
+                "company": w.get("name", "") or "",
+                "start": w.get("startDate", "") or "",
+                "end": w.get("endDate", "") or "",
+                "description": w.get("summary", "") or "",
+            }
+            for w in (data.get("work") or [])
+            if isinstance(w, dict)
+        ]
+
+        edu_lines: list[str] = []
+        for e in data.get("education") or []:
+            if not isinstance(e, dict):
+                continue
+            inst = e.get("institution", "") or ""
+            deg = e.get("studyType", "") or e.get("area", "") or ""
+            entry = deg if deg else inst
+            if deg and inst:
+                entry = f"{deg} - {inst}"
+            if entry:
+                edu_lines.append(entry)
+
+        skills: list[str] = []
+        for s in data.get("skills") or []:
+            if isinstance(s, dict):
+                nm = s.get("name", "")
+                if nm:
+                    skills.append(nm)
+            elif isinstance(s, str):
+                skills.append(s)
+
+        linkedin_languages = [
+            {
+                "language": lang.get("language", "") or "",
+                "proficiency": lang.get("fluency", "") or "",
+            }
+            for lang in (data.get("languages") or [])
+            if isinstance(lang, dict) and lang.get("language")
+        ]
+
+        linkedin_projects = [
+            {
+                "title": p.get("name", "") or "",
+                "description": p.get("description", "") or "",
+                "start": p.get("startDate", "") or "",
+                "end": p.get("endDate", "") or "",
+                "url": p.get("url", "") or "",
+            }
+            for p in (data.get("projects") or [])
+            if isinstance(p, dict) and p.get("name")
+        ]
+
+        linkedin_volunteer = [
+            {
+                "role": v.get("position", "") or "",
+                "organisation": v.get("organization", "") or "",
+                "cause": v.get("cause", "") or "",
+                "start": v.get("startDate", "") or "",
+                "end": v.get("endDate", "") or "",
+                "description": v.get("summary", "") or "",
+            }
+            for v in (data.get("volunteer") or [])
+            if isinstance(v, dict)
+        ]
+
+        certs = [
+            c.get("name", "") if isinstance(c, dict) else str(c)
+            for c in (data.get("certificates") or [])
+            if (isinstance(c, dict) and c.get("name")) or isinstance(c, str)
+        ]
+
+        meta = data.get("meta") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+
+        return cls(
+            name=basics.get("name", "") if isinstance(basics, dict) else "",
+            headline=basics.get("label", "") if isinstance(basics, dict) else "",
+            summary=basics.get("summary", "") if isinstance(basics, dict) else "",
+            location=loc,
+            linkedin_positions=linkedin_positions,
+            education=edu_lines,
+            skills=skills,
+            certifications=certs,
+            linkedin_languages=linkedin_languages,
+            linkedin_projects=linkedin_projects,
+            linkedin_volunteer=linkedin_volunteer,
+            linkedin_industry=meta.get("industry", "") if isinstance(meta, dict) else "",
+            github_frameworks=list(meta.get("github_frameworks") or []),
+            github_topics=list(meta.get("github_topics") or []),
+            github_languages=dict(meta.get("github_languages") or {}),
+            career_domain=meta.get("career_domain") if isinstance(meta, dict) else None,
+        )
+
     def to_json_resume(self) -> dict:
         """Batch 1.8 — return a JSON Resume canonical-schema dict.
 

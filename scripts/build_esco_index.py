@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 """Build the ESCO embedding index used by ``services.profile.skill_normalizer``.
 
+---------------------------------------------------------------------
+ESCO data attribution (plan §8 risk-table row 1 — CC BY 4.0)
+
+The European Skills, Competences, Qualifications and Occupations
+(ESCO) classification is © European Union, 2024, released under the
+Creative Commons Attribution 4.0 International licence (CC BY 4.0).
+See https://esco.ec.europa.eu/en/about-esco/data-science-and-esco.
+
+The ``labels.json`` + ``embeddings.npy`` artefacts this script
+produces contain data DERIVED FROM ESCO v1.2.1. Anyone redistributing
+those artefacts (Docker image, release tarball, fork) MUST preserve
+this attribution. Job360's LICENSE / README carry the same line.
+---------------------------------------------------------------------
+
 Run once (or when the ESCO CSV is refreshed) to produce two artefacts:
 
     backend/data/esco/labels.json       (list[{uri,label,alt_labels}])

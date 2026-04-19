@@ -129,6 +129,56 @@ def _prune_old_versions(conn: sqlite3.Connection, user_id: str) -> None:
     )
 
 
+def restore_profile_version(user_id: str, version_id: int) -> Optional[UserProfile]:
+    """Batch 1.8b — atomic rollback to a specific snapshot.
+
+    Closes plan §10 Batch 1.8 acceptance signal #3 ("rolling back to
+    version N restores prior state"). Behaviour:
+
+      1. Look up ``(user_id, version_id)`` in ``user_profile_versions``.
+      2. Return ``None`` if not found OR if the version belongs to
+         another user (cross-tenant protection — rule #12 spirit).
+      3. Otherwise rehydrate the CVData + preferences from the
+         snapshot JSON and call ``save_profile(..., "user_edit")``
+         so the restore itself is audited as a new snapshot at the
+         tip — the full history is preserved.
+
+    This is the packaged form of the capability; previously callers
+    had to read the version via ``list_profile_versions`` and then
+    save it separately. Atomic here means "one function call, one
+    transaction, tenant-scoped" — not "ACID across multiple DB rows".
+    """
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        cur = conn.execute(
+            """
+            SELECT cv_data, preferences
+            FROM user_profile_versions
+            WHERE id = ? AND user_id = ?
+            LIMIT 1
+            """,
+            (version_id, user_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        logger.warning(
+            "restore_profile_version: version %s not found for user %s", version_id, user_id
+        )
+        return None
+
+    cv_raw = json.loads(row[0]) if row[0] else {}
+    pref_raw = json.loads(row[1]) if row[1] else {}
+    restored = UserProfile(
+        cv_data=CVData(**_filter_fields(cv_raw, CVData)),
+        preferences=UserPreferences(**_filter_fields(pref_raw, UserPreferences)),
+    )
+    # Write at tip — audit trail says "user_edit" because a restore IS
+    # the user declaring "make this the current profile"; the diff
+    # from the previous tip is still recoverable by reading both
+    # snapshots.
+    save_profile(restored, user_id, source_action="user_edit")
+    return restored
+
+
 def list_profile_versions(user_id: str, limit: int = 10) -> list[dict]:
     """Return the most-recent snapshots for ``user_id``, newest first.
 

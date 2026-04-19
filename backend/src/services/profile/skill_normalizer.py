@@ -1,5 +1,12 @@
 """ESCO-based skill normalisation.
 
+Data attribution (plan §8 risk-table row 1): this module consumes
+data derived from the European Skills, Competences, Qualifications
+and Occupations (ESCO) classification, © European Union, 2024,
+licensed under CC BY 4.0 — see
+https://esco.ec.europa.eu/en/about-esco/data-science-and-esco.
+Downstream redistributors must preserve the attribution.
+
 Batch 1.3b (Pillar 1). Given a raw skill string (``"Python prog."``),
 returns the closest ESCO concept URI + canonical label
 (``"Python (computer programming)"`` at

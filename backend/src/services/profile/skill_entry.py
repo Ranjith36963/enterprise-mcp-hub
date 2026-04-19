@@ -136,21 +136,39 @@ def merge_skill_entries(entries: Iterable[SkillEntry]) -> list[SkillEntry]:
 # ── Profile → entries adapter ───────────────────────────────────────
 
 
-def build_skill_entries_from_profile(profile, last_seen: Optional[str] = None) -> list[SkillEntry]:
+def build_skill_entries_from_profile(
+    profile,
+    last_seen: Optional[str] = None,
+    normalize: bool = True,
+) -> list[SkillEntry]:
     """Walk the 5 source fields on a ``UserProfile`` and emit ``SkillEntry``s.
 
     Intentionally mirrors ``skill_tiering.collect_evidence_from_profile``
     except it produces the richer ``SkillEntry`` structure with
-    ``confidence`` and ``esco_uri`` placeholders. If callers pass
-    ``last_seen``, every emitted entry gets stamped with it — useful
-    for recency tie-breaks across a multi-profile merge.
+    ``confidence`` and ``esco_uri``. If callers pass ``last_seen``,
+    every emitted entry gets stamped with it — useful for recency
+    tie-breaks across a multi-profile merge.
 
-    Review fix #8: dedup same-(source, name) duplicates so the same
-    source never contributes two rows for one skill (``["Python",
-    "python"]`` in a CV emitted 2 entries pre-fix). Cross-source
-    duplicates still emit multi-row — merge_skill_entries collapses
-    them.
+    Batch 1.3c — when ``normalize=True`` (default) and the ESCO index
+    is available on disk (see ``skill_normalizer.index_status``), each
+    entry is annotated with its ESCO URI + canonical label. The
+    canonical label *replaces* the raw name on a confident match so
+    downstream ``merge_skill_entries`` can collapse surface-form
+    variants (e.g. "Py" and "Python programming") under one URI. When
+    ESCO data is absent the call is a no-op and entries pass through
+    unchanged — graceful degradation for envs without the index.
+
+    Dedup rule: same-(source, canonical-name) pairs only emit one
+    row. Cross-source duplicates still emit multi-row — merge
+    collapses them later.
     """
+    # Import here to avoid a hard dependency on the (heavy) normalizer
+    # module path for callers that explicitly pass normalize=False.
+    if normalize:
+        from src.services.profile.skill_normalizer import normalize_skill
+    else:
+        normalize_skill = lambda _raw: None  # noqa: E731
+
     out: list[SkillEntry] = []
     seen_per_source: set[tuple[str, str]] = set()
 
@@ -160,11 +178,16 @@ def build_skill_entries_from_profile(profile, last_seen: Optional[str] = None) -
         name = name.strip()
         if not name:
             return
-        key = (source, name.casefold())
+        match = normalize_skill(name)
+        display_name = match.label if match else name
+        esco_uri = match.uri if match else None
+        key = (source, display_name.casefold())
         if key in seen_per_source:
             return
         seen_per_source.add(key)
-        out.append(SkillEntry.from_source(name, source, last_seen=last_seen))
+        out.append(SkillEntry.from_source(
+            display_name, source, esco_uri=esco_uri, last_seen=last_seen,
+        ))
 
     prefs = getattr(profile, "preferences", None)
     cv = getattr(profile, "cv_data", None)

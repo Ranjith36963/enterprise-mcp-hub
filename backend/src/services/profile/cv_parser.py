@@ -171,14 +171,65 @@ def extract_text(file_path: str) -> str:
 
 # ── LLM-powered CV analysis ─────────────────────────────────────
 
+_SECTION_HINT_HEADINGS = (
+    "summary", "experience", "education", "skills",
+    "certifications", "projects", "achievements",
+)
+
+
+def _build_section_hint(file_path: str) -> str:
+    """Batch 1.7b — pre-segment the PDF via font-size clustering and
+    emit a compact hint block the LLM can use as structural guidance.
+
+    Returns an empty string when the file isn't a PDF, pdfplumber
+    can't read it, no sections are detected, or no recognised heading
+    has a body. On success returns a ``SECTIONS_HINT:\\n[KEY]\\n
+    body\\n...`` block suitable for appending to the prompt — the
+    main prompt still hands the LLM the full raw text, so this hint
+    supplements rather than replaces. Matches plan §4.7's "pre-
+    segmented sections reduce ambiguity, do not gate extraction".
+    """
+    path = Path(file_path)
+    if path.suffix.lower() != ".pdf":
+        return ""
+    sections = extract_sections_from_pdf(file_path)
+    if not sections:
+        return ""
+
+    parts: list[str] = []
+    for key in _SECTION_HINT_HEADINGS:
+        body = sections.get(key, "").strip()
+        if body:
+            # Truncate to keep the hint compact; the main prompt
+            # already has the full text, so hints stay brief.
+            if len(body) > 1200:
+                body = body[:1200] + "…"
+            parts.append(f"[{key.upper()}]\n{body}")
+    if not parts:
+        return ""
+    return (
+        "\n\nPRE-SEGMENTED SECTIONS (from PDF layout analysis — use as "
+        "structural hints; the full raw text above is authoritative):\n"
+        + "\n\n".join(parts)
+    )
+
+
 async def parse_cv_async(file_path: str) -> CVData:
     """Parse a CV file using LLM analysis. Works for ANY professional domain.
 
     Batch 1.1 — routes through ``llm_extract_validated`` with
     ``CVSchema`` so LLM output is type-checked at the boundary and
-    self-corrected on validation failure (up to 2 retries). The raw
-    dict path via ``_llm_result_to_cvdata`` is retained below as an
-    untyped fallback for callers that pass pre-fetched dicts.
+    self-corrected on validation failure (up to 2 retries).
+
+    Batch 1.7b — when the input is a PDF, font-size section
+    segmentation supplements the raw text with a pre-segmented hint
+    block. The LLM still sees the full raw text; hints just reduce
+    ambiguity on multi-column or heading-heavy layouts. Graceful
+    no-op for non-PDFs / pdfplumber failures / no-sections cases.
+
+    The untyped ``_llm_result_to_cvdata`` adapter is kept below as a
+    fallback for callers that pass pre-fetched dicts OR when strict
+    validation fails after all retries (review fix #3).
     """
     raw_text = extract_text(file_path)
     if not raw_text:
@@ -191,7 +242,8 @@ async def parse_cv_async(file_path: str) -> CVData:
     from src.services.profile.llm_provider import llm_extract, llm_extract_validated
     from src.services.profile.schemas import CVSchema, cv_schema_to_cvdata
 
-    prompt = _CV_PROMPT.format(cv_text=raw_text)
+    section_hint = _build_section_hint(file_path)
+    prompt = _CV_PROMPT.format(cv_text=raw_text) + section_hint
 
     try:
         schema = await llm_extract_validated(prompt, CVSchema, system=_CV_SYSTEM)
