@@ -135,7 +135,14 @@ def extract_text(file_path: str) -> str:
 # ── LLM-powered CV analysis ─────────────────────────────────────
 
 async def parse_cv_async(file_path: str) -> CVData:
-    """Parse a CV file using LLM analysis. Works for ANY professional domain."""
+    """Parse a CV file using LLM analysis. Works for ANY professional domain.
+
+    Batch 1.1 — routes through ``llm_extract_validated`` with
+    ``CVSchema`` so LLM output is type-checked at the boundary and
+    self-corrected on validation failure (up to 2 retries). The raw
+    dict path via ``_llm_result_to_cvdata`` is retained below as an
+    untyped fallback for callers that pass pre-fetched dicts.
+    """
     raw_text = extract_text(file_path)
     if not raw_text:
         raise RuntimeError(
@@ -144,17 +151,18 @@ async def parse_cv_async(file_path: str) -> CVData:
             "Only PDF and DOCX files are supported."
         )
 
-    from src.services.profile.llm_provider import llm_extract
+    from src.services.profile.llm_provider import llm_extract_validated
+    from src.services.profile.schemas import CVSchema, cv_schema_to_cvdata
 
     prompt = _CV_PROMPT.format(cv_text=raw_text)
 
     try:
-        result = await llm_extract(prompt, system=_CV_SYSTEM)
+        schema = await llm_extract_validated(prompt, CVSchema, system=_CV_SYSTEM)
     except RuntimeError as e:
         logger.error("LLM CV analysis failed: %s", e)
         raise
 
-    return _llm_result_to_cvdata(raw_text, result)
+    return cv_schema_to_cvdata(schema, raw_text)
 
 
 def parse_cv(file_path: str) -> CVData:

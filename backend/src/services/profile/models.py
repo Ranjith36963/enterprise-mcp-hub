@@ -30,6 +30,10 @@ class CVData:
     github_languages: dict[str, int] = field(default_factory=dict)
     github_topics: list[str] = field(default_factory=list)
     github_skills_inferred: list[str] = field(default_factory=list)
+    # Batch 1.1 — archetype classification (CareerDomain enum value).
+    # Optional; None means "LLM did not classify". Consumed by
+    # archetype-aware scoring (Pillar 1 #10 / Pillar 2).
+    career_domain: Optional[str] = None
 
     @property
     def highlights(self) -> list[str]:

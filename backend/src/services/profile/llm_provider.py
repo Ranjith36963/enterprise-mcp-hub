@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Type, TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 from src.core.settings import GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY
 
 logger = logging.getLogger("job360.profile.llm_provider")
+
+_S = TypeVar("_S", bound=BaseModel)
 
 
 async def llm_extract(prompt: str, system: str = "") -> dict[str, Any]:
@@ -84,6 +88,73 @@ async def llm_extract_fast(prompt: str, system: str = "") -> dict[str, Any]:
         )
 
     raise RuntimeError(f"All LLM providers failed: {'; '.join(errors)}")
+
+
+async def llm_extract_validated(
+    prompt: str,
+    schema_cls: Type[_S],
+    system: str = "",
+    max_retries: int = 2,
+) -> _S:
+    """Call ``llm_extract`` and validate the result against a Pydantic schema.
+
+    Batch 1.1 (Pillar 1) — strict JSON-schema extraction with a
+    self-correction retry loop.
+
+    On ``pydantic.ValidationError`` we append the error text to the
+    prompt and call the LLM again, up to ``max_retries`` additional
+    attempts. This turns weak models (Groq llama-3.3-70b, Cerebras
+    llama3.1-8b) into usable JSON emitters without paying Gemini for
+    every extraction.
+
+    Args:
+        prompt: user prompt — must instruct the model to emit JSON
+          matching ``schema_cls``.
+        schema_cls: Pydantic v2 ``BaseModel`` subclass to validate with.
+        system: optional system prompt (priority / style / persona).
+        max_retries: number of *extra* attempts after the first fails
+          validation. ``0`` means no retry.
+
+    Returns:
+        A validated ``schema_cls`` instance.
+
+    Raises:
+        RuntimeError: when all providers fail or retries are exhausted.
+          The final message includes the last ``ValidationError`` for
+          debugging.
+    """
+    attempt = 0
+    current_prompt = prompt
+    last_validation_error: ValidationError | None = None
+
+    # attempts = 1 (first call) + max_retries (corrections)
+    while attempt <= max_retries:
+        raw = await llm_extract(current_prompt, system=system)
+        try:
+            return schema_cls.model_validate(raw)
+        except ValidationError as ve:
+            last_validation_error = ve
+            attempt += 1
+            if attempt > max_retries:
+                break
+            logger.warning(
+                "LLM output failed %s validation (attempt %d/%d); retrying with correction",
+                schema_cls.__name__,
+                attempt,
+                max_retries + 1,
+            )
+            current_prompt = (
+                f"{prompt}\n\n"
+                f"Your previous response failed schema validation with these errors:\n"
+                f"{ve}\n"
+                f"Emit JSON matching the schema exactly. Do not include prose. "
+                f"Correct EVERY field flagged above."
+            )
+
+    raise RuntimeError(
+        f"LLM output failed {schema_cls.__name__} validation after "
+        f"{max_retries + 1} attempts: {last_validation_error}"
+    )
 
 
 async def _call_gemini(prompt: str, system: str) -> dict[str, Any]:
