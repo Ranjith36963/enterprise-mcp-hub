@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 from src.core.keywords import VISA_KEYWORDS, LOCATIONS
 from src.services.profile.models import SearchConfig, UserProfile
+from src.services.profile.skill_tiering import (
+    collect_evidence_from_profile,
+    tier_skills_by_evidence,
+)
 
 
 # Words to ignore when building relevance keywords
@@ -44,35 +48,15 @@ def generate_search_config(profile: UserProfile) -> SearchConfig:
             titles.append(title)
             seen.add(title.lower())
 
-    # --- Skills (auto-tier: first 1/3 primary, next 1/3 secondary, rest tertiary) ---
-    all_skills = list(prefs.additional_skills)
-    seen_skills = {s.lower() for s in all_skills}
-    for s in cv.skills:
-        if s.lower() not in seen_skills:
-            all_skills.append(s)
-            seen_skills.add(s.lower())
-
-    # LinkedIn endorsed skills
-    for s in cv.linkedin_skills:
-        if s.lower() not in seen_skills:
-            all_skills.append(s)
-            seen_skills.add(s.lower())
-
-    # GitHub-inferred skills (ranked by code bytes)
-    for s in cv.github_skills_inferred:
-        if s.lower() not in seen_skills:
-            all_skills.append(s)
-            seen_skills.add(s.lower())
-
-    n = len(all_skills)
-    if n == 0:
-        primary, secondary, tertiary = [], [], []
-    else:
-        t1 = max(n // 3, 1)
-        t2 = max(2 * n // 3, t1 + 1) if n > 1 else t1
-        primary = all_skills[:t1]
-        secondary = all_skills[t1:t2]
-        tertiary = all_skills[t2:]
+    # --- Skills (Batch 1.3a — evidence-based tiering by source + frequency) ---
+    # Replaces the naive position-based thirds split (pillar_1_report #1).
+    # Primary tier requires either a user-declared skill OR ≥2 supporting
+    # sources (e.g. cv_explicit + linkedin). See ``skill_tiering`` for the
+    # weight table. ``all_skills`` is still emitted for the relevance
+    # keyword build below — it's the full deduped union.
+    evidence = collect_evidence_from_profile(profile)
+    primary, secondary, tertiary = tier_skills_by_evidence(evidence)
+    all_skills = [e.name for e in evidence]
 
     # --- Relevance keywords ---
     rel_set: set[str] = set()

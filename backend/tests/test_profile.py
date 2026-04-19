@@ -171,7 +171,12 @@ class TestPreferences:
 
 class TestKeywordGenerator:
     def _make_profile(self, titles=None, skills=None, locations=None,
-                      arrangement="", negatives=None):
+                      arrangement="", negatives=None, declared=None):
+        """Build a profile. ``skills`` land in ``cv.skills`` (cv_explicit source);
+        ``declared`` lands in ``preferences.additional_skills`` (user_declared source).
+        The distinction matters under Batch 1.3a's evidence-based tiering —
+        user_declared has weight 3.0 (primary), cv_explicit 2.0 (secondary).
+        """
         return UserProfile(
             cv_data=CVData(
                 raw_text="test cv",
@@ -180,7 +185,7 @@ class TestKeywordGenerator:
             ),
             preferences=UserPreferences(
                 target_job_titles=titles or [],
-                additional_skills=[],
+                additional_skills=declared or [],
                 preferred_locations=locations or [],
                 work_arrangement=arrangement,
                 negative_keywords=negatives or [],
@@ -201,19 +206,47 @@ class TestKeywordGenerator:
         assert "python" in config.relevance_keywords
         assert "sql" in config.relevance_keywords
 
-    def test_auto_tiers_skills(self):
-        skills = ["Python", "SQL", "Java", "React", "Node", "Docker",
-                   "K8s", "AWS", "GCP"]
-        profile = self._make_profile(skills=skills)
-        config = generate_search_config(profile)
-        assert len(config.primary_skills) > 0
-        assert len(config.secondary_skills) > 0
-        assert len(config.tertiary_skills) > 0
-        total = len(config.primary_skills) + len(config.secondary_skills) + len(config.tertiary_skills)
-        assert total == len(skills)
+    def test_evidence_tiers_across_source_mix(self):
+        """Batch 1.3a — declared vs cv-only vs github_lang-only split by weight.
 
-    def test_single_skill_becomes_primary(self):
+        Replaces the old ``test_auto_tiers_skills`` which asserted naive
+        position-based thirds. Under evidence-based tiering:
+
+          * ``user_declared`` (weight 3.0) → primary
+          * ``cv_explicit``   (weight 2.0) → secondary
+          * ``github_lang``   (weight 1.0) → tertiary
+        """
+        profile = UserProfile(
+            cv_data=CVData(
+                raw_text="t",
+                skills=["Django", "Flask"],             # cv_explicit → secondary
+                github_skills_inferred=["Haskell"],      # github_lang  → tertiary
+            ),
+            preferences=UserPreferences(
+                additional_skills=["Product Strategy"],  # user_declared → primary
+            ),
+        )
+        cfg = generate_search_config(profile)
+        assert cfg.primary_skills == ["Product Strategy"]
+        assert set(cfg.secondary_skills) == {"Django", "Flask"}
+        assert cfg.tertiary_skills == ["Haskell"]
+        total = len(cfg.primary_skills) + len(cfg.secondary_skills) + len(cfg.tertiary_skills)
+        assert total == 4
+
+    def test_single_cv_skill_tiers_as_secondary(self):
+        """Batch 1.3a — a single CV-extracted skill has only cv_explicit evidence
+        (weight 2.0) and MUST land in secondary. Primary requires either
+        user_declared OR multi-source evidence — never a single non-user signal.
+        """
         profile = self._make_profile(skills=["Python"])
+        config = generate_search_config(profile)
+        assert config.primary_skills == []
+        assert config.secondary_skills == ["Python"]
+        assert config.tertiary_skills == []
+
+    def test_single_user_declared_skill_becomes_primary(self):
+        """Batch 1.3a — an explicit user-declared skill remains primary."""
+        profile = self._make_profile(declared=["Python"])
         config = generate_search_config(profile)
         assert config.primary_skills == ["Python"]
         assert config.secondary_skills == []
