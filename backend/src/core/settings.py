@@ -45,6 +45,15 @@ MIN_MATCH_SCORE = 30
 MAX_RESULTS_PER_SOURCE = 100
 MAX_DAYS_OLD = 7
 
+# Pillar 2 Batch 2.2 — gate-pass scoring
+# A job must clear BOTH the title gate AND the skill gate to receive a linear
+# score; otherwise the score is suppressed to max(10, (title+skill)*0.25) so
+# location/recency alone can no longer inflate a non-matching job. The gates
+# are expressed as fractions of the component max (TITLE_WEIGHT / SKILL_WEIGHT
+# in skill_matcher.py — both 40). Default 0.15 → absolute threshold of 6.
+MIN_TITLE_GATE = float(os.getenv("MIN_TITLE_GATE", "0.15"))
+MIN_SKILL_GATE = float(os.getenv("MIN_SKILL_GATE", "0.15"))
+
 # Target salary range (GBP, annual) — used for tiebreaker sorting, not scoring
 TARGET_SALARY_MIN = int(os.getenv("TARGET_SALARY_MIN", "40000"))
 TARGET_SALARY_MAX = int(os.getenv("TARGET_SALARY_MAX", "120000"))

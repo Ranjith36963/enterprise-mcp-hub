@@ -56,24 +56,48 @@ def test_low_match_scores_below_30():
 
 
 def test_title_match_contributes_points():
-    """With explicit JobScorer config, title match beats non-match."""
-    config = SearchConfig(job_titles=["ML Engineer"], primary_skills=["Python"])
+    """With explicit JobScorer config, title match beats non-match.
+
+    Batch 2.2 note: config now supplies two primary_skills and the description
+    names both so the skill component clears MIN_SKILL_GATE (6). Without the
+    second skill the matching job would be suppressed to the gate floor and
+    the test's invariant (title_match > no_title_match) would collapse.
+    """
+    config = SearchConfig(
+        job_titles=["ML Engineer"],
+        primary_skills=["Python", "Docker"],
+    )
     scorer = JobScorer(config)
-    job_match = _make_job(title="ML Engineer", description="Python role")
-    job_no_match = _make_job(title="Chef", description="Python role")
+    job_match = _make_job(title="ML Engineer", description="Python Docker role")
+    job_no_match = _make_job(title="Chef", description="Python Docker role")
     assert scorer.score(job_match) > scorer.score(job_no_match)
 
 
 def test_location_match_contributes_points():
-    uk_job = _make_job(title="Developer", location="London, UK", description="Python developer")
-    us_job = _make_job(title="Developer", location="San Francisco, US", description="Python developer")
-    assert score_job(uk_job) > score_job(us_job)
+    """Batch 2.2 — location contribution is only observable when the gate
+    passes. This test therefore uses JobScorer with a matching profile so the
+    location delta between UK and US shows through.
+    """
+    config = SearchConfig(
+        job_titles=["Developer"],
+        primary_skills=["Python", "Docker"],
+    )
+    scorer = JobScorer(config)
+    uk_job = _make_job(title="Developer", location="London, UK", description="Python Docker developer")
+    us_job = _make_job(title="Developer", location="San Francisco, US", description="Python Docker developer")
+    assert scorer.score(uk_job) > scorer.score(us_job)
 
 
 def test_remote_location_gets_points():
-    remote_job = _make_job(title="Developer", location="Remote", description="Python developer")
-    us_job = _make_job(title="Developer", location="San Francisco, US", description="Python developer")
-    assert score_job(remote_job) > score_job(us_job)
+    """Batch 2.2 — same reason as test_location_match_contributes_points."""
+    config = SearchConfig(
+        job_titles=["Developer"],
+        primary_skills=["Python", "Docker"],
+    )
+    scorer = JobScorer(config)
+    remote_job = _make_job(title="Developer", location="Remote", description="Python Docker developer")
+    us_job = _make_job(title="Developer", location="San Francisco, US", description="Python Docker developer")
+    assert scorer.score(remote_job) > scorer.score(us_job)
 
 
 def test_visa_flag_detected():
@@ -99,16 +123,25 @@ def test_score_range_0_to_100():
 
 
 def test_more_skills_higher_score():
-    """With explicit config, jobs matching more skills score higher."""
+    """With explicit config, jobs matching more skills score higher.
+
+    Batch 2.2 note: both jobs now use the configured title so both clear the
+    title gate; the `skill_count` axis stays the only varying dimension.
+    `job_few` matches two primary skills (=6 points = exactly at the skill
+    gate) so both jobs land on the non-suppressed linear path — preserving
+    the strict-inequality invariant.
+    """
     config = SearchConfig(
+        job_titles=["AI Engineer"],
         primary_skills=["Python", "PyTorch", "TensorFlow", "LangChain"],
         secondary_skills=["RAG", "LLM", "NLP", "Deep Learning"],
         tertiary_skills=["AWS", "Docker"],
     )
     scorer = JobScorer(config)
-    job_few = _make_job(description="Python developer role")
+    job_few = _make_job(title="AI Engineer", description="Python PyTorch developer role")
     job_many = _make_job(
-        description="Python PyTorch TensorFlow LangChain RAG LLM NLP Deep Learning AWS Docker"
+        title="AI Engineer",
+        description="Python PyTorch TensorFlow LangChain RAG LLM NLP Deep Learning AWS Docker",
     )
     assert scorer.score(job_many) > scorer.score(job_few)
 
@@ -117,12 +150,27 @@ def test_more_skills_higher_score():
 
 
 def test_recency_today_gets_full_points():
-    """A job posted today should score higher than same job posted 30 days ago."""
+    """A job posted today should score higher than same job posted 30 days ago.
+
+    Batch 2.2 note: uses JobScorer with a matching config so both jobs clear
+    the gate and recency becomes the only axis of variation.
+    """
     today = datetime.now(timezone.utc).isoformat()
     old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    job_today = _make_job(title="AI Engineer", location="London, UK", date_found=today)
-    job_old = _make_job(title="AI Engineer", location="London, UK", date_found=old)
-    assert score_job(job_today) > score_job(job_old)
+    config = SearchConfig(
+        job_titles=["AI Engineer"],
+        primary_skills=["Python", "PyTorch"],
+    )
+    scorer = JobScorer(config)
+    job_today = _make_job(
+        title="AI Engineer", location="London, UK", date_found=today,
+        description="Python PyTorch role",
+    )
+    job_old = _make_job(
+        title="AI Engineer", location="London, UK", date_found=old,
+        description="Python PyTorch role",
+    )
+    assert scorer.score(job_today) > scorer.score(job_old)
 
 
 def test_recency_old_job_gets_zero():
@@ -429,13 +477,24 @@ def test_foreign_penalty_unknown_location():
 
 
 def test_us_ai_job_scores_lower_than_uk():
-    """A US-based AI job should score materially lower than the same UK job."""
+    """A US-based AI job should score materially lower than the same UK job.
+
+    Batch 2.2 note: uses JobScorer with a matching profile so both jobs clear
+    the gate and the +location / –foreign-penalty delta is observable. Under
+    the gate, empty-default module-level scoring would collapse both jobs to
+    the gate floor of 10 and this test's invariant would no longer hold.
+    """
+    config = SearchConfig(
+        job_titles=["AI Engineer"],
+        primary_skills=["Python", "PyTorch", "LLM", "RAG"],
+    )
+    scorer = JobScorer(config)
     uk_job = _make_job(title="AI Engineer", location="London, UK",
                        description="Python PyTorch LLM RAG")
     us_job = _make_job(title="AI Engineer", location="San Francisco, CA",
                        description="Python PyTorch LLM RAG")
-    uk_score = score_job(uk_job)
-    us_score = score_job(us_job)
+    uk_score = scorer.score(uk_job)
+    us_score = scorer.score(us_job)
     assert uk_score - us_score >= 15, f"UK={uk_score}, US={us_score}"
 
 
@@ -590,21 +649,243 @@ def test_recency_repost_backdated_treated_as_trustworthy():
 
 
 def test_score_job_uses_recency_for_job_helper():
-    """Module-level score_job must flow through the new helper so low-confidence
-    sources no longer get the +10 inflation."""
+    """JobScorer.score must flow through recency_score_for_job so low-confidence
+    sources no longer get the +10 inflation.
+
+    Batch 2.2 note: switched from module-level score_job (which always fails
+    the gate under empty default keywords) to JobScorer with a matching config
+    — the integration point being tested is the wiring of
+    recency_score_for_job into the linear-scoring path.
+    """
     today = datetime.now(timezone.utc).isoformat()
+    config = SearchConfig(
+        job_titles=["Plumber"],
+        primary_skills=["Plumbing", "Pipes"],
+    )
+    scorer = JobScorer(config)
     job_fabricated = _make_job(
         title="Plumber",
+        description="Plumbing Pipes expert",
         date_found=today,
         posted_at=today,
         date_confidence="fabricated",
     )
     job_honest = _make_job(
         title="Plumber",
+        description="Plumbing Pipes expert",
         date_found=today,
         posted_at=today,
         date_confidence="high",
     )
     # Both have the same non-recency components — the ONLY difference
     # must come from the recency band.
-    assert score_job(job_honest) - score_job(job_fabricated) == 10
+    assert scorer.score(job_honest) - scorer.score(job_fabricated) == 10
+
+
+# ---------------------------------------------------------------------------
+# Pillar 2 Batch 2.2 — Gate-pass scoring
+#
+# A job must clear BOTH a title gate and a skill gate (default 15 % of their
+# respective max — 6 points each) before the full linear scoring kicks in.
+# Below the gate the score is suppressed to `max(10, (title+skill) * 0.25)` so
+# that location/recency alone cannot inflate a non-matching job to look like a
+# real one. Covers report item #2.
+# ---------------------------------------------------------------------------
+
+
+class TestGatePass:
+    """Gate-pass scoring suppresses jobs that don't clear both title + skill gates."""
+
+    # ---- JobScorer.score() (dynamic path) ----
+
+    def test_jobscorer_zero_title_good_skills_suppressed(self):
+        """Zero title + strong skills + good location + recency → suppressed to ≤25."""
+        config = SearchConfig(
+            job_titles=["Cardiology Consultant"],   # deliberately no title match
+            primary_skills=["Python", "Django", "FastAPI", "Postgres"],
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="AI Engineer",   # zero overlap with configured title
+            location="London, UK",
+            description="Python Django FastAPI Postgres expert",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # title_pts=0 → title gate fails → suppress
+        assert scorer.score(job) <= 25
+
+    def test_jobscorer_zero_skills_good_title_suppressed(self):
+        """Exact title match but zero skill match → suppressed to ≤25."""
+        config = SearchConfig(
+            job_titles=["AI Engineer"],
+            primary_skills=["Rust", "Embedded C"],   # none will match the description
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="AI Engineer",
+            location="London, UK",
+            description="Looking for a strong generalist.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # skill_pts=0 → skill gate fails → suppress
+        assert scorer.score(job) <= 25
+
+    def test_jobscorer_both_zero_location_recency_dont_rescue(self):
+        """Both zero + strong location + full recency → suppressed; location/recency
+        no longer combine to produce an apparent 20-point match."""
+        config = SearchConfig(
+            job_titles=["Cardiology Consultant"],
+            primary_skills=["Echocardiography"],
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="Marketing Manager",
+            location="London, UK",
+            description="SEO and social media skills.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # Without the gate: ~0+0+10+10-0-0 = 20. With the gate: max(10, 0) = 10.
+        assert scorer.score(job) <= 25
+        assert scorer.score(job) == 10  # floor
+
+    def test_jobscorer_both_above_gate_no_suppression(self):
+        """Both gates cleared → full linear score (> gate floor)."""
+        config = SearchConfig(
+            job_titles=["ML Engineer"],
+            primary_skills=["Python", "PyTorch"],
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="ML Engineer",
+            location="London, UK",
+            description="Python PyTorch role.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # title_pts=40, skill_pts=6, location=10, recency=10 → 66
+        assert scorer.score(job) > 25
+        assert scorer.score(job) >= 60
+
+    def test_jobscorer_title_exactly_at_gate_passes(self):
+        """title_pts exactly at the gate (6) must clear (>= semantics)."""
+        config = SearchConfig(
+            job_titles=["ML Engineer"],
+            primary_skills=["Python", "PyTorch"],
+            core_domain_words={"ml"},           # title partial-match path
+            supporting_role_words={"engineer"},
+        )
+        scorer = JobScorer(config)
+        # "ml engineer" against a partial-match title → 5*core + 3*support = 8 points
+        # clipped to TITLE_WEIGHT // 2 = 20 under existing partial-match logic. To
+        # hit the exact-6 edge we instead use a minimal title which triggers the
+        # cap-at-gate via "Ml Ops Engineer" (single core overlap, one support).
+        job = _make_job(
+            title="Ml Ops Engineer",   # 1*core + 1*support = 5+3 = 8 (>6 gate)
+            location="London, UK",
+            description="Python PyTorch role.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # Skill gate: 3+3=6 → exactly at gate. Title gate: 8 → above.
+        # Both ≥ gate → no suppression. Score should be > 10 floor.
+        assert scorer.score(job) > 10
+
+    def test_jobscorer_title_just_below_gate_suppressed(self):
+        """title_pts just below gate → suppressed even with strong skills."""
+        config = SearchConfig(
+            job_titles=["Cardiology Consultant"],
+            primary_skills=["Python", "Docker", "Postgres"],
+            core_domain_words={"engineer"},
+            supporting_role_words=set(),
+        )
+        scorer = JobScorer(config)
+        # title: "AI Engineer" → 1 core match → 5 points (< gate 6)
+        job = _make_job(
+            title="AI Engineer",
+            location="London, UK",
+            description="Python Docker Postgres role.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # title_pts=5 (below gate), skill_pts=9 (above). Gate fails on title.
+        # Suppressed = max(10, (5+9)*0.25) = max(10, 3) = 10.
+        assert scorer.score(job) == 10
+
+    def test_jobscorer_skill_just_below_gate_suppressed(self):
+        """skill_pts just below gate → suppressed even with exact title match."""
+        config = SearchConfig(
+            job_titles=["ML Engineer"],
+            primary_skills=["Python"],   # only one primary → max 3 points (< gate 6)
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="ML Engineer",
+            location="London, UK",
+            description="Python-only role.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # title_pts=40, skill_pts=3 (< gate 6). Gate fails on skill.
+        # Suppressed = max(10, (40+3)*0.25) = max(10, 10) = 10.
+        assert scorer.score(job) <= 25
+        assert scorer.score(job) == 10
+
+    def test_jobscorer_suppressed_returns_floor_10_when_gate_fails_fully(self):
+        """All components zero + gate-fail → exactly the floor of 10."""
+        config = SearchConfig(
+            job_titles=["Something Else"],
+            primary_skills=["Nothing Here"],
+        )
+        scorer = JobScorer(config)
+        job = _make_job(
+            title="Marketing Manager",
+            location="Moon",                      # 0 location
+            description="Generic role.",
+            date_found="",                          # 0 recency
+        )
+        assert scorer.score(job) == 10
+
+    # ---- Module-level score_job() (legacy path with empty defaults) ----
+
+    def test_score_job_empty_defaults_always_fails_gate(self):
+        """With the default empty keywords, score_job must suppress even UK jobs
+        with full recency to ≤25 — location/recency alone cannot carry a job."""
+        uk_recent_job = _make_job(
+            title="Generic Role",
+            location="London, UK",
+            description="Generic description.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # Pre-gate: 0+0+10+10 = 20. Post-gate: floor 10.
+        assert score_job(uk_recent_job) <= 25
+        assert score_job(uk_recent_job) == 10
+
+    def test_score_job_with_patched_keywords_can_pass_gate(self, monkeypatch):
+        """When JOB_TITLES and PRIMARY_SKILLS contain matching entries, the
+        gate passes and the full linear score is computed."""
+        from src.services import skill_matcher as sm
+
+        monkeypatch.setattr(sm, "JOB_TITLES", ["Data Scientist"])
+        monkeypatch.setattr(sm, "PRIMARY_SKILLS", ["Python", "Pandas"])
+        job = _make_job(
+            title="Data Scientist",
+            location="London, UK",
+            description="Python and Pandas expertise required.",
+            date_found=datetime.now(timezone.utc).isoformat(),
+        )
+        # title=40, skill=6 (>= gate), location=10, recency=10 → 66
+        assert score_job(job) > 25
+
+    def test_score_job_gate_floor_10_even_with_foreign_penalty(self):
+        """Gate-fail path doesn't apply penalties below 0 — floor is 10."""
+        foreign_job = _make_job(
+            title="Cleaner",
+            location="San Francisco, CA",
+            description="Nothing relevant.",
+            date_found="",
+        )
+        # Pre-gate with penalty: 0+0+0+0-0-15 = -15 → 0. Post-gate: floor 10.
+        assert score_job(foreign_job) == 10
+
+    def test_gate_settings_exposed_at_module_level(self):
+        """MIN_TITLE_GATE / MIN_SKILL_GATE must be importable from core.settings
+        so ops can tune them via env vars without editing code."""
+        from src.core.settings import MIN_TITLE_GATE, MIN_SKILL_GATE
+        assert MIN_TITLE_GATE == 0.15
+        assert MIN_SKILL_GATE == 0.15

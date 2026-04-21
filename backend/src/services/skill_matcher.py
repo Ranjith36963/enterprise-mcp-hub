@@ -12,7 +12,12 @@ from src.core.keywords import (
     VISA_KEYWORDS,
     NEGATIVE_TITLE_KEYWORDS,
 )
-from src.core.settings import TARGET_SALARY_MIN, TARGET_SALARY_MAX
+from src.core.settings import (
+    TARGET_SALARY_MIN,
+    TARGET_SALARY_MAX,
+    MIN_TITLE_GATE,
+    MIN_SKILL_GATE,
+)
 
 # Weights for scoring components (total = 100)
 TITLE_WEIGHT = 40
@@ -256,10 +261,27 @@ def salary_in_range(job: Job) -> bool:
     return job_max >= TARGET_SALARY_MIN and job_min <= TARGET_SALARY_MAX
 
 
+def _gate_suppressed_score(title_pts: int, skill_pts: int) -> int | None:
+    """Pillar 2 Batch 2.2 gate: if either title or skill component fails the
+    gate (fraction-of-max ≥ MIN_TITLE_GATE / MIN_SKILL_GATE), return the
+    suppressed score `max(10, (title+skill)*0.25)`. Otherwise return None to
+    signal the caller to compute the full linear score.
+    """
+    title_threshold = MIN_TITLE_GATE * TITLE_WEIGHT
+    skill_threshold = MIN_SKILL_GATE * SKILL_WEIGHT
+    if title_pts < title_threshold or skill_pts < skill_threshold:
+        suppressed_linear = (title_pts + skill_pts) * 0.25
+        return max(10, int(suppressed_linear))
+    return None
+
+
 def score_job(job: Job) -> int:
     text = f"{job.title} {job.description}"
     title_pts = _title_score(job.title)
     skill_pts = _skill_score(text)
+    suppressed = _gate_suppressed_score(title_pts, skill_pts)
+    if suppressed is not None:
+        return suppressed
     location_pts = _location_score(job.location)
     recency_pts = recency_score_for_job(job)
     penalty = _negative_penalty(job.title)
@@ -323,6 +345,9 @@ class JobScorer:
         text = f"{job.title} {job.description}"
         title_pts = self._title_score(job.title)
         skill_pts = self._skill_score(text)
+        suppressed = _gate_suppressed_score(title_pts, skill_pts)
+        if suppressed is not None:
+            return suppressed
         location_pts = _location_score(job.location)
         recency_pts = recency_score_for_job(job)
         penalty = self._negative_penalty(job.title)
