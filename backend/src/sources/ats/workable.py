@@ -45,7 +45,7 @@ class WorkableSource(BaseJobSource):
                     source=self.name,
                     date_found=datetime.now(timezone.utc).isoformat(),
                     posted_at=None,
-                    date_confidence="low",
+                    date_confidence="fabricated",
                     date_posted_raw=None,
                 ))
         jobs = [j for j in jobs if _is_uk_or_remote(j.location)]

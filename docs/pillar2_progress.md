@@ -107,3 +107,58 @@ leak in JobSpy against Indeed/Glassdoor).
   user's weighted max. If a future batch introduces user-configurable weights
   (e.g. raising `TITLE_WEIGHT` to 60) the 0.15 fraction would scale with it,
   preserving the intended "15 % of component max" meaning.
+
+---
+
+## Batch 2.1 — Date confidence correction for signal-less sources — MERGED
+
+**Merged:** <pending commit> on 2026-04-21
+
+**Plan coverage:**
+- Plan §4 Batch 2.1
+- Report item(s): #1 (date accuracy — narrowed scope per 2026-04-20 verification)
+
+**Touches:**
+- `backend/src/sources/scrapers/linkedin.py:69`: `date_confidence="low"` → `"fabricated"`
+- `backend/src/sources/ats/workable.py:48`: `date_confidence="low"` → `"fabricated"`
+- `backend/src/sources/ats/personio.py:85`: `date_confidence="low"` → `"fabricated"`
+- `backend/src/sources/ats/pinpoint.py:56`: `date_confidence="low"` → `"fabricated"`
+- `backend/src/services/skill_matcher.py`: **no code change** — the
+  `recency_score_for_job()` "fabricated" branch already returns 0 (shipped
+  in Pillar 3 Batch 1). A regression test was added instead (plan §4 Batch
+  2.1 — "Add a regression test if missing").
+
+**Tests added:**
+- **New file** `backend/tests/test_source_date_confidence_labels.py` (+8 tests):
+  - 4 parametrized tests asserting linkedin/workable/personio/pinpoint emit
+    `date_confidence="fabricated"` — and NOT `"low"` — as literal string
+    assignments in source files (static grep, no HTTP).
+  - 3 parametrized tests asserting nhs_jobs/jooble/greenhouse continue to
+    emit `"low"` (the plan's "wrong-field" category, already correct).
+  - 1 wiring test asserting `recency_score_for_job()` returns 0 when
+    `date_confidence="fabricated"` — the mechanism that turns the label
+    change into a visible score penalty downstream.
+
+**Test delta (scoped: scorer + profile + date schema + new labels file):** 135p → 143p (+8 new).
+
+**Test delta (broad, minus `test_main` + `test_sources`):** 682p/3s → 690p/3s (+8).
+
+**Deferred from this batch:**
+- Removing the legacy `date_found` column entirely — kept per plan's
+  "Out of scope" (defer until frontend/CLI audit).
+- The 5-column schema evolution — already shipped in Pillar 3 Batch 1.
+- Ghost-detection machine — already shipped in Pillar 3 Batch 1.
+
+**Post-merge notes:**
+- Static-grep tests (`test_source_date_confidence_labels.py`) were preferred
+  over parametrizing `tests/test_sources.py` because the latter hits the
+  pre-existing Windows × Py3.13 × aioresponses IOCP hang documented at the
+  top of this file. The static check polices the *label* a source emits,
+  which is the correct scope for Batch 2.1 — we are not testing source
+  behaviour, only that the instrumented literal is correct.
+- These 4 sources still stamp `date_found=datetime.now(...)` which is
+  accurate as a *first-seen* timestamp. The `recency_score_for_job` helper
+  gates on `date_confidence="fabricated"` before consulting `date_found`,
+  so the timestamp itself doesn't leak into scoring — the fabricated flag
+  short-circuits to 0. Dropping the `date_found` column entirely is a
+  later cleanup (see "Deferred").

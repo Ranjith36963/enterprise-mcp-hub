@@ -82,7 +82,7 @@ class PersonioSource(BaseJobSource):
                 source=self.name,
                 date_found=datetime.now(timezone.utc).isoformat(),
                 posted_at=None,
-                date_confidence="low",
+                date_confidence="fabricated",
                 date_posted_raw=None,
             ))
 
