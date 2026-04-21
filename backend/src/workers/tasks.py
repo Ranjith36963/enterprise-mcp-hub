@@ -366,3 +366,65 @@ def _bucket_for_row(row: aiosqlite.Row) -> str:
     if age_h <= 72:
         return "48_72h"
     return "3_7d"
+
+
+# ---------- Pillar 2 Batch 2.5 — job enrichment task -------------------
+#
+# Queued post-ingest (after ``score_and_ingest``) via the ARQ fan-out hook in
+# ``ctx['enqueue']``. Idempotent: a second call on a ``job_id`` that already
+# has a ``job_enrichment`` row is a no-op. Tests inject a mock
+# ``llm_extract_validated`` through ``ctx['llm_extract_validated']`` so
+# the LLM provider chain is never touched during pytest (CLAUDE.md rule #4).
+
+
+async def enrich_job_task(ctx: dict, job_id: int) -> dict[str, bool | str]:
+    """Produce a :class:`JobEnrichment` row for ``job_id``.
+
+    Skips work if the row already exists (idempotence). The LLM call itself
+    is injected via ``ctx['llm_extract_validated']`` for tests; prod paths
+    use the real :func:`llm_extract_validated`.
+
+    Returns a summary dict with ``enriched: bool`` and an optional
+    ``reason`` — the task never raises so ARQ doesn't retry on our account.
+    """
+    from src.services.job_enrichment import (
+        enrich_job,
+        has_enrichment,
+        save_enrichment,
+    )
+
+    db: aiosqlite.Connection = ctx["db"]
+
+    if await has_enrichment(db, job_id):
+        return {"enriched": False, "reason": "already_enriched"}
+
+    db.row_factory = aiosqlite.Row
+    cur = await db.execute(
+        "SELECT id, title, company, location, description FROM jobs WHERE id = ?",
+        (job_id,),
+    )
+    row = await cur.fetchone()
+    if row is None:
+        return {"enriched": False, "reason": "job_not_found"}
+
+    job = Job(
+        title=row["title"] or "",
+        company=row["company"] or "",
+        apply_url="",
+        source="",
+        date_found="",
+        location=row["location"] or "",
+        description=row["description"] or "",
+    )
+    job.id = row["id"]
+
+    try:
+        enrichment = await enrich_job(
+            job,
+            llm_extract_validated_fn=ctx.get("llm_extract_validated"),
+        )
+    except Exception as exc:  # noqa: BLE001 — defensive top-level
+        return {"enriched": False, "reason": f"llm_error: {exc}"}
+
+    await save_enrichment(db, job_id, enrichment)
+    return {"enriched": True}

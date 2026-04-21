@@ -316,3 +316,111 @@ assertion also tracks an alias collapse (`"Spark"` → `"apache spark"`).
   stay on `{"general"}` — they serve diverse companies, and the company
   slug list in `core/companies.py` is tech-leaning so non-tech users won't
   get spammed even though the sources run for them.
+
+---
+
+## Batch 2.5 — LLM job enrichment pipeline — MERGED
+
+**Merged:** <pending commit> on 2026-04-21
+
+**Plan coverage:**
+- Plan §4 Batch 2.5
+- Report item(s): #5 (highest-impact — structured job fields for dedup,
+  scoring, and Batch 2.6 embeddings)
+
+**Spike gate — IN-CI MOCKED, LIVE-FIRE DEFERRED:**
+The plan mandates a Day 1 spike: enrich 100 sample jobs through the real
+Gemini→Groq→Cerebras chain and confirm ≥95 % schema-valid + ≥50 % quota
+headroom before proceeding. The full-batch scaffolding has landed with 24
+mocked tests that prove the pipeline works end-to-end on a synthetic
+`JobEnrichment`. The **operational spike on live keys remains TODO for
+rollout** — it cannot run in the Ralph Loop iteration because:
+1. CLAUDE.md rule #4 forbids live HTTP during `pytest`.
+2. The generator session has no Gemini/Groq/Cerebras API keys configured.
+Rollout steps for the operator:
+1. Export `GEMINI_API_KEY` / `GROQ_API_KEY` / `CEREBRAS_API_KEY` locally.
+2. Set `ENRICHMENT_ENABLED=true`.
+3. Run a one-shot against 100 recent jobs (example scaffold —
+   `backend/scripts/spike_enrichment.py` — left for the operator; not in
+   this batch's Touches).
+4. If schema-valid ≥95 % and quota headroom ≥50 %, enable the ARQ task.
+5. Otherwise halt and choose between prompt tuning, model swap, or
+   OpenAI Batch as the plan's fallback suggests.
+
+**Touches:**
+- **New file** `backend/src/services/job_enrichment_schema.py`: +160 lines —
+  Pydantic `JobEnrichment` model with 18 fields plus 8 enum types
+  (`JobCategory`, `EmploymentType`, `WorkplaceType`, `VisaSponsorship`,
+  `SeniorityLevel`, `ExperienceLevel`, `EmployerType`, `SalaryFrequency`)
+  and one nested model (`SalaryBand`). Every list field is length-bounded;
+  currency is uppercased and language is lowercased via validators;
+  duplicate list entries are collapsed.
+- **New file** `backend/src/services/job_enrichment.py`: +160 lines —
+  `async def enrich_job(job, llm_extract_validated_fn=...)` wrapping
+  `llm_extract_validated()` from the profile module's provider chain, plus
+  `has_enrichment()` / `save_enrichment()` / `load_enrichment()` DB helpers
+  for the `job_enrichment` table (INSERT OR REPLACE upsert). Exposes the
+  `ENRICHMENT_ENABLED` feature flag that defaults to off so pre-Batch-2.5
+  behaviour is preserved exactly when not opted in.
+- **New migration pair** `backend/migrations/0008_job_enrichment.{up,down}.sql` —
+  `job_enrichment` table keyed by `job_id INTEGER PRIMARY KEY REFERENCES
+  jobs(id) ON DELETE CASCADE`. 18 columns + `enriched_at`. Auto-discovered
+  by the existing `migrations/runner.py` (no runner changes needed).
+  **No `user_id` column** per CLAUDE.md rule #10 (shared catalog).
+- `backend/src/services/deduplicator.py`: +35/-5 lines — new
+  `_enrichment_bonus(job, enrichments)` helper + widened `deduplicate(jobs,
+  enrichments=None)` signature. When `enrichments` is provided, jobs with
+  an enrichment row get a +5 tiebreaker *between* match_score and
+  completeness. `enrichments=None` callers (every pre-Batch-2.5 caller)
+  see zero behavioural change.
+- `backend/src/workers/tasks.py`: +60 lines — new `enrich_job_task(ctx,
+  job_id)` fan-out task. Reads the job from `ctx['db']`, delegates to
+  `enrich_job()` with the optional `ctx['llm_extract_validated']` mock
+  hook, persists via `save_enrichment()`. Idempotent: returns
+  `{"enriched": False, "reason": "already_enriched"}` if the row exists.
+  Swallows LLM exceptions into `reason="llm_error: …"` so ARQ's retry
+  machinery doesn't double-bill quota for the same failure.
+
+**Tests added:** `backend/tests/test_job_enrichment.py` (+24 tests):
+- 9 schema validation tests (minimal-payload default fill, empty-title
+  reject, bad-enum reject, negative years reject, >250 char summary reject,
+  currency upper-case, location dedup, language lower-case, max-length
+  required_skills).
+- 3 `enrich_job()` wrapper tests (valid round-trip; prompt contains title
+  + truncated description; LLM failure propagates).
+- 4 DB persistence tests (save+load round-trip on full fixture, `has_enrichment`
+  detects existing rows, `load_enrichment` returns None when missing,
+  `save_enrichment` behaves as an upsert).
+- 4 worker-task tests (happy path, idempotence calls LLM only once,
+  job-not-found path, LLM-failure path does not create partial row).
+- 3 deduplicator tests (enrichment bonus breaks tie, pre-Batch-2.5 callers
+  see unchanged behaviour, match_score still beats enrichment).
+- 1 feature-flag tolerance test.
+
+**Test delta (broad, minus `test_main` + `test_sources`):** 801p/3s → 825p/3s (+24).
+
+**Deferred from this batch:**
+- Using enrichment fields in the scorer — Batch 2.9 (salary) + Batch 2.8
+  (required/preferred skills split).
+- Backfilling pre-existing jobs — a `scripts/backfill_enrichment.py`
+  one-shot was named out-of-scope; defer until live-fire spike result.
+- Adding OpenAI Batch as a provider — contingent on quota results post
+  rollout, explicitly out-of-scope here.
+- `ENRICHMENT_ENABLED=true` in CI — the flag defaults to false and no
+  production code path invokes it automatically. The ARQ worker settings
+  will need a follow-up to wire `enrich_job_task` into the post-ingest
+  fan-out once the spike passes.
+
+**Post-merge notes:**
+- The `enrich_job()` wrapper accepts an `llm_extract_validated_fn` keyword
+  precisely so tests can inject a mock without patching the real
+  `llm_extract_validated` — keeps CLAUDE.md rule #4 honest.
+- Schema bump caution: `JobEnrichment` is persisted via JSON dumps of its
+  list/nested fields. Future schema changes that add required fields
+  will break `load_enrichment` on old rows; always add new fields with
+  defaults + Pydantic's `Field(default=...)` or a follow-up migration
+  that backfills.
+- The enrichment bonus in the dedup tiebreaker is **5**, positioned
+  between `match_score` (max 100) and `_completeness` (max ~45). That
+  keeps `match_score` dominant while still resolving a score tie decisively
+  toward the enriched candidate.
