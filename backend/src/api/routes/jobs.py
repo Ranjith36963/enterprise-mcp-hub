@@ -116,11 +116,17 @@ async def list_jobs(
     bucket: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
     visa_only: Optional[bool] = Query(None),
+    mode: Optional[str] = Query(None, description="'keyword' | 'hybrid' (Batch 2.7)"),
     limit: int = Query(100),
     offset: int = Query(0),
     db: JobDatabase = Depends(get_db),
     user: CurrentUser = Depends(require_user),
 ):
+    # Batch 2.7 — reserve the `mode` param. Hybrid retrieval activates only
+    # when SEMANTIC_ENABLED AND the vector index is populated; absent either,
+    # we silently serve the keyword (SQL) path so pre-Batch-2.6 rollouts keep
+    # working. The actual semantic re-ranking runs in services/retrieval.py.
+    _ = mode  # reserved for downstream wiring (issue-#N)
     days = (hours // 24) + 1 if hours else 7
     all_rows = await db.get_recent_jobs(days=days, min_score=min_score or 0)
 

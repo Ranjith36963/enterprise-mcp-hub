@@ -589,3 +589,67 @@ Rollout steps for the operator:
 - Vector dimensions are stored as plain Python `list[float]` in the
   `encode_job` return value so downstream code doesn't need numpy to
   persist. ChromaDB accepts plain lists.
+
+---
+
+## Batch 2.7 — Hybrid retrieval with Reciprocal Rank Fusion — MERGED
+
+**Merged:** <pending commit> on 2026-04-21
+
+**Plan coverage:**
+- Plan §4 Batch 2.7
+- Report item(s): #9 (RRF k=60)
+
+**Touches:**
+- **New file** `backend/src/services/retrieval.py`: +120 lines —
+  - `reciprocal_rank_fusion(ranked_lists, k=60)` pure helper, stable-sorted
+    on first-appearance tiebreaker, raises on non-positive k.
+  - `retrieve_for_user(profile, k=100, keyword_fn=..., semantic_fn=..., rrf_k=60)`
+    orchestrator. Keyword_fn is required; semantic_fn is optional. When
+    semantic returns empty OR raises, the function silently degrades to
+    keyword-only. Empty keyword results return `[]` (no point fusing with
+    nothing).
+  - `is_hybrid_available(vector_index_count)` gate used by the API route to
+    choose between hybrid and keyword-only default.
+- `backend/src/api/routes/jobs.py`: +6 lines — added an optional
+  `mode: Optional[str] = Query(None)` parameter to `/jobs`. The param is
+  reserved (noted with `_ = mode`) pending wiring of `retrieve_for_user` into
+  the route body once SEMANTIC_ENABLED=true + ChromaDB backfill ships. The
+  route keeps its existing keyword behaviour untouched so pre-Batch-2.7
+  callers see zero change.
+
+**Tests added:** `backend/tests/test_retrieval.py` (+17 tests):
+- 7 RRF tests (single-list passthrough, two-list fusion with common item,
+  rank-position monotonicity, empty input, k-smoothing intuition,
+  determinism, non-positive k rejection).
+- 7 `retrieve_for_user` tests (missing keyword_fn, keyword-only default,
+  empty keyword early-return, fused when both available, semantic-empty
+  fallback, semantic-raise fallback, k respected).
+- 3 `is_hybrid_available` gate tests (positive count, zero, defensive
+  negative handling).
+
+**Test delta (broad, minus `test_main` + `test_sources`):** 895p/3s → 912p/3s (+17).
+
+**Deferred from this batch:**
+- Wiring `retrieve_for_user` into `/jobs` route body — the route accepts
+  the `mode` param but doesn't act on it yet. Needs the route to receive
+  a `VectorIndex` dependency + a `user_profile` loader; keeping this
+  minimal avoids coupling hybrid rollout to the semantic stack being
+  fully populated. Follow-up issue.
+- LTR / personalised ranking — correctly held per plan's "Out of scope".
+- Query-time embedding cache — a future optimisation when
+  `retrieve_for_user` is called tight loops. Not measurable yet.
+
+**Post-merge notes:**
+- RRF `k=60` is the Cormack 2009 default. Smaller k makes rank position
+  matter more sharply; larger k flattens the contribution curve. The plan
+  fixes the constant at 60 per the research report's recommendation.
+- Stable tiebreaker: when two items score identically (e.g. both
+  appeared once at the same rank), the one that appeared in the
+  `ranked_lists` iterable first wins — this is important for
+  reproducibility in snapshot-style tests.
+- The orchestrator is **synchronous** and accepts injected fetchers
+  because the two signal paths (SQL + Chroma) have very different async
+  lifetimes, and testing both async-orchestrating paths without proxies
+  is painful. Real callers (FastAPI route / ARQ worker) do the async
+  glue and hand the orchestrator plain lists.
