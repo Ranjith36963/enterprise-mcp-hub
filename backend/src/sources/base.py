@@ -49,6 +49,17 @@ def _is_uk_or_remote(location: str) -> bool:
 class BaseJobSource(ABC):
     name: str = "base"
     category: str = "unknown"  # keyed_api, free_json, ats, rss, scraper, other
+    #
+    # Pillar 2 Batch 2.4 — domain routing.
+    # `DOMAINS` declares the professional domains a source primarily covers.
+    # `_build_sources()` filters instances so a user with {"healthcare"} in
+    # their classified domain set does not spin up `bcs_jobs` (tech-only),
+    # etc. Sources tagged with "general" always run for every user — that's
+    # the base class default. Subclasses that cover a specific domain should
+    # override this attribute (tech, healthcare, academia, education,
+    # climate, etc.). A single source may cover multiple domains; a
+    # zero-profile user (no CV) bypasses the filter and gets every source.
+    DOMAINS: set[str] = {"general"}
 
     def __init__(self, session: aiohttp.ClientSession, search_config=None):
         self._session = session

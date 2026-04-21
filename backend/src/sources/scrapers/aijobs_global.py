@@ -13,6 +13,7 @@ class AIJobsGlobalSource(BaseJobSource):
     """AI Jobs Worldwide — ai-jobs.global (WordPress + WP Job Manager)."""
     name = "aijobs_global"
     category = "scraper"
+    DOMAINS = {"tech"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

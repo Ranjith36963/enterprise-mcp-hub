@@ -25,6 +25,10 @@ from src.services.notifications.base import get_configured_channels
 from src.services.circuit_breaker import default_registry as default_breaker_registry
 from src.services.circuit_breaker import BreakerState
 from src.services.scheduler import TieredScheduler
+from src.services.domain_classifier import (
+    classify_user_domain,
+    source_matches_user_domains,
+)
 
 from src.sources.apis_keyed.reed import ReedSource
 from src.sources.apis_keyed.adzuna import AdzunaSource
@@ -204,8 +208,18 @@ def _format_date(date_str: str) -> str:
 
 
 def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = None,
-                    search_config=None) -> list:
-    """Build source instances, optionally filtered to a single source."""
+                    search_config=None, user_profile=None) -> list:
+    """Build source instances, optionally filtered to a single source or by
+    the user's classified professional domain(s).
+
+    Pillar 2 Batch 2.4 — a user's profile is classified into a set of domains
+    (tech / healthcare / academia / education / climate). A source is
+    included if any of:
+      * `user_profile` is None → graceful fallback, include everything,
+      * `source_filter` is set → only the single requested source,
+      * the source is tagged `"general"`,
+      * the source's `DOMAINS` overlaps the user's domains.
+    """
     sc = search_config  # short alias
     all_sources = [
         # Group A: Keyed APIs
@@ -274,7 +288,14 @@ def _build_sources(session: aiohttp.ClientSession, source_filter: str | None = N
         if source_filter == "glassdoor":
             source_filter = "indeed"
         return [s for s in all_sources if s.name == source_filter]
-    return all_sources
+
+    # Batch 2.4 — domain-aware filtering. A None profile returns empty domains
+    # which source_matches_user_domains interprets as "include everything".
+    user_domains = classify_user_domain(user_profile)
+    if not user_domains:
+        return all_sources
+    return [s for s in all_sources
+            if source_matches_user_domains(s.DOMAINS, user_domains)]
 
 
 async def run_search(
@@ -336,7 +357,12 @@ async def run_search(
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
             # Build sources
-            sources = _build_sources(session, source_filter, search_config=search_config)
+            sources = _build_sources(
+                session,
+                source_filter,
+                search_config=search_config,
+                user_profile=profile,
+            )
 
             if not sources:
                 logger.error("No sources matched filter: %s", source_filter)

@@ -20,6 +20,7 @@ _API_URLS = [
 class NoFluffJobsSource(BaseJobSource):
     name = "nofluffjobs"
     category = "other"
+    DOMAINS = {"tech"}
 
     async def fetch_jobs(self) -> list[Job]:
         data = None

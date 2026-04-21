@@ -19,6 +19,7 @@ class UniJobsSource(BaseJobSource):
     """UK University RSS feeds — academic research positions."""
     name = "uni_jobs"
     category = "rss"
+    DOMAINS = {"academia"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

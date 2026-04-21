@@ -18,6 +18,7 @@ class ClimatebaseSource(BaseJobSource):
     """Climatebase — climate tech jobs. Extracts from Next.js embedded JSON."""
     name = "climatebase"
     category = "scraper"
+    DOMAINS = {"climate"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

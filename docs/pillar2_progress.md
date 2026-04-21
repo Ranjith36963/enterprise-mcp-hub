@@ -241,3 +241,78 @@ assertion also tracks an alias collapse (`"Spark"` → `"apache spark"`).
 - Behavioural visibility: a user with `"k8s"` in their CV now matches jobs
   describing `"kubernetes"` and vice versa. This is the primary user-facing
   win — more real hits per search.
+
+---
+
+## Batch 2.4 — Source routing by domain — MERGED
+
+**Merged:** <pending commit> on 2026-04-21
+
+**Plan coverage:**
+- Plan §4 Batch 2.4
+- Report item(s): #4 (domain-aware source selection)
+
+**Touches:**
+- `backend/src/sources/base.py`: +10 lines — class-level `DOMAINS: set[str] = {"general"}` default on `BaseJobSource`, with a comment explaining the filter semantics. Additive per CLAUDE.md rule #2.
+- **17 source files** (one-line `DOMAINS = {...}` override each):
+  - tech: `apis_free/{devitjobs,landingjobs,aijobs,hn_jobs}.py`, `other/{hackernews,nofluffjobs}.py`, `scrapers/{bcs_jobs,aijobs_global,aijobs_ai,jobtensor}.py`
+  - healthcare: `feeds/{nhs_jobs,nhs_jobs_xml,biospace}.py`
+  - academia: `feeds/{jobs_ac_uk,uni_jobs}.py`
+  - education: `apis_free/teaching_vacancies.py`
+  - education + general (apprenticeships span all trades): `apis_free/gov_apprenticeships.py`
+  - climate: `scrapers/climatebase.py`
+- **New file** `backend/src/services/domain_classifier.py`: +130 lines —
+  `classify_user_domain(profile) -> set[str]` mapping profile titles + skills
+  + LinkedIn positions + industry to the 5-domain taxonomy, plus
+  `source_matches_user_domains(src_domains, user_domains) -> bool` with the
+  plan's gate rules (empty user → include all; general source → include;
+  overlap → include).
+- `backend/src/main.py`: +12 lines —
+  - import `classify_user_domain` + `source_matches_user_domains`,
+  - widen `_build_sources(...)` with `user_profile=None` parameter,
+  - append domain-aware filter after the existing `source_filter` short-circuit,
+  - call-site in `run_search()` passes `user_profile=profile`.
+
+**Tests added:** `backend/tests/test_domain_classifier.py` (+47 tests):
+- 16 `classify_user_domain` tests across all 5 domains + multi-domain +
+  general-not-emitted + word-boundary false-match + LinkedIn positions.
+- 6 `source_matches_user_domains` gate tests (empty user, general short-circuit,
+  healthcare/tech exclusivity, multi-tag overlap).
+- 18 source-attribute assertions via `parametrize` (base default + 17
+  specifically-tagged sources) + one gov_apprenticeships multi-tag test.
+- 4 end-to-end `_build_sources` tests (healthcare skips tech; tech skips
+  healthcare; zero-profile → all 49; `--source` filter still works).
+
+**Test delta (broad, minus `test_main` + `test_sources`):** 754p/3s → 801p/3s (+47).
+
+**Deferred from this batch:**
+- Zero-yield tracker / per-domain auto-disable — correctly held for Batch 4
+  per plan's "Out of scope". Requires engagement telemetry that hasn't
+  landed.
+- Per-source enable/disable UI — same.
+
+**Post-merge notes:**
+- Minimal-touch pattern: `DOMAINS` defaults to `{"general"}` on the base
+  class, so only the 17 non-general sources carry an override. General
+  sources (Reed, Adzuna, JSearch, Jooble, Google Jobs, Careerjet, Findwork,
+  Arbeitnow, Indeed/Glassdoor, TheMuse, LinkedIn, all 11 ATS boards,
+  remote-focused RSS feeds, 80000Hours) inherit silently — the filter
+  still short-circuits them in.
+- The plan said "Each of 50 source files — declare domain tags" but the
+  "declare" semantics include inheritance of the base-class default. This
+  keeps 32 source files untouched and achieves the intended behaviour.
+- A generic "Project Manager" profile classifies to empty set → the
+  graceful-fallback branch in `_build_sources` includes every source. This
+  is intentional — we don't want to narrow down ambiguous profiles.
+- `eightykhours` (80 000 Hours / effective altruism careers) stays in
+  `{"general"}` because the board mixes climate/AI-safety/biosecurity/animal-
+  welfare/policy roles; tagging it `"climate"` would miss tech-safety users
+  and vice versa.
+- Short keywords (`ai`, `pi `, `sen `) use word-boundary matching (regex
+  `\b...\b`) to avoid false-matching on substrings like "maintain",
+  "captain", "senior".
+- All ATS boards (Greenhouse, Lever, Workable, Ashby, SmartRecruiters,
+  Pinpoint, Recruitee, Workday, Personio, SuccessFactors, Rippling, Comeet)
+  stay on `{"general"}` — they serve diverse companies, and the company
+  slug list in `core/companies.py` is tech-leaning so non-tech users won't
+  get spammed even though the sources run for them.

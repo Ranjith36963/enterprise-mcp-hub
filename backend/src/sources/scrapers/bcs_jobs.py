@@ -20,6 +20,7 @@ class BCSJobsSource(BaseJobSource):
     """BCS (Chartered Institute for IT) Job Board — UK IT professional jobs."""
     name = "bcs_jobs"
     category = "scraper"
+    DOMAINS = {"tech"}
 
     async def fetch_jobs(self) -> list[Job]:
         # Try multiple URL patterns

@@ -14,6 +14,7 @@ class NHSJobsSource(BaseJobSource):
     """UK NHS Jobs via XML API — healthcare data/digital roles."""
     name = "nhs_jobs"
     category = "rss"
+    DOMAINS = {"healthcare"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

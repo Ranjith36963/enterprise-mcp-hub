@@ -20,6 +20,7 @@ logger = logging.getLogger("job360.sources.nhs_jobs_xml")
 class NHSJobsXMLSource(BaseJobSource):
     name = "nhs_jobs_xml"
     category = "rss"  # 15-min tier
+    DOMAINS = {"healthcare"}
 
     FEED_URL = "https://www.jobs.nhs.uk/api/v1/feed/all_current_vacancies.xml"
 

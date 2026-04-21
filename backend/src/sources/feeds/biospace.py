@@ -14,6 +14,7 @@ class BioSpaceSource(BaseJobSource):
     """BioSpace — biotech/pharma AI jobs via RSS feed."""
     name = "biospace"
     category = "rss"
+    DOMAINS = {"healthcare"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

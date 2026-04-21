@@ -16,6 +16,7 @@ logger = logging.getLogger("job360.sources.teaching_vacancies")
 class TeachingVacanciesSource(BaseJobSource):
     name = "teaching_vacancies"
     category = "rss"  # 15-min tier — frequent enough for school-day postings
+    DOMAINS = {"education"}
 
     API_URL = "https://teaching-vacancies.service.gov.uk/api/v1/jobs.json"
 

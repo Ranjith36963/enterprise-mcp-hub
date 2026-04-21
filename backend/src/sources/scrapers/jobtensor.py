@@ -18,6 +18,7 @@ class JobTensorSource(BaseJobSource):
     """JobTensor — UK AI/Science/Tech jobs via AJAX API."""
     name = "jobtensor"
     category = "scraper"
+    DOMAINS = {"tech"}
 
     async def fetch_jobs(self) -> list[Job]:
         # Try the AJAX search API directly

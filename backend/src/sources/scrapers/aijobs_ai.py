@@ -20,6 +20,7 @@ class AIJobsAISource(BaseJobSource):
     """aijobs.ai — dedicated AI job board with server-rendered listings."""
     name = "aijobs_ai"
     category = "scraper"
+    DOMAINS = {"tech"}
 
     async def fetch_jobs(self) -> list[Job]:
         jobs = []

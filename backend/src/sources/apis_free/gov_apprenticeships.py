@@ -16,6 +16,9 @@ logger = logging.getLogger("job360.sources.gov_apprenticeships")
 class GovApprenticeshipsSource(BaseJobSource):
     name = "gov_apprenticeships"
     category = "rss"  # 15-min tier
+    # Apprenticeships span every domain (trades, healthcare, tech, finance)
+    # so keep in "general" alongside the education tag.
+    DOMAINS = {"education", "general"}
 
     API_URL = "https://findapprenticeship.service.gov.uk/api/v1/vacancies"
 
