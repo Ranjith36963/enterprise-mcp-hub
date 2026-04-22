@@ -787,3 +787,86 @@ file that already covered RRF / retrieve_for_user):
   pairwise cosine, but union-find keeps the worst-case collapse path
   shallow so clusters with many near-dupes don't pathologically blow up
   the iteration budget.
+
+---
+
+## Generator hand-off to reviewer
+
+**Tag:** `pillar2-generator-complete` (lightweight, pushed on the final commit).
+
+**HEAD SHA:** `37646bb` (`feat(pillar2): Batch 2.10 — four-layer deduplication`).
+
+**Execution order followed:** 2.2 → 2.1 → 2.3 → 2.4 → 2.5 → 2.9 → 2.6 → 2.7 →
+2.8 → 2.10 — exactly as plan §7 committed.
+
+**Commit list (oldest to newest, Pillar 2 only):**
+1. `71e4be1` — Batch 2.2 gate-pass scoring
+2. `be874b2` — Batch 2.1 date-confidence fix for signal-less sources
+3. `b15355d` — Batch 2.3 static skill synonym table (~493 entries)
+4. `32ad853` — Batch 2.4 source routing by domain (17 sources tagged)
+5. `cf3c0bd` — Batch 2.5 LLM job enrichment pipeline (+ migration 0008)
+6. `cf8e8bd` — Batch 2.9 multi-dimensional scoring (salary + seniority + visa + workplace)
+7. `46f7c62` — Batch 2.6 embeddings + ChromaDB + ESCO activation (+ migration 0009)
+8. `c569b9d` — Batch 2.7 RRF hybrid retrieval
+9. `ce53b24` — Batch 2.8 cross-encoder rerank (`ms-marco-MiniLM-L-6-v2`)
+10. `37646bb` — Batch 2.10 four-layer deduplication (RapidFuzz + TF-IDF + embedding repost)
+
+**Test delta across Pillar 2:** 633p/3s (pre-Pillar-2 scoped baseline
+minus HTTP-hang files) → 936p/3s (+303 new tests). The plan's 700+ target
+is met 1.3× over. All three skipped tests are pre-existing (Pillar-3
+artefacts unrelated to Pillar 2).
+
+**Excluded from CI for Pillar 2:** `tests/test_main.py` (JobSpy hits live
+Indeed, ~32-min runtime — pre-existing) and `tests/test_sources.py`
+(Python 3.13 × Windows IOCP async hang — pre-existing, filed as
+environment note at the top of this document). **NO Pillar 2 batch touches
+either file's production modules.** A Linux runner would unblock both.
+
+**Open operator items the reviewer should flag:**
+
+1. **Batch 2.5 live-fire spike is TODO.** The CI-mocked spike proves the
+   pipeline is schema-valid and wiring is sound; the plan's ≥95 %
+   schema-valid + ≥50 % quota headroom gate must be run once on real
+   Gemini/Groq/Cerebras keys before `ENRICHMENT_ENABLED=true` ships to
+   prod. See the "Operational spike" subsection in this doc under Batch 2.5.
+
+2. **Batch 2.6 semantic stack is install-gated.** Operator must
+   `pip install '.[semantic]'` to activate ESCO + embeddings, then run
+   `scripts/build_esco_index.py` + `scripts/build_job_embeddings.py` in
+   that order. `SEMANTIC_ENABLED=true` gates the new retrieval paths from
+   the server side.
+
+3. **Batch 2.7 `mode=hybrid` query param is reserved but not wired.** The
+   `/jobs` route accepts it without breaking; full wiring of
+   `retrieve_for_user()` into the route body is a follow-up that
+   coordinates with Chroma backfill.
+
+4. **Batch 2.10 Layer 4 (embedding repost detection) is off by default.**
+   `enable_embedding_repost=True` + `embedding_lookup` must be passed by
+   the caller — safe default for pre-Batch-2.6 rollouts.
+
+5. **One broad-suite run showed a transient auth flake** in
+   `test_cookie_tampering_rejected`. Isolated run passes; broad re-run
+   clean. Unrelated to any Pillar 2 code (no changes to `services/auth/`).
+   Documented here so the reviewer doesn't chase it.
+
+**Known-open questions for the reviewer:**
+
+- Should the TF-IDF threshold (0.85) in Batch 2.10 Layer 3 be env-configurable?
+  Currently hard-coded at `_TFIDF_THRESHOLD = 0.85`. The plan locks it at
+  0.85; tuning surface can land in a follow-up if real corpora show
+  under- or over-collapse.
+
+- `_CHUNK_SIZE_WORDS = 300` in Batch 2.6's embedding builder — plan says
+  "300 tokens" but we split on words (≈1.3 tokens per English word). A
+  tokenizer-aware split would be more precise. Defer until a pathological
+  long-description case shows up.
+
+- Batch 2.9's `preferred_workplace` is a free-form string. A typed enum
+  (matching `WorkplaceType` from the enrichment schema) would catch
+  typos earlier. Currently the scorer strips/lower-cases input. Worth a
+  follow-up if the frontend form sends bad values.
+
+**Ready for reviewer dispatch.** The reviewer worktree can start from
+tag `pillar2-generator-complete` and walk the 10 commits in reverse to
+diff against `main`.

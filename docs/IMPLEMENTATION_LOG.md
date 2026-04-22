@@ -795,3 +795,66 @@ When a batch merges, append a section using this template:
 ### Memory file saved
 - `project_pillar3_batch_N_done.md`
 ```
+
+---
+
+# Pillar 2 — Search & Match Engine Upgrade (2026-04-21 → 2026-04-22)
+
+Plan: `docs/pillar2_implementation_plan.md`. Execution order pinned by §7:
+2.2 → 2.1 → 2.3 → 2.4 → 2.5 → 2.9 → 2.6 → 2.7 → 2.8 → 2.10. All 10 batches
+merged. Detailed per-batch entries live in `docs/pillar2_progress.md`; the
+summary below is the 10-row index.
+
+Test delta across the whole pillar: 633p/3s (pre-Pillar-2 scoped baseline
+excluding pre-existing `test_main.py` HTTP leak + `test_sources.py` Windows
+IOCP hang) → **936p/3s, 0f** (+303 new tests). Plan target of ≥700p met 1.3×.
+
+| # | Batch | Commit | Report items closed | Tests added |
+|---|---|---|---|---|
+| 1 | 2.2 Gate-pass scoring | `71e4be1` | #2 | +12 |
+| 2 | 2.1 Date-confidence fix (linkedin/workable/personio/pinpoint → `"fabricated"`) | `be874b2` | #1 (label-only) | +8 |
+| 3 | 2.3 Static skill synonym table (~493 entries) | `b15355d` | #3 + partial-#16 | +64 |
+| 4 | 2.4 Source routing by domain (17 sources tagged, 5-domain taxonomy) | `32ad853` | #4 | +47 |
+| 5 | 2.5 LLM job enrichment pipeline (+ migration 0008) | `cf3c0bd` | #5 | +24 |
+| 6 | 2.9 Multi-dimensional scoring (salary + seniority + visa + workplace) | `cf8e8bd` | #10, #13 | +49 |
+| 7 | 2.6 Embeddings + ChromaDB + ESCO activation (+ migration 0009) | `46f7c62` | #8, #16 | +21 |
+| 8 | 2.7 RRF hybrid retrieval (`k=60`) | `c569b9d` | #9 | +17 |
+| 9 | 2.8 Cross-encoder rerank (`ms-marco-MiniLM-L-6-v2`) | `ce53b24` | #12 | +8 |
+| 10 | 2.10 Four-layer dedup (RapidFuzz + TF-IDF + embedding repost) | `37646bb` | #7, #11, #14 | +16 (incl. 10K benchmark) |
+
+**Semantic stack is install-gated.** `pip install '.[semantic]'` pulls
+`sentence-transformers` + `chromadb`. `SEMANTIC_ENABLED=true` flips on the
+activation path. Pre-semantic rollouts continue to work untouched.
+
+**Feature flags added:** `ENRICHMENT_ENABLED` (Batch 2.5 — default off),
+`SEMANTIC_ENABLED` (Batch 2.6 — default off). Env-tunable scoring weights:
+`MIN_TITLE_GATE`, `MIN_SKILL_GATE`, `SALARY_WEIGHT`, `SENIORITY_WEIGHT`,
+`VISA_WEIGHT`, `WORKPLACE_WEIGHT`.
+
+**Migrations added:** `0008_job_enrichment.{up,down}.sql`,
+`0009_job_embeddings.{up,down}.sql`. Both shared-catalog tables (no `user_id`
+column, per CLAUDE.md rule #10).
+
+**Deferred from this pillar (all explicitly documented in plan §9 or batch
+"Out of scope"):**
+- Configurable `MIN_MATCH_SCORE` per user (#15 → Batch 4 + UI).
+- Learning-to-Rank (#17 → requires engagement data from Batch 4 freemium).
+- Multilingual embeddings (#18 → UK-focused, negligible non-English volume).
+- Career-ops archetype classification + interview-likelihood / company-stage
+  dims (require engagement data).
+- Meilisearch / pg_trgm (premature at 50K).
+- Torre.ai uncertainty quantification (cold-start bounded by CV completeness).
+
+**Operational follow-ups the reviewer must gate:**
+1. Batch 2.5 live-fire spike (100 jobs, ≥95 % schema-valid, ≥50 % quota
+   headroom) before `ENRICHMENT_ENABLED=true` in prod.
+2. Batch 2.6 ESCO index build + embedding backfill (`scripts/build_esco_index.py`
+   → `scripts/build_job_embeddings.py`).
+3. Batch 2.7 `?mode=hybrid` wiring into `/jobs` route body (the param is
+   reserved but not yet acted on).
+4. Batch 2.10 Layer 4 activation (`enable_embedding_repost=True`) once
+   Chroma is populated.
+
+Tag `pillar2-generator-complete` on `37646bb`. Reviewer worktree can walk
+the 10 commits in reverse order from this tag.
+

@@ -416,6 +416,79 @@ All 5 new sources registered with per-source `{concurrent, delay}` pairs. Tier t
 14. **Sources opting into conditional fetch must call `self._get_json_conditional(url)` instead of `self._get_json(url)`.** The former goes through `ConditionalCache` + handles 304; the latter retains retry/429 handling but no caching. Not every source benefits — use the conditional path only for feeds whose upstream honours ETag or Last-Modified (ATS boards with CDN fronts, RSS feeds with honest headers). Sources that poll every 60s on endpoints without validators should stay on `_get_json()` to avoid filling the cache with un-validatable entries.
 15. **New sources MUST set `.category` to one of the scheduler's tier keys** (`"ats"`, `"rss"`, `"keyed_api"`, `"free_json"`, `"scrapers"`, `"other"`) or add a `NAME_TIER[source.name]` override in `scheduler.py`. An un-tiered source falls to the 60-min default — harmless but wastes the freshness upside of the tiered scheduler. Batch 3's new sources chose: teaching_vacancies/gov_apprenticeships/nhs_jobs_xml → `"rss"` (15-min tier); rippling/comeet → `"ats"` (60-sec tier).
 
+## Pillar 2 additions (search & match engine upgrade)
+
+Pillar 2 merged 2026-04-21 → 2026-04-22 across 10 batches. See
+`docs/pillar2_progress.md` for per-batch detail and `docs/IMPLEMENTATION_LOG.md`
+for the tagged release overview. Execution order: 2.2 → 2.1 → 2.3 → 2.4 →
+2.5 → 2.9 → 2.6 → 2.7 → 2.8 → 2.10. Final tag: `pillar2-generator-complete`.
+
+### New modules
+
+- `backend/src/core/skill_synonyms.py` — 493-entry alias → canonical dict
+  (`canonicalize_skill`, `aliases_for`). Used by
+  `skill_matcher._text_contains_skill` and `keyword_generator`.
+- `backend/src/core/fx.py` — 18-currency → GBP rates for salary scoring.
+- `backend/src/services/domain_classifier.py` — `classify_user_domain`,
+  `source_matches_user_domains`. Consumed by `_build_sources()` to filter
+  sources by the user's professional domain.
+- `backend/src/services/salary.py` — `normalize_salary()` rolls hourly /
+  daily / weekly / monthly bands to annual GBP integer tuples.
+- `backend/src/services/scoring_dimensions.py` — four new dimension scorers:
+  `seniority_score`, `salary_score`, `visa_score`, `workplace_score`.
+- `backend/src/services/job_enrichment_schema.py` — strict Pydantic
+  `JobEnrichment` (18 fields, 8 enums, nested `SalaryBand`).
+- `backend/src/services/job_enrichment.py` — async `enrich_job()` wrapping
+  `llm_extract_validated()` + `has_/save_/load_enrichment()` DB helpers.
+- `backend/src/services/embeddings.py` — `encode_job()` via
+  `sentence-transformers/all-MiniLM-L6-v2`. Lazy-imports `sentence_transformers`
+  (CLAUDE.md rule #11 spirit); chunks long descriptions 300/50.
+- `backend/src/services/vector_index.py` — thin `VectorIndex` over
+  ChromaDB persistent collection at `backend/data/chroma/`. Lazy `chromadb`
+  import.
+- `backend/src/services/retrieval.py` — `reciprocal_rank_fusion(k=60)`,
+  `retrieve_for_user()`, `cross_encoder_rerank()`,
+  `is_hybrid_available()`. Lazy CrossEncoder import.
+- `backend/src/services/deduplicator.py` — four layers (exact key →
+  RapidFuzz → TF-IDF → embedding repost). Lazy `rapidfuzz` / `sklearn`
+  imports.
+
+### New tables (migrations 0008 / 0009)
+
+| Table | Migration | Purpose |
+|---|---|---|
+| `job_enrichment` | `0008` | 18-field LLM enrichment per job_id. Shared catalog. |
+| `job_embeddings` | `0009` | Audit row (job_id, model_version, timestamp). Actual vectors live in ChromaDB. |
+
+Both tables are **shared catalog** — no `user_id` column (rule #10).
+
+### New env vars
+
+| Var | Required | Default | Purpose |
+|---|---|---|---|
+| `ENRICHMENT_ENABLED` | No | `false` | Toggles Batch 2.5's LLM enrichment pipeline. |
+| `SEMANTIC_ENABLED` | No | `false` | Toggles Batch 2.6's sentence-transformers + ChromaDB path. |
+| `MIN_TITLE_GATE` / `MIN_SKILL_GATE` | No | `0.15` / `0.15` | Batch 2.2 gate thresholds (fraction of component max). |
+| `SALARY_WEIGHT` / `SENIORITY_WEIGHT` / `VISA_WEIGHT` / `WORKPLACE_WEIGHT` | No | `10` / `8` / `6` / `6` | Batch 2.9 dimension weights. |
+
+### New deps
+
+**Core (no opt-in):**
+- `rapidfuzz>=3.0` — Batch 2.10 Layer 2 fuzzy merge (lazy-imported).
+- `scikit-learn>=1.4` — Batch 2.10 Layer 3 TF-IDF (lazy-imported).
+
+**Opt-in (`[semantic]` extra, ~300 MB):**
+- `sentence-transformers>=2.2` — Batch 2.6 embeddings + Batch 2.8 rerank.
+- `numpy>=1.24`
+- `chromadb>=0.5`
+
+### Additional CLAUDE rules
+
+16. **Heavy deps (`sentence_transformers`, `chromadb`, `rapidfuzz`, `sklearn`) must be imported lazily inside the functions that use them.** This extends rule #11 (originally about `apprise`) to the Pillar 2 additions. A top-level import would pay ~150 ms to 2 s of startup on every process that merely imports `deduplicator` / `embeddings` / `retrieval` — including every pytest collection. See the lazy-import pattern in `_merge_fuzzy` / `_merge_tfidf` / `_load_encoder` / `_load_cross_encoder`.
+17. **`job_enrichment` and `job_embeddings` must NOT gain a `user_id` column** — they are shared catalog per blueprint §3 / CLAUDE.md rule #10. The same enriched fields apply to every user; per-user scoring against the enrichment happens at read time in `JobScorer(..., user_preferences=..., enrichment_lookup=...)`.
+18. **Pillar 2 feature flags (`ENRICHMENT_ENABLED` / `SEMANTIC_ENABLED`) default off.** Default behaviour when the flags are false must **exactly** match pre-Pillar-2 behaviour — no implicit semantic queries, no LLM calls. Test any new integration with both toggles explicitly OFF to confirm the no-op path.
+19. **JobScorer gained optional multi-dim kwargs** — `JobScorer(config, user_preferences=None, enrichment_lookup=None)`. Callers passing only `config` get the legacy 4-component formula; callers passing all three activate the 7-dim Batch-2.9 scoring. Do NOT flip defaults silently; legacy callers must keep getting legacy behaviour until the reviewer greenlights a coordinated rollout.
+
 ## Related Documentation
 
 - `STATUS.md` — Project phase status, what's complete, what's next, known issues, test coverage table
