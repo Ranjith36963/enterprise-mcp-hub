@@ -152,9 +152,19 @@ class JobDatabase:
         return await cursor.fetchone() is not None
 
     async def insert_job(self, job: Job) -> bool:
-        """Insert job, returning True if it was actually inserted (not a duplicate)."""
+        """Insert job, returning True if it was actually inserted (not a duplicate).
+
+        Step-1 B2: lifecycle timestamps (`first_seen_at`, `last_seen_at`) are honoured
+        when the caller supplies them on the Job dataclass; they fall back to
+        `datetime('now')` only when the Job attribute is None. This mirrors the
+        pattern already used for `posted_at`. `scraped_at` equivalent (the
+        internal `first_seen` audit column) stays always-now — it's an ingestion
+        timestamp, not a lifecycle timestamp.
+        """
         company, title = job.normalized_key()
         now = datetime.now(timezone.utc).isoformat()
+        first_seen_at = job.first_seen_at if job.first_seen_at is not None else now
+        last_seen_at = job.last_seen_at if job.last_seen_at is not None else now
         cursor = await self._conn.execute(
             """INSERT OR IGNORE INTO jobs
             (title, company, location, salary_min, salary_max, description,
@@ -180,8 +190,8 @@ class JobDatabase:
                 title,
                 now,
                 job.posted_at,
-                now,
-                now,
+                first_seen_at,
+                last_seen_at,
                 job.date_confidence,
                 job.date_posted_raw,
             ),

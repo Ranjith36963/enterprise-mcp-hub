@@ -37,6 +37,37 @@ def test_job_defaults():
     assert job.date_posted_raw is None
 
 
+def test_job_accepts_lifecycle_timestamp_fields():
+    """Step-1 B1: Job dataclass must accept first_seen_at / last_seen_at / staleness_state."""
+    job = Job(
+        title="ML Engineer",
+        company="Test Co",
+        apply_url="https://example.com",
+        source="reed",
+        date_found="2024-01-01T00:00:00Z",
+        first_seen_at="2020-01-01T00:00:00Z",
+        last_seen_at="2020-06-01T00:00:00Z",
+        staleness_state="active",
+    )
+    assert job.first_seen_at == "2020-01-01T00:00:00Z"
+    assert job.last_seen_at == "2020-06-01T00:00:00Z"
+    assert job.staleness_state == "active"
+
+
+def test_job_lifecycle_fields_default_to_none():
+    """Step-1 B1: lifecycle fields default to None so insert_job can apply fallback."""
+    job = Job(
+        title="ML Engineer",
+        company="Test Co",
+        apply_url="https://example.com",
+        source="reed",
+        date_found="2024-01-01T00:00:00Z",
+    )
+    assert job.first_seen_at is None
+    assert job.last_seen_at is None
+    assert job.staleness_state is None
+
+
 def test_job_accepts_five_column_date_fields():
     job = Job(
         title="ML Engineer",

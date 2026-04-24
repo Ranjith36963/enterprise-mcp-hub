@@ -36,6 +36,13 @@ class Job:
     posted_at: Optional[str] = None
     date_confidence: str = "low"
     date_posted_raw: Optional[str] = None
+    # Pillar 3 Batch 1 — lifecycle timestamps + ghost-detection state.
+    # first_seen_at: ingestion lifecycle start (None ⇒ insert_job defaults to now).
+    # last_seen_at: most-recent scrape that saw this job (None ⇒ insert_job defaults to now).
+    # staleness_state: active / stale / expired — managed by ghost detector.
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    staleness_state: Optional[str] = None
 
     def __post_init__(self):
         # Decode HTML entities in title and company
