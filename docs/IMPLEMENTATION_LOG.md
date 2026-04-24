@@ -858,3 +858,63 @@ column, per CLAUDE.md rule #10).
 Tag `pillar2-generator-complete` on `37646bb`. Reviewer worktree can walk
 the 10 commits in reverse order from this tag.
 
+---
+
+## Step 0 — Pre-Flight Completion
+
+**Merged:** 2026-04-24 — `step-0-preflight` fast-forwarded into `main`, pushed to `origin/main`.
+**Commits:** `eb5c030` (feat: Tier A+B+C, 25 items) → `55da9f4` (fix: missing `frontend/.env.local.example`).
+**Files changed:** 47 (+2,785 / −264).
+**Tests:** 600p/0f/3s → **1,018p/0f/3s** (+418, zero regressions).
+
+### Scope delivered (all three tiers — user-confirmed A+B+C)
+
+**Tier A (blocking — 12 items):**
+1. `backend/.env.example` — 32 vars across 10 logical groups (auth / frontend / LLM / job-boards / enrichment / notifications / scoring / salary / flags / ops) with inline signup URLs.
+2. Fresh-clone DB crash fixed — `src/repositories/database.py::_migrate()` backfills missing `run_log` observability columns so `init_db()` alone bootstraps cleanly on any schema state.
+3. `pre-commit install` active — `.pre-commit-config.yaml` gate now enforced (was present but not installed).
+4. `.gitattributes` — `sh=LF bat=CRLF` prevents CRLF corruption on Windows clone.
+5. `setup.bat` — Windows parity with `setup.sh` (Python guard, venv creation with `.venv\Scripts\activate` guidance, data-dir creation, `.env` template copy).
+6. `backend/scripts/bootstrap_dev.py` — end-to-end smoke (register 201 → auto-login cookie → multipart CV upload with `preferences` as JSON-string → async `/search` poll → feed row print). Reuses `fpdf2` inline CV generation from `tests/test_linkedin_github.py`.
+7. `_TEST_NOW` pinned across 6 `conftest.py` fixtures (test determinism for time-sensitive assertions).
+8. Migration `0010_run_log_observability.{up,down}.sql` — adds `run_uuid TEXT UNIQUE`, `per_source_errors`, `per_source_duration`, `total_duration`, `user_id`. Self-bootstrapping `CREATE-IF-NOT-EXISTS` + `ALTER` with idempotent duplicate-column-tolerance.
+9. `LOG_LEVEL` env var threaded through FastAPI lifespan in `src/api/main.py` + `src/core/settings.py`.
+10. `CONTRIBUTING.md` at repo root — branch naming, commit convention, PR flow.
+11. `frontend/README.md` + `backend/README.md` — sub-project onboarding with `/docs` + `/redoc` callout and `NEXT_PUBLIC_API_URL` ↔ `FRONTEND_ORIGIN` cross-wiring.
+12. `docs/README.md` index + 7 stale pillar-1/2 progress logs moved to `docs/_archive/`.
+
+**Tier B (velocity — 10 items):**
+- `Makefile` + `scripts/verify_step_0.py` — cross-platform gate aggregating env parity, migration idempotency, and smoke checks.
+- `scripts/check_env_example.py` — validates `.env.example` parity against runtime env reads.
+- Inspection tools: `scripts/dump_db.py`, `check_logs.py`, `check_worker.py`, `log_rotation_check.py`.
+- `docs/troubleshooting.md` (port conflicts, SQLite lock, CV parse fail, LLM key missing, Redis on Windows).
+- `STATUS.md` + `CLAUDE.md` staleness sweep (source count, test count, rule-set drift).
+- `migrations.runner status` tabular output (applied + pending).
+- `docs/pytest_baseline_seeds.txt` — 11 deterministic seeds for reproducible runs.
+- `pytest-xdist` + `@pytest.mark.fast` on 5 lightweight smoke tests (parallel CI via `pytest -n auto`).
+- `tests/test_migration_0010_down.py` — up→down→up round-trip verifies rollback safety.
+- `setup.sh` shebang + exit-on-error fix.
+
+**Tier C (polish — 3 items):**
+- `mypy strict=true` with heavy-dep overrides; `docs/mypy_backlog.md` captures 395 suppressible warnings (documented, not suppressed — future-pass backlog).
+- `README.md` enhanced with explicit `/docs` + `/redoc` API callout.
+- `pyproject.toml` version-pin consolidation.
+
+### Reviewer catch (`55da9f4`)
+
+Initial commit `eb5c030` claimed `frontend/.env.local.example` was added, but the file matched `frontend/.gitignore`'s `.env*` pattern and `git add` silently skipped it. Reviewer detected via `git check-ignore -v` and patched in `55da9f4`:
+- `frontend/.gitignore` grew a `!.env*.example` negation immediately after the `.env*` wildcard.
+- `frontend/.env.local.example` committed with the three-line stub (`NEXT_PUBLIC_API_URL` + pointer to backend's `FRONTEND_ORIGIN`).
+
+**Verification:** `git check-ignore -v frontend/.env.local.example` now exits non-zero — file tracks as intended. Classic `.gitignore` oversight; worth remembering the `!.env*.example` negation-after-wildcard pattern for future config file templates.
+
+### Deferred to Step 1 / later steps
+
+- Demo GIF / screenshots in README (Tier-C item, no data dependency) — cosmetic; defer to after dogfood.
+- Log-rotation alerts helper — scope fit better with operational hardening (Step 4).
+- Direct-URL verification for ghost detection (scaffolding exists, no caller) — Step 1 territory.
+
+### Next
+
+- **Step 1 (Batch S1 — Engine→API seam):** date-model fields, 7-dim score breakdown, `enrich_job()` invocation, `mode=hybrid` wiring. See `docs/ExecutionOrder.md` for the full 6-step roadmap.
+- **Tag candidate:** `step-0-done-2026-04-24` for quick-reference.
