@@ -1,6 +1,10 @@
 # Job360
 
-Automated UK job search system supporting any professional domain. Aggregates jobs from 48 sources, scores them 0-100 against your profile (CV, LinkedIn, GitHub, or manual preferences), deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Next.js frontend (backed by FastAPI). Without a profile, defaults to AI/ML job search.
+Automated UK job search system supporting any professional domain. Aggregates jobs from 50 sources, scores them 0-100 against your profile (CV, LinkedIn, GitHub, or manual preferences), deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, Rich terminal table, and a Next.js frontend (backed by FastAPI). Without a profile, defaults to AI/ML job search.
+
+### API docs (auto-generated)
+
+Once the backend is running (`cd backend && python main.py`), interactive API docs are served at **http://localhost:8000/docs** (Swagger UI) and **http://localhost:8000/redoc** (ReDoc). Both are generated from the FastAPI route decorators + Pydantic models — no separate maintenance.
 
 ## Architecture
 
@@ -9,7 +13,7 @@ flowchart TD
     CLI["CLI (Click)\njob360 run / view / api / status / sources / setup-profile"]
     Cron["Cron 4AM/4PM\nEurope/London"]
 
-    subgraph Sources["48 Job Sources"]
+    subgraph Sources["50 Job Sources"]
         direction LR
         subgraph Keyed["Keyed APIs (7)"]
             A1[Reed.co.uk]
@@ -157,11 +161,11 @@ flowchart TD
 - **Split requirements** — prod deps in `backend/pyproject.toml`, dev/test in `requirements-dev.txt`
 - **Hardened setup** — Python 3.9+ version check, idempotent installs, .env validation
 
-### Testing (406 tests)
+### Testing (600 passing (post-Step-0 pre-flight))
 
 | Test file | Count | What it covers |
 |-----------|-------|----------------|
-| `test_sources.py` | 71 | All 48 sources with mocked HTTP |
+| `test_sources.py` | 71 | All 50 sources with mocked HTTP |
 | `test_profile.py` | 55 | CV parser, preferences, keyword generator, JobScorer |
 | `test_linkedin_github.py` | 58 | LinkedIn PDF parsing (section-split + LLM), GitHub API enrichment |
 | `test_scorer.py` | 53 | Scoring algorithm, penalties, recency tiers, edge cases |
@@ -219,7 +223,7 @@ bash cron_setup.sh
 ## CLI Usage
 
 ```bash
-# Full pipeline — fetch from all 48 sources, score, deduplicate, notify
+# Full pipeline — fetch from all 50 sources, score, deduplicate, notify
 python -m src.cli run
 
 # Single source only
@@ -394,7 +398,7 @@ job360/
 │       ├── logger.py            # Rotating file + console logging
 │       ├── rate_limiter.py      # Async semaphore + delay rate limiter
 │       └── time_buckets.py      # Time bucket grouping for CLI view
-├── backend/tests/                       # 406 tests across 20 files
+├── backend/tests/                       # 600 passing (post-Step-0 pre-flight) across 20 files
 │   ├── conftest.py              # Shared fixtures (sample jobs)
 │   └── test_*.py                # 20 test modules
 ├── backend/data/                        # Exports, reports, logs (gitignored)
@@ -408,7 +412,7 @@ job360/
 ## Testing
 
 ```bash
-# Run all 406 tests
+# Run all 600 passing (post-Step-0 pre-flight)
 python -m pytest backend/tests/ -v
 
 # Run specific test file
@@ -418,7 +422,7 @@ python -m pytest backend/tests/test_scorer.py -v
 python -m pytest backend/tests/ -v -s
 ```
 
-All 406 tests pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
+All 600 passing (post-Step-0 pre-flight) pass. Every source is tested with mocked HTTP responses (aioresponses). No network access required. 3 tests skip on Windows (bash-only tests for setup.sh and cron_run.sh).
 
 ## Output
 

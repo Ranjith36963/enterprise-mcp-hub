@@ -1,11 +1,12 @@
 # Job360 Project Status
 
-## Current State: Phase 2 Complete
+## Current State: Pillar 2 merged; Pillar 3 Batches 1 – 3.5.4 merged; Step-0 pre-flight underway
 
-**Last updated:** 2026-04-11
-**Total tests:** 412 across 21 test modules
-**Source files:** 47 source files in `backend/src/sources/` (excluding `__init__.py` and `base.py`) | **Test files:** 21 test modules
-**Job sources:** 48 registered in SOURCE_REGISTRY (47 source files; indeed.py handles both Indeed + Glassdoor)
+**Last updated:** 2026-04-23
+**Total tests:** 600 passing / 0 failing / 3 skipped (3.5.4 green baseline; Step-0 migration test to be added next)
+**Source files:** ~49 source files in `backend/src/sources/` (excluding `__init__.py` and `base.py`) split into 6 category subfolders | **Test files:** 21+ test modules
+**Job sources:** 50 registered in `SOURCE_REGISTRY` post-Batch-3 rotation (added teaching_vacancies, gov_apprenticeships, nhs_jobs_xml, rippling, comeet; dropped yc_companies, nomis, findajob). See CLAUDE.md rule #13 for the five load-bearing surfaces that move together on a registry change.
+**Latest merged head:** `5fb3c07` on `main` (Pillar 2 post-review patch). Pillar-3 batches 1 / 2 / 3 / 3.5 / 3.5.1 / 3.5.2 / 3.5.3 / 3.5.4 merged on top.
 
 ---
 
@@ -101,21 +102,54 @@
 
 ---
 
+## What's Next (Step 0 → Step 1)
+
+**Step 0 — Pre-flight hardening (in progress, 2026-04-23):** the plan in
+`docs/step_zero_prompt.md` is being executed on `worktree-generator`. Tier-A
+items complete; Tier-B items partially landed (inspection scripts, fresh-clone
+DB fix, pre-commit install, setup.bat, bootstrap_dev smoke, migration 0010
+observability columns, `LOG_LEVEL` threading, `.env.example` groupings,
+frontend/backend READMEs, `docs/README.md` index, `.gitattributes`,
+`_TEST_NOW` determinism, CONTRIBUTING.md, `frontend/.env.local.example`,
+setup.sh pyproject/backend-data fix, docs/troubleshooting.md). Tier-B
+remaining: Makefile + `verify-step-0` + `check_env_example.py`, pytest-xdist
++ fast marker, migrations runner `status` enhancement, down() migration
+integration test, this STATUS refresh, CLAUDE.md staleness sweep. Tier-C:
+mypy strict gate, log-rotation helper, README API-docs callout.
+
+**Step 1 — engine → API seam (next):** wire Pillar-2 multi-dim scoring
+(`JobScorer(config, user_preferences, enrichment_lookup)`) + hybrid
+retrieval (`retrieval.retrieve_for_user`) into the `/api/jobs` + `/api/search`
+HTTP routes, gated on the existing `SEMANTIC_ENABLED` / `ENRICHMENT_ENABLED`
+flags. Batch 2.7 hybrid mode currently exists only at module level; Step 1
+surfaces it to the dashboard. Target: one-flag flip in prod to activate the
+full Pillar-2 ranking stack for logged-in users.
+
+**After Step 1:** Pillar-3 Batch 4 launch readiness (scope-down to top 10-15
+sources, freemium metering, ICO £40 registration, privacy notice + LIA,
+ASA-compliant copy, Amazon SES, prod-Redis smoke). See the MEMORY notes for
+the carried-forward P3 items from Batch 3.5.
+
+---
+
 ## What Is Working Right Now
 
-- Full 48-source pipeline runs end-to-end (async fetch, score, dedup, store, notify)
-- Profile system: CV + LinkedIn + GitHub enrichment → dynamic keywords → personalised search
+- Full 50-source pipeline runs end-to-end (async fetch, score, dedup, store, notify) with `TieredScheduler` wired into `run_search` (Batch 3 / 3.5)
+- Profile system: CV + LinkedIn + GitHub enrichment → dynamic keywords → personalised search (LLM-only CV parser via multi-provider fallback: Gemini / Groq / Cerebras)
+- Multi-user delivery layer (Batch 2): auth + per-tenant isolation + ARQ worker (`WorkerSettings` + `send_notification`) + Apprise dispatcher + `FeedService` SSOT
+- Multi-user profile storage (Batch 3.5.2): migration `0006_user_profiles` + per-user `_search_config_for`
+- Conditional-cache pilot (Batch 3.5.3): `nhs_jobs_xml` confirmed live ETag → 304; `scripts/preflight_conditional_cache.py` for future candidates
 - All 7 keyed APIs skip gracefully when keys are empty
-- All 10 ATS boards iterate over ~104 company slugs
-- All 8 RSS/XML feeds parse correctly with mocked data
-- All 7 HTML scrapers extract job data with regex
-- Scoring produces 0-100 with correct penalties
-- Deduplication merges same jobs from different sources
-- SQLite database with auto-purge (30 days)
-- Email, Slack, Discord notifications (when configured)
+- All ATS boards iterate over ~268 company slugs (10 platforms including Rippling + Comeet from Batch 3)
+- All RSS/XML feeds parse correctly with mocked data
+- All HTML scrapers extract job data with regex
+- Pillar 2 multi-dim scoring available when `JobScorer(..., user_preferences=..., enrichment_lookup=...)` is wired (7-dim: title/skill/location/recency + seniority/salary/visa/workplace); legacy 4-component path unchanged by default
+- Pillar 2 opt-in features behind flags (OFF by default): `ENRICHMENT_ENABLED` (LLM enrichment pipeline), `SEMANTIC_ENABLED` (sentence-transformers + ChromaDB)
+- SQLite database with auto-purge (30 days); shared `jobs` catalog + per-user `user_feed` / `user_actions` / `applications`
+- Email, Slack, Discord (built-in channels) + Apprise-backed multi-channel dispatch (Batch 2)
 - CLI commands: run, view, api, status, sources, setup-profile
 - Next.js frontend (at `frontend/`) + FastAPI backend (at `backend/src/api/`) deliver the interactive UI
-- 406 tests pass (3 skip on Windows)
+- 600 tests pass (3 skip on Windows — bash-only `setup.sh` / `cron_run.sh` tests)
 
 ---
 
@@ -140,11 +174,14 @@
 | Issue | Severity | Notes |
 |-------|----------|-------|
 | 3 tests skip on Windows | Low | bash-only tests for `setup.sh` and `cron_run.sh` — pass on Linux/Mac |
-| CV parser section detection | Low | Regex-based — may miss non-standard CV formats. Works for ~80% of CVs |
-| No skill inference | Medium | Profile system only extracts explicitly listed skills. Users must add related skills via preferences |
-| python-jobspy not in backend/pyproject.toml | Low | Intentionally optional (heavy dependencies). Indeed/Glassdoor source skips with warning if not installed. |
+| `test_main.py` still hits live Indeed | Medium | JobSpy source lacks mock coverage; full suite run can take ~32 min. Documented in MEMORY notes; mocking tracked for a future batch. Rule #4 (mock all HTTP) is otherwise clean across the 600-test baseline. |
+| Layer-4 embedding repost dedup not activated | Medium | Scaffolded in `backend/src/services/deduplicator.py` but gated behind `SEMANTIC_ENABLED`; ChromaDB-backed layer is opt-in and not yet wired into the default pipeline path. |
+| Batch 2.7 hybrid mode flag not wired to HTTP routes | Medium | `retrieval.reciprocal_rank_fusion` / `is_hybrid_available()` exist but no `/api/jobs` route consults them yet — only CLI / worker consumers. Pillar-2 user-visible hybrid ranking still behind the flag and not surfaced in the dashboard. |
+| No skill inference beyond what the LLM extracts | Medium | Profile system relies on LLM-extracted skills + explicit user additions; implicit skill expansion from titles ("Data Scientist" → Python/SQL) not implemented. Partially mitigated by `skill_synonyms.py` canonicalisation (Batch 2.3). |
+| python-jobspy not in backend/pyproject.toml core deps | Low | Intentionally optional (heavy dependencies). Indeed/Glassdoor source skips with warning if not installed. |
 | GITHUB_TOKEN optional | Low | Without token, GitHub API rate limit is 60 req/hr. With token: 5000 req/hr. Profile enrichment may fail for users with many repos without a token. |
 | pdfminer/cryptography conflict | Low | Environment-specific: pyo3 panic in cryptography lib breaks pdfplumber import in some environments |
+| Heavy deps must stay lazy-imported | Low (guardrail) | `sentence_transformers`, `chromadb`, `rapidfuzz`, `sklearn`, `apprise` must be imported inside functions, never at module top level. Enforced by CLAUDE.md rules #11 + #16. A stray top-level import regresses pytest collection time by 150 ms – 2 s per process. |
 
 ---
 
@@ -152,7 +189,7 @@
 
 | Test file | Module tested | Tests |
 |-----------|--------------|-------|
-| `test_sources.py` | All 48 sources | 71 |
+| `test_sources.py` | All 50 sources | 71+ |
 | `test_profile.py` | `backend/src/profile/*`, `JobScorer` | 55 |
 | `test_linkedin_github.py` | LinkedIn parser, GitHub enricher | 54 |
 | `test_scorer.py` | `skill_matcher.py` scoring | 53 |
@@ -172,7 +209,8 @@
 | `test_cron.py` | cron_run.sh | 5 |
 | `test_cli_view.py` | `cli_view.py` | 5 |
 | `test_csv_export.py` | CSV export | 4 |
-| **Total** | | **406** (3 skip on Windows) |
+| (Plus Pillar-2/-3 additions) | migrations, auth, feed, prefilter, channels, crypto, dispatcher, scheduler, circuit_breaker, conditional_cache, embeddings, retrieval, enrichment, dedup layers, Pillar-2 scoring dims | +~190 |
+| **Total (current green baseline)** | | **600** passing / 0 failing / 3 skipped on Windows (post-3.5.4) |
 
 ### Not covered or lightly covered
 
@@ -203,5 +241,5 @@ python -m src.cli run --dry-run --log-level DEBUG
 
 # Check source count
 python -c "from src.main import SOURCE_REGISTRY; print(len(SOURCE_REGISTRY))"
-# Output: 48
+# Output: 50 (post-Batch-3 rotation)
 ```

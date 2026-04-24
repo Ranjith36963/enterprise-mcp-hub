@@ -33,6 +33,7 @@ CLI::
     python -m migrations.runner down
     python -m migrations.runner status
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -63,6 +64,18 @@ async def _applied_ids(db: aiosqlite.Connection) -> list[str]:
     return [row[0] for row in await cur.fetchall()]
 
 
+async def _applied_map(db: aiosqlite.Connection) -> dict[str, str]:
+    """Return ``{stem: applied_at}`` for every recorded migration.
+
+    Used by the enhanced ``status`` CLI printer (Step-0 Tier B) to show the
+    timestamp column. Keeps the legacy ``_applied_ids`` helper in place so
+    existing callers (``up`` / ``down`` / the library-facing ``status`` dict)
+    don't change shape.
+    """
+    cur = await db.execute("SELECT id, applied_at FROM _schema_migrations ORDER BY id")
+    return {row[0]: row[1] for row in await cur.fetchall()}
+
+
 def _discover_pairs(migrations_dir: Path) -> list[str]:
     """Return migration stems (``NNNN_name``) sorted lexically.
 
@@ -76,6 +89,45 @@ def _discover_pairs(migrations_dir: Path) -> list[str]:
         if down.exists():
             stems.append(stem)
     return stems
+
+
+def _split_sql_statements(sql: str) -> list[str]:
+    """Split a SQL script into statements on naive ``;`` boundaries.
+
+    Good enough for the repo's migrations (no embedded semicolons inside
+    string literals). Strips comment-only lines so pure-comment statements
+    don't reach the executor.
+    """
+    lines = [line for line in sql.splitlines() if not line.lstrip().startswith("--")]
+    cleaned = "\n".join(lines)
+    return [s.strip() for s in cleaned.split(";") if s.strip()]
+
+
+async def _apply_up_sql(db: aiosqlite.Connection, sql: str) -> None:
+    """Run the up SQL statement-by-statement, tolerating a pre-existing
+    forward state for idempotent ``ADD COLUMN`` statements.
+
+    Motivation: the legacy ``_migrate()`` in ``src/repositories/database.py``
+    backfills jobs + run_log columns at every ``init_db()`` boot. When a
+    test or tool calls ``init_db`` and then ``runner.up`` on the same DB,
+    the raw ``ALTER TABLE ... ADD COLUMN`` in a migration SQL file would
+    fail with ``duplicate column name``. We swallow that specific error
+    so the runner records the stem as applied and moves on — the column
+    is already in place, which is the migration's net effect anyway.
+
+    Any OTHER error (syntax, missing table, constraint conflict) is still
+    re-raised so real migration bugs surface loudly.
+    """
+    for stmt in _split_sql_statements(sql):
+        try:
+            await db.execute(stmt)
+        except Exception as exc:  # aiosqlite wraps sqlite3.OperationalError
+            msg = str(exc).lower()
+            is_add_column = "alter table" in stmt.lower() and "add column" in stmt.lower()
+            if is_add_column and "duplicate column name" in msg:
+                # _migrate() already added this column; no-op.
+                continue
+            raise
 
 
 async def up(
@@ -97,8 +149,7 @@ async def up(
             if stem in done:
                 continue
             sql = (mdir / f"{stem}.up.sql").read_text()
-            # executescript does not support parameters and commits on entry.
-            await db.executescript(sql)
+            await _apply_up_sql(db, sql)
             await db.execute(
                 "INSERT INTO _schema_migrations(id, applied_at) VALUES (?, ?)",
                 (stem, datetime.now(timezone.utc).isoformat()),
@@ -147,6 +198,65 @@ async def status(
     return {"applied": applied, "pending": pending}
 
 
+async def _status_rows(
+    db_path: str,
+    *,
+    migrations_dir: Optional[Path] = None,
+) -> tuple[list[tuple[str, str, str]], bool]:
+    """Return ``(rows, had_table)`` where rows = ``[(stem, state, applied_at)]``.
+
+    ``had_table`` is False when ``_schema_migrations`` did not exist prior to
+    this call (the CLI printer surfaces a hint to run ``up`` first). The call
+    itself still creates the table (via the shared ``_ensure_table`` helper)
+    so re-invoking ``status`` is idempotent and matches the library contract.
+    """
+    mdir = migrations_dir or MIGRATIONS_DIR
+    async with aiosqlite.connect(db_path) as db:
+        # Detect pre-existing schema-migrations table before _ensure_table
+        # would create it, so the CLI printer can surface "run up first".
+        cur = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_migrations'")
+        had_table = (await cur.fetchone()) is not None
+        await _ensure_table(db)
+        applied = await _applied_map(db)
+    all_pairs = _discover_pairs(mdir)
+    rows: list[tuple[str, str, str]] = []
+    for stem in all_pairs:
+        if stem in applied:
+            rows.append((stem, "applied", applied[stem] or ""))
+        else:
+            rows.append((stem, "pending", ""))
+    # Include applied stems whose up.sql / down.sql files are gone (rare —
+    # usually means a local branch removed a migration that a prior branch
+    # applied). Surface them so operators notice.
+    for stem, ts in applied.items():
+        if stem not in {r[0] for r in rows}:
+            rows.append((stem, "applied (orphan)", ts or ""))
+    return rows, had_table
+
+
+def _format_status_table(rows: list[tuple[str, str, str]]) -> str:
+    """Render the ``status`` rows as a plain-text aligned table (stdlib only).
+
+    Backwards-compat: the last line is still ``applied: N / pending: M`` so
+    existing CI greps keep working.
+    """
+    headers = ("Stem", "State", "Applied at")
+    widths = [len(h) for h in headers]
+    for r in rows:
+        for i, cell in enumerate(r):
+            widths[i] = max(widths[i], len(cell))
+    lines: list[str] = []
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    lines.append(fmt.format(*headers))
+    lines.append("  ".join("-" * w for w in widths))
+    for r in rows:
+        lines.append(fmt.format(*r))
+    applied_n = sum(1 for r in rows if r[1].startswith("applied"))
+    pending_n = sum(1 for r in rows if r[1] == "pending")
+    lines.append(f"applied: {applied_n} / pending: {pending_n}")
+    return "\n".join(lines)
+
+
 def _cli() -> int:
     if len(sys.argv) < 2:
         print("usage: python -m migrations.runner [up|down|status] [db_path]", file=sys.stderr)
@@ -161,9 +271,15 @@ def _cli() -> int:
         result = asyncio.run(down(db_path))
         print("reverted:", result or "<none>")
     elif cmd == "status":
-        result = asyncio.run(status(db_path))
-        print("applied:", result["applied"] or "<none>")
-        print("pending:", result["pending"] or "<none>")
+        rows, had_table = asyncio.run(_status_rows(db_path))
+        if not had_table:
+            print("no migrations table — run `up` first")
+        if not rows:
+            # No migrations discovered on disk AND none applied — still emit
+            # the legacy summary line so CI greps don't break.
+            print("applied: 0 / pending: 0")
+        else:
+            print(_format_status_table(rows))
     else:
         print(f"unknown command: {cmd}", file=sys.stderr)
         return 2

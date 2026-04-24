@@ -35,10 +35,10 @@ fi
 echo "[3/4] Installing dependencies..."
 source venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e backend/
 
 # Create data directories
-mkdir -p data/exports data/reports data/logs
+mkdir -p backend/data/exports backend/data/reports backend/data/logs
 
 # Create .env if missing
 if [ ! -f ".env.example" ]; then
@@ -67,7 +67,7 @@ echo ""
 echo "  Next steps:"
 echo "    1. Edit .env with your API keys"
 echo "    2. Run: source venv/bin/activate"
-echo "    3. Run: python -m src.cli run"
-echo "    4. Start API: python -m src.cli api  (then run the Next.js frontend)"
+echo "    3. Run: cd backend && python -m src.cli run"
+echo "    4. Start API: cd backend && python -m src.cli api  (then run the Next.js frontend)"
 echo "    5. Set up cron: bash cron_setup.sh"
 echo ""

@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+
+import pytest
+
 from src.models import Job
 from src.services.deduplicator import deduplicate
 
@@ -17,6 +20,7 @@ def _make_job(**overrides):
     return Job(**defaults)
 
 
+@pytest.mark.fast
 def test_dedup_identical_jobs():
     jobs = [
         _make_job(source="reed", apply_url="https://reed.co.uk/1"),
@@ -142,8 +146,7 @@ def test_dedup_company_region_suffix():
 # ---------------------------------------------------------------------------
 
 
-import time
-
+import time  # noqa: E402  # late import — used only by Layer-2/3/4 tests below
 
 # --- Layer 2 — RapidFuzz ---------------------------------------------------
 
@@ -181,10 +184,8 @@ def test_layer2_fuzzy_respects_different_locations():
     because locations differ.
     """
     jobs = [
-        _make_job(title="ML Engineer", company="Stripe",
-                  location="London", description="desc"),
-        _make_job(title="ML Engineer", company="Striipe",
-                  location="Manchester", description="desc"),
+        _make_job(title="ML Engineer", company="Stripe", location="London", description="desc"),
+        _make_job(title="ML Engineer", company="Striipe", location="Manchester", description="desc"),
     ]
     # enable_tfidf=False: Layer 3 would otherwise collapse jobs with
     # identical descriptions. We're testing Layer 2 in isolation.
@@ -215,10 +216,8 @@ def test_layer2_fuzzy_disabled_by_flag():
 def test_layer2_fuzzy_keeps_higher_ranked_on_merge():
     """When fuzzy collapses two candidates, the higher-ranked one wins."""
     jobs = [
-        _make_job(title="Senior Data Engineer", company="Acme Corporation",
-                  match_score=70),
-        _make_job(title="Senior Data Engineer", company="Acme Corporatin",
-                  match_score=85),
+        _make_job(title="Senior Data Engineer", company="Acme Corporation", match_score=70),
+        _make_job(title="Senior Data Engineer", company="Acme Corporatin", match_score=85),
     ]
     result = deduplicate(jobs)
     assert len(result) == 1
@@ -254,9 +253,9 @@ def test_layer3_tfidf_merges_reposts_with_similar_descriptions():
             source="reed",
         ),
         _make_job(
-            title="Principal Data Technologist",    # completely different noun phrase — fuzzy misses
+            title="Principal Data Technologist",  # completely different noun phrase — fuzzy misses
             company="Globex",
-            description=base_desc,                   # identical body
+            description=base_desc,  # identical body
             source="adzuna",
         ),
     ]
@@ -267,10 +266,8 @@ def test_layer3_tfidf_merges_reposts_with_similar_descriptions():
 def test_layer3_tfidf_disabled_by_flag():
     base_desc = "Python SQL Airflow ETL pipelines senior data engineer"
     jobs = [
-        _make_job(title="Data Pipeline Engineer", company="Globex",
-                  description=base_desc),
-        _make_job(title="Pipeline Data Architect", company="Globex",
-                  description=base_desc + " senior."),
+        _make_job(title="Data Pipeline Engineer", company="Globex", description=base_desc),
+        _make_job(title="Pipeline Data Architect", company="Globex", description=base_desc + " senior."),
     ]
     result = deduplicate(jobs, enable_fuzzy=False, enable_tfidf=False)
     assert len(result) == 2
@@ -279,10 +276,10 @@ def test_layer3_tfidf_disabled_by_flag():
 def test_layer3_tfidf_keeps_unrelated_jobs_apart():
     """TF-IDF must not over-merge jobs with different content."""
     jobs = [
-        _make_job(title="Pharmacist", company="Boots",
-                  description="Dispense prescriptions, advise patients on medication."),
-        _make_job(title="Data Engineer", company="Acme",
-                  description="Build ETL pipelines in Python."),
+        _make_job(
+            title="Pharmacist", company="Boots", description="Dispense prescriptions, advise patients on medication."
+        ),
+        _make_job(title="Data Engineer", company="Acme", description="Build ETL pipelines in Python."),
     ]
     result = deduplicate(jobs)
     assert len(result) == 2
@@ -303,14 +300,17 @@ def test_layer3_tfidf_handles_empty_descriptions():
 
 def test_layer4_embedding_repost_same_company_merged():
     """Two jobs at same company with near-identical embeddings → one repost."""
-    j1 = _make_job(title="ML Engineer", company="Acme", source="reed",
-                   description="Role A", match_score=80)
+    j1 = _make_job(title="ML Engineer", company="Acme", source="reed", description="Role A", match_score=80)
     j1.id = 101
     j1.first_seen_at = "2026-04-01T00:00:00+00:00"
 
-    j2 = _make_job(title="Machine Learning Lead", company="Acme",
-                   source="adzuna",  # fuzzy-different title
-                   description="Role B — later repost", match_score=70)
+    j2 = _make_job(
+        title="Machine Learning Lead",
+        company="Acme",
+        source="adzuna",  # fuzzy-different title
+        description="Role B — later repost",
+        match_score=70,
+    )
     j2.id = 102
     j2.first_seen_at = "2026-04-20T00:00:00+00:00"
 
@@ -350,11 +350,9 @@ def test_layer4_embedding_different_company_not_merged():
 
 def test_layer4_embedding_below_threshold_not_merged():
     """Cosine < 0.92 at same company → keep both."""
-    j1 = _make_job(title="ML Engineer", company="Acme",
-                   description="pytorch role")
+    j1 = _make_job(title="ML Engineer", company="Acme", description="pytorch role")
     j1.id = 301
-    j2 = _make_job(title="Data Analyst", company="Acme",
-                   description="sql role")
+    j2 = _make_job(title="Data Analyst", company="Acme", description="sql role")
     j2.id = 302
     embed = {301: [1.0, 0.0], 302: [0.0, 1.0]}  # orthogonal
     result = deduplicate(
@@ -376,7 +374,7 @@ def test_layer4_embedding_missing_id_skips_gracefully():
         enable_embedding_repost=True,
         embedding_lookup={},
     )
-    assert len(result) >= 1   # depending on Layer-1 title overlap
+    assert len(result) >= 1  # depending on Layer-1 title overlap
 
 
 def test_layer4_embedding_off_by_default():
@@ -385,7 +383,7 @@ def test_layer4_embedding_off_by_default():
     j1.id = 1
     j2 = _make_job(title="Y", company="Acme")
     j2.id = 2
-    embed = {1: [1.0, 0.0], 2: [1.0, 0.0]}   # would merge if enabled
+    embed = {1: [1.0, 0.0], 2: [1.0, 0.0]}  # would merge if enabled
     result = deduplicate([j1, j2], embedding_lookup=embed)
     # Without enable_embedding_repost=True, the embedding layer doesn't run.
     assert len(result) >= 1
@@ -398,8 +396,8 @@ def test_dedup_10k_jobs_finishes_quickly():
     """Plan §4 Batch 2.10 — dedup over 10K synthetic jobs completes in <5s."""
     jobs = [
         _make_job(
-            title=f"Engineer {i % 500}",     # 500 distinct roles
-            company=f"Company {i % 200}",    # 200 distinct companies
+            title=f"Engineer {i % 500}",  # 500 distinct roles
+            company=f"Company {i % 200}",  # 200 distinct companies
             description=f"Role description {i}",
             source="reed" if i % 2 == 0 else "adzuna",
         )

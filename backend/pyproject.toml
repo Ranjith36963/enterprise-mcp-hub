@@ -48,6 +48,11 @@ dev = [
     # during cleanup batches only, once a run shows 0f across N
     # seeds it's safe to flip CI over.
     "pytest-randomly>=4.0",
+    # Step-0 pre-flight (Tier B) — parallel test execution via
+    # `pytest -n auto`. Off by default; opt-in during long-running
+    # cycles to cut wall-clock time on the 600+ test suite.
+    "pytest-xdist>=3.0.0",
+    "mypy>=1.10.0",
 ]
 indeed = [
     "python-jobspy",
@@ -88,6 +93,12 @@ pythonpath = ["."]
 # explicitly enables it via `pytest -p randomly ...` during a
 # flake-hunt session.
 addopts = "-p no:randomly"
+# Step-0 pre-flight (Tier B) — registered markers. Keep this list
+# alphabetised; custom markers without registration raise
+# PytestUnknownMarkWarning and poison CI logs.
+markers = [
+    "fast: smoke subset runnable in < 5s",
+]
 
 [tool.ruff]
 target-version = "py39"
@@ -95,10 +106,84 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "G"]
-ignore = ["S101"]  # allow assert in tests
+# UP007 (Optional → X | None) requires py3.10+ at runtime; project supports
+# py3.9 so keep the explicit Optional[] form in source.
+ignore = ["S101", "UP007"]
+
+[tool.ruff.lint.per-file-ignores]
+# Dev CLI helpers: subprocess + SQL-string concat are expected; input comes
+# from argparse + known-safe table names. Globs are relative to this
+# pyproject.toml (the `backend/` directory), so `scripts/*` matches
+# `backend/scripts/*.py` at the repo level.
+"scripts/*" = ["S603", "S607", "S608"]
+"scripts/bootstrap_dev.py" = ["S105", "S603", "S607"]
+"migrations/runner.py" = ["S603", "S607"]
 
 [tool.mypy]
-python_version = "3.9"
+# Step-0 pre-flight (Tier C) — mypy strict gate. We set python_version to
+# 3.10 here (not 3.9 despite requires-python) because the codebase already
+# uses 3.10+ union syntax (X | Y) pervasively; setting 3.9 produced 62
+# bogus "syntax requires 3.10" errors. Runtime support for 3.9 is preserved
+# by `from __future__ import annotations` at the top of modules that need
+# to run on 3.9 — that's a runtime concern, not a static-check one.
+python_version = "3.10"
+strict = true
 warn_return_any = true
 warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "backend"
+
+# Ignore missing stubs for heavy / optional dependencies. Many of these
+# are lazy-imported at call sites (CLAUDE.md rules #11, #16) and do not
+# ship type stubs. Silence them globally so strict-mode doesn't drown
+# in "no module named X" / "no type hints for X" noise.
+[[tool.mypy.overrides]]
+module = [
+    "sentence_transformers.*",
+    "sentence_transformers",
+    "chromadb.*",
+    "chromadb",
+    "rapidfuzz.*",
+    "rapidfuzz",
+    "sklearn.*",
+    "sklearn",
+    "apprise.*",
+    "apprise",
+    "fpdf.*",
+    "fpdf",
+    "pdfplumber.*",
+    "pdfplumber",
+    "docx.*",
+    "docx",
+    "jobspy.*",
+    "jobspy",
+    "groq.*",
+    "groq",
+    "cerebras.*",
+    "cerebras",
+    "google.generativeai.*",
+    "google.generativeai",
+    "google.*",
+    "google",
+    "argon2.*",
+    "argon2",
+    "aioresponses.*",
+    "aioresponses",
+    "arq.*",
+    "arq",
+    "torch.*",
+    "torch",
+]
 ignore_missing_imports = true
+follow_imports = "skip"
+
+# Relax strict-mode checks on test code — tests intentionally monkeypatch
+# and type-cast widely.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false

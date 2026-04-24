@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import pytest
+
 from src.models import Job
 
 
@@ -65,6 +66,7 @@ def test_normalized_key():
     assert key == ("deepmind", "ai engineer")
 
 
+@pytest.mark.fast
 def test_normalized_key_strips_suffixes():
     for suffix in ["Ltd", "Limited", "Inc", "PLC", "Corporation", "Corp", "Group"]:
         job = Job(
@@ -143,30 +145,52 @@ def test_html_decode_company():
 
 
 def test_salary_low_nullified():
-    job = Job(title="AI Engineer", company="Test", salary_min=50, salary_max=80000,
-              apply_url="x", source="a", date_found="x")
+    job = Job(
+        title="AI Engineer", company="Test", salary_min=50, salary_max=80000, apply_url="x", source="a", date_found="x"
+    )
     assert job.salary_min is None
     assert job.salary_max == 80000
 
 
 def test_salary_high_nullified():
-    job = Job(title="AI Engineer", company="Test", salary_min=50000, salary_max=999999,
-              apply_url="x", source="a", date_found="x")
+    job = Job(
+        title="AI Engineer",
+        company="Test",
+        salary_min=50000,
+        salary_max=999999,
+        apply_url="x",
+        source="a",
+        date_found="x",
+    )
     assert job.salary_min == 50000
     assert job.salary_max is None
 
 
 def test_salary_normal_unchanged():
-    job = Job(title="AI Engineer", company="Test", salary_min=60000, salary_max=90000,
-              apply_url="x", source="a", date_found="x")
+    job = Job(
+        title="AI Engineer",
+        company="Test",
+        salary_min=60000,
+        salary_max=90000,
+        apply_url="x",
+        source="a",
+        date_found="x",
+    )
     assert job.salary_min == 60000
     assert job.salary_max == 90000
 
 
 def test_salary_boundary_kept():
     """10000 and 500000 are at the boundary and should be kept."""
-    job = Job(title="AI Engineer", company="Test", salary_min=10000, salary_max=500000,
-              apply_url="x", source="a", date_found="x")
+    job = Job(
+        title="AI Engineer",
+        company="Test",
+        salary_min=10000,
+        salary_max=500000,
+        apply_url="x",
+        source="a",
+        date_found="x",
+    )
     assert job.salary_min == 10000
     assert job.salary_max == 500000
 
@@ -183,8 +207,7 @@ def test_normalized_key_strips_region_suffix():
 
 def test_normalized_key_strips_region_suffix_variants():
     for suffix in ["UK", "US", "USA", "DE", "SG", "EU", "EMEA", "APAC", "Global", "International"]:
-        job = Job(title="Data Scientist", company=f"Acme {suffix}",
-                  apply_url="x", source="a", date_found="x")
+        job = Job(title="Data Scientist", company=f"Acme {suffix}", apply_url="x", source="a", date_found="x")
         company, _ = job.normalized_key()
         assert company == "acme", f"Failed to strip region suffix '{suffix}'"
 

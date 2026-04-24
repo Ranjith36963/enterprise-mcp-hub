@@ -1,8 +1,13 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Root logging level — read once at import so every entrypoint (FastAPI,
+# CLI, ARQ worker) sees the same value. Tier-A Step-0 pre-flight #9.
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -67,9 +72,7 @@ WORKPLACE_WEIGHT = int(os.getenv("WORKPLACE_WEIGHT", "6"))
 # Pillar 2 Batch 2.6 — semantic stack feature flag.
 # When false (default), embeddings + ChromaDB + ESCO normalisation all skip.
 # When true, callers that check this flag activate the semantic retrieval path.
-SEMANTIC_ENABLED = os.getenv("SEMANTIC_ENABLED", "false").lower() in {
-    "1", "true", "yes", "on"
-}
+SEMANTIC_ENABLED = os.getenv("SEMANTIC_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
 # Target salary range (GBP, annual) — used for tiebreaker sorting, not scoring
 TARGET_SALARY_MIN = int(os.getenv("TARGET_SALARY_MIN", "40000"))
@@ -124,11 +127,11 @@ RATE_LIMITS = {
     "aijobs_global": {"concurrent": 2, "delay": 1.0},
     "aijobs_ai": {"concurrent": 1, "delay": 2.0},
     # Batch 3 additions — published rate-limits cited in each source's tests
-    "teaching_vacancies": {"concurrent": 1, "delay": 2.0},   # no stated cap, polite
+    "teaching_vacancies": {"concurrent": 1, "delay": 2.0},  # no stated cap, polite
     "gov_apprenticeships": {"concurrent": 1, "delay": 2.0},  # 150 req / 5 min
-    "nhs_jobs_xml": {"concurrent": 1, "delay": 2.0},         # feed XML, 15-min tier
-    "rippling": {"concurrent": 2, "delay": 1.5},             # ATS, 60s tier
-    "comeet": {"concurrent": 2, "delay": 1.5},               # ATS, 60s tier
+    "nhs_jobs_xml": {"concurrent": 1, "delay": 2.0},  # feed XML, 15-min tier
+    "rippling": {"concurrent": 2, "delay": 1.5},  # ATS, 60s tier
+    "comeet": {"concurrent": 2, "delay": 1.5},  # ATS, 60s tier
 }
 
 # Retry

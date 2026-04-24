@@ -1,9 +1,13 @@
 """FastAPI application for Job360 backend."""
+
+import logging
 import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api.dependencies import init_db, close_db
+
+from src.api.dependencies import close_db, init_db
 from src.api.routes import (
     actions,
     auth,
@@ -14,10 +18,18 @@ from src.api.routes import (
     profile,
     search,
 )
+from src.core.settings import LOG_LEVEL
+from src.utils.logger import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Tier-A Step-0 #9 — honour LOG_LEVEL env var at process boot.
+    # setup_logging() configures the "job360" subtree; we also set the root
+    # logger so libraries (uvicorn, fastapi, httpx) inherit the same level
+    # when they haven't been individually configured.
+    setup_logging(LOG_LEVEL)
+    logging.getLogger().setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
     await init_db()
     yield
     await close_db()

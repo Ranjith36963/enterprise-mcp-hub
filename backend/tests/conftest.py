@@ -1,9 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from pathlib import Path
 
-import aiosqlite
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
@@ -12,6 +10,11 @@ from httpx import ASGITransport, AsyncClient
 from migrations import runner
 from src.models import Job
 from src.services.channels import crypto
+
+# Pinned test timestamp — avoid non-determinism from datetime.now() leaking
+# into fixture-built Job objects. Tier-A #7.
+_TEST_NOW = datetime(2026, 4, 23, 12, 0, 0, tzinfo=timezone.utc)
+_TEST_NOW_ISO = _TEST_NOW.isoformat()
 
 
 @asynccontextmanager
@@ -60,6 +63,7 @@ def authenticated_async_context(monkeypatch, tmp_path):
     monkeypatch.setenv("SESSION_SECRET", "test-secret-" + "z" * 40)
 
     from src.api.main import app
+
     app.router.lifespan_context = _noop_lifespan  # type: ignore[assignment]
 
     # Register a user synchronously to capture the session cookie, then
@@ -94,12 +98,15 @@ def _bootstrap_async_db(db_path: str) -> None:
     so the schema stays in sync with production (incl. match_score,
     visa_flag, salary_min/max, description columns, etc.).
     """
+
     async def _bootstrap():
         from src.repositories.database import JobDatabase
+
         db = JobDatabase(db_path)
         await db.init_db()
         await db.close()
         await runner.up(db_path)
+
     asyncio.run(_bootstrap())
 
 
@@ -120,7 +127,7 @@ def sample_ai_job():
         ),
         apply_url="https://deepmind.com/careers/ai-engineer",
         source="greenhouse",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )
 
 
@@ -133,7 +140,7 @@ def sample_unrelated_job():
         description="Looking for a marketing manager with SEO and social media experience.",
         apply_url="https://acme.com/careers/marketing",
         source="reed",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )
 
 
@@ -144,7 +151,7 @@ def sample_duplicate_jobs():
         company="Revolut",
         location="London",
         description="ML Engineer role requiring Python and PyTorch experience.",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )
     return [
         Job(**base, apply_url="https://reed.co.uk/jobs/123", source="reed", salary_min=60000, salary_max=80000),
@@ -161,7 +168,7 @@ def sample_visa_job():
         description="Data Scientist role. We offer visa sponsorship for the right candidate.",
         apply_url="https://faculty.ai/careers/ds",
         source="lever",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )
 
 
@@ -174,7 +181,7 @@ def sample_non_uk_job():
         description="Backend development role.",
         apply_url="https://example.com/sf-job",
         source="linkedin",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )
 
 
@@ -187,5 +194,5 @@ def sample_empty_description_job():
         description="",
         apply_url="https://example.com/mystery",
         source="greenhouse",
-        date_found=datetime.now(timezone.utc).isoformat(),
+        date_found=_TEST_NOW_ISO,
     )

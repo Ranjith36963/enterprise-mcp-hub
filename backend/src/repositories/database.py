@@ -1,13 +1,14 @@
 import json
+import os
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
-_VALID_COL_NAME = re.compile(r'^[a-z_][a-z0-9_]{0,63}$')
-_VALID_COL_TYPES = {'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC'}
+_VALID_COL_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,63}$")
+_VALID_COL_TYPES = {"TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC"}
 
-from src.models import Job
+from src.models import Job  # noqa: E402  # after the regex constants to avoid circular import
 
 
 class JobDatabase:
@@ -16,6 +17,10 @@ class JobDatabase:
         self._conn: aiosqlite.Connection | None = None
 
     async def init_db(self):
+        # Ensure parent directory exists for fresh clones where data/ isn't yet created.
+        parent = os.path.dirname(os.path.abspath(self._path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self._conn = await aiosqlite.connect(self._path)
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL")
@@ -83,40 +88,58 @@ class JobDatabase:
         await self._migrate()
 
     async def _migrate(self):
-        """Add any missing columns to existing tables (forward-compatible schema migration)."""
-        cursor = await self._conn.execute("PRAGMA table_info(jobs)")
-        existing = {row[1] for row in await cursor.fetchall()}
+        """Add any missing columns to existing tables (forward-compatible schema migration).
 
-        # Define columns added after initial schema.
-        # Format: (column_name, column_definition)
-        migrations = [
+        Runs every init_db(). Safe on both fresh schemas (just created above)
+        and on legacy DBs lazy-upgraded in place. Mirrors the forward
+        direction of the SQL migrations under backend/migrations/ so tests
+        and CLI tools that bypass the external runner still see the full
+        schema.
+        """
+        jobs_migrations = [
             # Pillar 3 Batch 1 — 5-column date model + ghost detection hooks.
-            ("posted_at",          "TEXT"),
-            ("first_seen_at",      "TEXT"),
-            ("last_seen_at",       "TEXT"),
-            ("last_updated_at",    "TEXT"),
-            ("date_confidence",    "TEXT DEFAULT 'low'"),
-            ("date_posted_raw",    "TEXT"),
+            ("posted_at", "TEXT"),
+            ("first_seen_at", "TEXT"),
+            ("last_seen_at", "TEXT"),
+            ("last_updated_at", "TEXT"),
+            ("date_confidence", "TEXT DEFAULT 'low'"),
+            ("date_posted_raw", "TEXT"),
             ("consecutive_misses", "INTEGER DEFAULT 0"),
-            ("staleness_state",    "TEXT DEFAULT 'active'"),
+            ("staleness_state", "TEXT DEFAULT 'active'"),
         ]
+        run_log_migrations = [
+            # Step-0 pre-flight — migration 0010 observability columns.
+            # Mirrored here so init_db() alone produces the full run_log
+            # schema even when the external migration runner hasn't run.
+            ("run_uuid", "TEXT"),
+            ("per_source_errors", "TEXT DEFAULT '{}'"),
+            ("per_source_duration", "TEXT DEFAULT '{}'"),
+            ("total_duration", "REAL"),
+            ("user_id", "TEXT"),
+        ]
+
+        await self._add_missing_columns("jobs", jobs_migrations)
+        await self._add_missing_columns("run_log", run_log_migrations)
+        await self._conn.commit()
+
+    async def _add_missing_columns(self, table: str, migrations: list[tuple[str, str]]) -> None:
+        """Apply `ALTER TABLE ... ADD COLUMN` for each entry not yet present."""
+        if not _VALID_COL_NAME.match(table):
+            raise ValueError(f"Invalid migration table name: {table}")
+        cursor = await self._conn.execute(f"PRAGMA table_info({table})")
+        existing = {row[1] for row in await cursor.fetchall()}
         for col_name, col_def in migrations:
-            if col_name not in existing:
-                if not _VALID_COL_NAME.match(col_name):
-                    raise ValueError(f"Invalid migration column name: {col_name}")
-                col_type_word = col_def.split()[0].upper()
-                if col_type_word not in _VALID_COL_TYPES:
-                    raise ValueError(f"Invalid migration column type: {col_type_word}")
-                await self._conn.execute(
-                    f"ALTER TABLE jobs ADD COLUMN {col_name} {col_def}"
-                )
-        if migrations:
-            await self._conn.commit()
+            if col_name in existing:
+                continue
+            if not _VALID_COL_NAME.match(col_name):
+                raise ValueError(f"Invalid migration column name: {col_name}")
+            col_type_word = col_def.split()[0].upper()
+            if col_type_word not in _VALID_COL_TYPES:
+                raise ValueError(f"Invalid migration column type: {col_type_word}")
+            await self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
 
     async def get_tables(self) -> list[str]:
-        cursor = await self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
+        cursor = await self._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
@@ -141,12 +164,25 @@ class JobDatabase:
              date_posted_raw)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                job.title, job.company, job.location,
-                job.salary_min, job.salary_max, job.description,
-                job.apply_url, job.source, job.date_found,
-                job.match_score, int(job.visa_flag),
-                job.experience_level, company, title, now,
-                job.posted_at, now, now, job.date_confidence,
+                job.title,
+                job.company,
+                job.location,
+                job.salary_min,
+                job.salary_max,
+                job.description,
+                job.apply_url,
+                job.source,
+                job.date_found,
+                job.match_score,
+                int(job.visa_flag),
+                job.experience_level,
+                company,
+                title,
+                now,
+                job.posted_at,
+                now,
+                now,
+                job.date_confidence,
                 job.date_posted_raw,
             ),
         )
@@ -163,9 +199,7 @@ class JobDatabase:
         )
         await self._conn.commit()
 
-    async def mark_missed_for_source(
-        self, source: str, seen_keys: set[tuple[str, str]]
-    ) -> int:
+    async def mark_missed_for_source(self, source: str, seen_keys: set[tuple[str, str]]) -> int:
         """Increment consecutive_misses for every job of `source` not in `seen_keys`.
 
         Scrape-completeness gates (rolling-average checks) are the CALLER's
@@ -173,19 +207,14 @@ class JobDatabase:
         pillar_3_batch_1.md §3 Step 1. Returns the count of jobs marked missed.
         """
         cursor = await self._conn.execute(
-            "SELECT id, normalized_company, normalized_title "
-            "FROM jobs WHERE source = ?",
+            "SELECT id, normalized_company, normalized_title " "FROM jobs WHERE source = ?",
             (source,),
         )
         rows = await cursor.fetchall()
-        missed_ids = [
-            row[0] for row in rows
-            if (row[1], row[2]) not in seen_keys
-        ]
+        missed_ids = [row[0] for row in rows if (row[1], row[2]) not in seen_keys]
         for job_id in missed_ids:
             await self._conn.execute(
-                "UPDATE jobs SET consecutive_misses = consecutive_misses + 1 "
-                "WHERE id = ?",
+                "UPDATE jobs SET consecutive_misses = consecutive_misses + 1 " "WHERE id = ?",
                 (job_id,),
             )
         await self._conn.commit()
@@ -201,16 +230,45 @@ class JobDatabase:
         row = await cursor.fetchone()
         return row[0]
 
-    async def log_run(self, stats: dict):
+    async def log_run(
+        self,
+        stats: dict,
+        *,
+        run_uuid: str | None = None,
+        per_source_errors: dict | None = None,
+        per_source_duration: dict | None = None,
+        total_duration: float | None = None,
+        user_id: str | None = None,
+    ):
+        """Insert a run-log row.
+
+        Extra keyword-only params were added by migration 0010
+        (``run_uuid``, ``per_source_errors``, ``per_source_duration``,
+        ``total_duration``, ``user_id``). All default to ``None`` so legacy
+        callers that pass only ``stats`` continue to work unchanged. Dict
+        payloads are JSON-encoded; None is stored as SQL NULL for the text
+        columns and as NULL for REAL.
+        """
         now = datetime.now(timezone.utc).isoformat()
+        errors_json = json.dumps(per_source_errors) if per_source_errors is not None else None
+        duration_json = json.dumps(per_source_duration) if per_source_duration is not None else None
         await self._conn.execute(
-            "INSERT INTO run_log (timestamp, total_found, new_jobs, sources_queried, per_source) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO run_log ("
+            " timestamp, total_found, new_jobs, sources_queried, per_source,"
+            " run_uuid, per_source_errors, per_source_duration,"
+            " total_duration, user_id"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 now,
                 stats.get("total_found", 0),
                 stats.get("new_jobs", 0),
                 stats.get("sources_queried", 0),
                 json.dumps(stats.get("per_source", {})),
+                run_uuid,
+                errors_json,
+                duration_json,
+                total_duration,
+                user_id,
             ),
         )
         await self._conn.commit()
@@ -243,9 +301,7 @@ class JobDatabase:
     async def purge_old_jobs(self, days: int = 30) -> int:
         """Delete jobs where first_seen is older than `days` ago. Returns count deleted."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        cursor = await self._conn.execute(
-            "DELETE FROM jobs WHERE first_seen < ?", (cutoff,)
-        )
+        cursor = await self._conn.execute("DELETE FROM jobs WHERE first_seen < ?", (cutoff,))
         await self._conn.commit()
         return cursor.rowcount
 
@@ -261,9 +317,7 @@ class JobDatabase:
 
     async def get_last_source_counts(self, n: int = 5) -> dict[str, list[int]]:
         """Get per-source job counts from the last N runs for health tracking."""
-        cursor = await self._conn.execute(
-            "SELECT per_source FROM run_log ORDER BY id DESC LIMIT ?", (n,)
-        )
+        cursor = await self._conn.execute("SELECT per_source FROM run_log ORDER BY id DESC LIMIT ?", (n,))
         rows = await cursor.fetchall()
         source_history: dict[str, list[int]] = {}
         for row in rows:
@@ -278,9 +332,7 @@ class JobDatabase:
     # queries by it. Schema UNIQUE(user_id, job_id) is from migration
     # 0002_multi_tenant; this layer is the matching read/write surface.
 
-    async def insert_action(
-        self, job_id: int, action: str, user_id: str, notes: str = ""
-    ) -> dict:
+    async def insert_action(self, job_id: int, action: str, user_id: str, notes: str = "") -> dict:
         now = datetime.now(timezone.utc).isoformat()
         await self._conn.execute(
             """INSERT INTO user_actions (user_id, job_id, action, notes, created_at)
@@ -309,8 +361,7 @@ class JobDatabase:
                ORDER BY created_at DESC""",
             (user_id,),
         )
-        return [{"job_id": r[0], "action": r[1], "notes": r[2], "created_at": r[3]}
-                for r in await cursor.fetchall()]
+        return [{"job_id": r[0], "action": r[1], "notes": r[2], "created_at": r[3]} for r in await cursor.fetchall()]
 
     async def get_action_counts(self, user_id: str) -> dict[str, int]:
         cursor = await self._conn.execute(
@@ -343,9 +394,7 @@ class JobDatabase:
         await self._conn.commit()
         return await self._get_application(job_id, user_id)
 
-    async def advance_application(
-        self, job_id: int, stage: str, user_id: str
-    ) -> dict:
+    async def advance_application(self, job_id: int, stage: str, user_id: str) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         await self._conn.execute(
             """UPDATE applications SET stage = ?, updated_at = ?
@@ -366,13 +415,17 @@ class JobDatabase:
         row = await cursor.fetchone()
         if not row:
             return {}
-        return {"job_id": row[0], "stage": row[1], "created_at": row[2],
-                "updated_at": row[3], "notes": row[4] or "",
-                "title": row[5] or "", "company": row[6] or ""}
+        return {
+            "job_id": row[0],
+            "stage": row[1],
+            "created_at": row[2],
+            "updated_at": row[3],
+            "notes": row[4] or "",
+            "title": row[5] or "",
+            "company": row[6] or "",
+        }
 
-    async def get_applications(
-        self, user_id: str, stage: str | None = None
-    ) -> list[dict]:
+    async def get_applications(self, user_id: str, stage: str | None = None) -> list[dict]:
         if stage:
             cursor = await self._conn.execute(
                 """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
@@ -391,9 +444,18 @@ class JobDatabase:
                    ORDER BY a.updated_at DESC""",
                 (user_id,),
             )
-        return [{"job_id": r[0], "stage": r[1], "created_at": r[2], "updated_at": r[3],
-                 "notes": r[4] or "", "title": r[5] or "", "company": r[6] or ""}
-                for r in await cursor.fetchall()]
+        return [
+            {
+                "job_id": r[0],
+                "stage": r[1],
+                "created_at": r[2],
+                "updated_at": r[3],
+                "notes": r[4] or "",
+                "title": r[5] or "",
+                "company": r[6] or "",
+            }
+            for r in await cursor.fetchall()
+        ]
 
     async def get_application_counts(self, user_id: str) -> dict[str, int]:
         cursor = await self._conn.execute(
@@ -403,9 +465,7 @@ class JobDatabase:
         )
         return {r[0]: r[1] for r in await cursor.fetchall()}
 
-    async def get_stale_applications(
-        self, user_id: str, days: int = 7
-    ) -> list[dict]:
+    async def get_stale_applications(self, user_id: str, days: int = 7) -> list[dict]:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cursor = await self._conn.execute(
             """SELECT a.job_id, a.stage, a.created_at, a.updated_at, a.notes,
@@ -417,9 +477,18 @@ class JobDatabase:
                ORDER BY a.updated_at ASC""",
             (user_id, cutoff),
         )
-        return [{"job_id": r[0], "stage": r[1], "created_at": r[2], "updated_at": r[3],
-                 "notes": r[4] or "", "title": r[5] or "", "company": r[6] or ""}
-                for r in await cursor.fetchall()]
+        return [
+            {
+                "job_id": r[0],
+                "stage": r[1],
+                "created_at": r[2],
+                "updated_at": r[3],
+                "notes": r[4] or "",
+                "title": r[5] or "",
+                "company": r[6] or "",
+            }
+            for r in await cursor.fetchall()
+        ]
 
     async def get_job_by_id(self, job_id: int) -> dict | None:
         cursor = await self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))

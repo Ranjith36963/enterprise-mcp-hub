@@ -1,14 +1,14 @@
 """Pillar 2 Batch 2.4 — tests for the domain classifier + source routing."""
+
 from __future__ import annotations
 
 import pytest
 
-from src.services.profile.models import CVData, UserPreferences, UserProfile
 from src.services.domain_classifier import (
     classify_user_domain,
     source_matches_user_domains,
 )
-
+from src.services.profile.models import CVData, UserPreferences, UserProfile
 
 # ---------------------------------------------------------------------------
 # classify_user_domain — profile → set[str]
@@ -41,6 +41,7 @@ def test_empty_profile_returns_empty_set():
     assert classify_user_domain(_profile()) == set()
 
 
+@pytest.mark.fast
 def test_tech_titles_classify_as_tech():
     p = _profile(titles=["Senior Software Engineer"])
     assert "tech" in classify_user_domain(p)
@@ -136,7 +137,7 @@ def test_linkedin_positions_contribute_to_classification():
 
 def test_word_boundary_avoids_false_match_on_short_keyword():
     """The 'ai' keyword for tech must not match 'maintain' or 'captain'."""
-    p = _profile(titles=["Ship Captain"])   # contains 'ai' but not as a word
+    p = _profile(titles=["Ship Captain"])  # contains 'ai' but not as a word
     assert "tech" not in classify_user_domain(p)
 
 
@@ -185,34 +186,39 @@ def test_multi_tag_source_without_general_needs_overlap():
 
 def test_base_source_has_general_default():
     from src.sources.base import BaseJobSource
+
     assert BaseJobSource.DOMAINS == {"general"}
 
 
-@pytest.mark.parametrize(("import_path", "class_name", "expected"), [
-    ("src.sources.feeds.nhs_jobs", "NHSJobsSource", {"healthcare"}),
-    ("src.sources.feeds.nhs_jobs_xml", "NHSJobsXMLSource", {"healthcare"}),
-    ("src.sources.feeds.biospace", "BioSpaceSource", {"healthcare"}),
-    ("src.sources.feeds.jobs_ac_uk", "JobsAcUkSource", {"academia"}),
-    ("src.sources.feeds.uni_jobs", "UniJobsSource", {"academia"}),
-    ("src.sources.apis_free.teaching_vacancies", "TeachingVacanciesSource", {"education"}),
-    ("src.sources.scrapers.climatebase", "ClimatebaseSource", {"climate"}),
-    ("src.sources.scrapers.bcs_jobs", "BCSJobsSource", {"tech"}),
-    ("src.sources.scrapers.jobtensor", "JobTensorSource", {"tech"}),
-    ("src.sources.apis_free.devitjobs", "DevITJobsSource", {"tech"}),
-    ("src.sources.apis_free.landingjobs", "LandingJobsSource", {"tech"}),
-    ("src.sources.apis_free.aijobs", "AIJobsSource", {"tech"}),
-    ("src.sources.apis_free.hn_jobs", "HNJobsSource", {"tech"}),
-    ("src.sources.other.hackernews", "HackerNewsSource", {"tech"}),
-    ("src.sources.other.nofluffjobs", "NoFluffJobsSource", {"tech"}),
-    ("src.sources.scrapers.aijobs_global", "AIJobsGlobalSource", {"tech"}),
-    ("src.sources.scrapers.aijobs_ai", "AIJobsAISource", {"tech"}),
-])
+@pytest.mark.parametrize(
+    ("import_path", "class_name", "expected"),
+    [
+        ("src.sources.feeds.nhs_jobs", "NHSJobsSource", {"healthcare"}),
+        ("src.sources.feeds.nhs_jobs_xml", "NHSJobsXMLSource", {"healthcare"}),
+        ("src.sources.feeds.biospace", "BioSpaceSource", {"healthcare"}),
+        ("src.sources.feeds.jobs_ac_uk", "JobsAcUkSource", {"academia"}),
+        ("src.sources.feeds.uni_jobs", "UniJobsSource", {"academia"}),
+        ("src.sources.apis_free.teaching_vacancies", "TeachingVacanciesSource", {"education"}),
+        ("src.sources.scrapers.climatebase", "ClimatebaseSource", {"climate"}),
+        ("src.sources.scrapers.bcs_jobs", "BCSJobsSource", {"tech"}),
+        ("src.sources.scrapers.jobtensor", "JobTensorSource", {"tech"}),
+        ("src.sources.apis_free.devitjobs", "DevITJobsSource", {"tech"}),
+        ("src.sources.apis_free.landingjobs", "LandingJobsSource", {"tech"}),
+        ("src.sources.apis_free.aijobs", "AIJobsSource", {"tech"}),
+        ("src.sources.apis_free.hn_jobs", "HNJobsSource", {"tech"}),
+        ("src.sources.other.hackernews", "HackerNewsSource", {"tech"}),
+        ("src.sources.other.nofluffjobs", "NoFluffJobsSource", {"tech"}),
+        ("src.sources.scrapers.aijobs_global", "AIJobsGlobalSource", {"tech"}),
+        ("src.sources.scrapers.aijobs_ai", "AIJobsAISource", {"tech"}),
+    ],
+)
 def test_domain_tagged_sources_have_correct_domains(import_path, class_name, expected):
     """The 17 single-domain sources in this parametrize list must advertise
     the right set. (The 18th overridden source, gov_apprenticeships with
     multi-tag {"education", "general"}, has its own dedicated test below —
     total count of `DOMAINS`-overridden sources is 18.)"""
     import importlib
+
     mod = importlib.import_module(import_path)
     cls = getattr(mod, class_name)
     assert cls.DOMAINS == expected
@@ -223,6 +229,7 @@ def test_apprenticeships_source_spans_education_and_general():
     the one source where the apprenticeship nature wants education tagging
     BUT the content spans every trade (healthcare, engineering, finance)."""
     from src.sources.apis_free.gov_apprenticeships import GovApprenticeshipsSource
+
     assert GovApprenticeshipsSource.DOMAINS == {"education", "general"}
 
 
@@ -240,25 +247,28 @@ def mock_session():
     """Mock aiohttp.ClientSession — _build_sources only stores the reference,
     it never calls anything on the session at construction time."""
     from unittest.mock import MagicMock
+
     return MagicMock(name="ClientSession")
 
 
 def test_build_sources_with_healthcare_profile_skips_tech_only(mock_session):
     """A healthcare user should NOT get bcs_jobs / climatebase / aijobs_*."""
     from src.main import _build_sources
+
     profile = _profile(titles=["Registered Nurse"])
     sources = _build_sources(mock_session, user_profile=profile)
     names = _names(sources)
     assert "nhs_jobs" in names
     assert "nhs_jobs_xml" in names
-    assert "reed" in names           # general always included
-    assert "bcs_jobs" not in names   # tech-only, skipped
+    assert "reed" in names  # general always included
+    assert "bcs_jobs" not in names  # tech-only, skipped
     assert "climatebase" not in names
     assert "aijobs" not in names
 
 
 def test_build_sources_with_tech_profile_skips_healthcare_only(mock_session):
     from src.main import _build_sources
+
     profile = _profile(titles=["Senior Software Engineer"])
     sources = _build_sources(mock_session, user_profile=profile)
     names = _names(sources)
@@ -271,7 +281,8 @@ def test_build_sources_with_tech_profile_skips_healthcare_only(mock_session):
 
 def test_build_sources_with_zero_profile_includes_everything(mock_session):
     """Graceful fallback — no profile means include every source."""
-    from src.main import _build_sources, SOURCE_INSTANCE_COUNT
+    from src.main import SOURCE_INSTANCE_COUNT, _build_sources
+
     sources = _build_sources(mock_session, user_profile=None)
     assert len(sources) == SOURCE_INSTANCE_COUNT
 
@@ -279,6 +290,7 @@ def test_build_sources_with_zero_profile_includes_everything(mock_session):
 def test_build_sources_source_filter_still_works_post_batch_2_4(mock_session):
     """The --source CLI flag continues to short-circuit domain filtering."""
     from src.main import _build_sources
+
     # Even a healthcare user can force-fetch bcs_jobs via source_filter.
     profile = _profile(titles=["Registered Nurse"])
     sources = _build_sources(mock_session, source_filter="bcs_jobs", user_profile=profile)

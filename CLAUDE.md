@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Job360 is an automated UK job search system supporting **any professional domain**. It aggregates jobs from 48 sources (via `SOURCE_REGISTRY` in `src/main.py`), scores them 0-100 against a user profile, deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, and a Next.js frontend (backed by FastAPI). Users can personalise searches by providing a CV (PDF/DOCX), a LinkedIn profile PDF (profile → More → Save to PDF), and/or GitHub username. When a user profile exists (`data/user_profile.json`), keywords are generated dynamically from CV + preferences + LinkedIn + GitHub via `SearchConfig`. Without a profile, it defaults to the original AI/ML keywords.
+Job360 is an automated UK job search system supporting **any professional domain**. It aggregates jobs from 50 sources (via `SOURCE_REGISTRY` in `src/main.py` — post-Batch-3 rotation, see rule #13), scores them 0-100 against a user profile, deduplicates across sources, and delivers results via CLI, email, Slack, Discord, CSV, and a Next.js frontend (backed by FastAPI). Users can personalise searches by providing a CV (PDF/DOCX), a LinkedIn profile PDF (profile → More → Save to PDF), and/or GitHub username. When a user profile exists (`data/user_profile.json`), keywords are generated dynamically from CV + preferences + LinkedIn + GitHub via `SearchConfig`. Without a profile, it defaults to the original AI/ML keywords.
 
 ## Tech Stack
 
@@ -66,12 +66,12 @@ python -m src.cli setup-profile --cv cv.pdf --github username          # CV + Gi
 
 # Other CLI commands
 python -m src.cli status       # Last run stats
-python -m src.cli sources      # List all 48 sources
+python -m src.cli sources      # List all 50 sources
 python -m src.cli view --hours 24 --min-score 50   # Rich terminal table
 python -m src.cli view --visa-only                  # Filter by visa
 
 # Tests (run from backend/ — pytest picks up pyproject.toml pythonpath=["."])
-python -m pytest tests/ -v                              # Run all 412 tests
+python -m pytest tests/ -v                              # Run all 600 tests (post-3.5.4 baseline: 600p/0f/3s)
 python -m pytest tests/test_scorer.py -v                # Scoring tests
 python -m pytest tests/test_sources.py -v               # All sources (71)
 python -m pytest tests/test_profile.py -v               # Profile system (55)
@@ -148,7 +148,7 @@ job360/
 │   │       ├── logger.py       # Rotating file + console logging
 │   │       ├── rate_limiter.py # Async semaphore + delay
 │   │       └── time_buckets.py
-│   └── tests/                  # 412 tests across 23 files (pytest pythonpath=["."])
+│   └── tests/                  # 600 tests across 23+ files (pytest pythonpath=["."]) — post-3.5.4 baseline
 │       ├── conftest.py
 │       └── test_*.py           # Mirrors src/ layout
 │
@@ -196,16 +196,16 @@ The pipeline flows: **CLI (Click)** → **Orchestrator (`src/main.py`)** → **S
 
 ### Key modules
 
-- `src/main.py` — Central orchestrator with `run_search()` and `SOURCE_REGISTRY` dict (48 entries) mapping source names to classes. `_build_sources()` instantiates all sources with their config. Both `"indeed"` and `"glassdoor"` map to `JobSpySource`.
+- `src/main.py` — Central orchestrator with `run_search()` and `SOURCE_REGISTRY` dict (50 entries) mapping source names to classes. `_build_sources()` instantiates all sources with their config. Both `"indeed"` and `"glassdoor"` map to `JobSpySource`.
 - `src/cli.py` — Click CLI with `run`, `api`, `status`, `sources`, `view`, `setup-profile` commands. `setup-profile` accepts `--cv`, `--linkedin`, and `--github` options.
 - `src/cli_view.py` — Rich terminal table viewer for browsing jobs from the DB
 - `src/models.py` — `Job` dataclass with `normalized_key()` for dedup (strips company suffixes like Ltd/Inc/PLC and region suffixes like UK/US/EMEA, lowercases)
-- `src/config/settings.py` — All env vars, paths, `RATE_LIMITS` dict (48 entries, per-source), thresholds. Constants: `MIN_MATCH_SCORE=30`, `MAX_RETRIES=3`, `RETRY_BACKOFF=[1,2,4]`, `REQUEST_TIMEOUT=30`.
-- `src/config/keywords.py` — Default AI/ML keywords: `JOB_TITLES` (25), skills in 3 tiers (`PRIMARY_SKILLS` 15 / `SECONDARY_SKILLS` 17 / `TERTIARY_SKILLS` 11), `LOCATIONS` (26: 24 UK + Remote + Hybrid), `RELEVANCE_KEYWORDS`, `NEGATIVE_TITLE_KEYWORDS` (60 entries across 12 categories). `KNOWN_SKILLS` and `KNOWN_TITLE_PATTERNS` were removed in commit 3ba1342 — CV parsing is now LLM-only via `src/profile/llm_provider.py`. Used as fallback when no user profile exists.
-- `src/config/companies.py` — ATS company slugs: Greenhouse (25), Lever (12), Workable (8), Ashby (9), SmartRecruiters (6), Pinpoint (8), Recruitee (8), Workday (15 — dict format with tenant/wd/site/name), Personio (10), SuccessFactors (3 — dict format with name/sitemap_url). ~104 companies total.
-- `src/profile/` — Dynamic user profile system:
+- `src/core/settings.py` — All env vars, paths, `RATE_LIMITS` dict (50 entries, per-source), thresholds. Constants: `MIN_MATCH_SCORE=30`, `MAX_RETRIES=3`, `RETRY_BACKOFF=[1,2,4]`, `REQUEST_TIMEOUT=30`. (Phase-4 rename from `src/config/settings.py`.)
+- `src/core/keywords.py` — Default AI/ML keywords: `JOB_TITLES` (25), skills in 3 tiers (`PRIMARY_SKILLS` 15 / `SECONDARY_SKILLS` 17 / `TERTIARY_SKILLS` 11), `LOCATIONS` (26: 24 UK + Remote + Hybrid), `RELEVANCE_KEYWORDS`, `NEGATIVE_TITLE_KEYWORDS` (60 entries across 12 categories). `KNOWN_SKILLS` and `KNOWN_TITLE_PATTERNS` were removed in commit 3ba1342 — CV parsing is now LLM-only via `src/services/profile/llm_provider.py`. Used as fallback when no user profile exists.
+- `src/core/companies.py` — ATS company slugs (~268 companies total post-Batch-3; starter counts pre-expansion were Greenhouse 25, Lever 12, Workable 8, Ashby 9, SmartRecruiters 6, Pinpoint 8, Recruitee 8, Workday 15 dict-format, Personio 10, SuccessFactors 3 dict-format). Batch 3 added Rippling (5) + Comeet (5) as new platforms.
+- `src/services/profile/` — Dynamic user profile system:
   - `models.py` — `CVData` (includes linkedin_positions, linkedin_skills, github_languages, github_topics, github_skills_inferred fields), `UserPreferences` (includes github_username), `UserProfile`, `SearchConfig` dataclasses. `SearchConfig.from_defaults()` returns the hard-coded AI/ML keywords.
-  - `cv_parser.py` — PDF (pdfplumber) / DOCX (python-docx) text extraction, section detection. Skill/title extraction is LLM-only via `llm_provider.py` — the regex `KNOWN_SKILLS`/`KNOWN_TITLE_PATTERNS` approach was removed in commit 804725c
+  - `cv_parser.py` — PDF (pdfplumber) / DOCX (python-docx) text extraction, section detection. Skill/title extraction is LLM-only via `llm_provider.py` — the regex `KNOWN_SKILLS`/`KNOWN_TITLE_PATTERNS` approach was removed in commit 804725c (downstream wiring in commits 7bcd8e9, 8c4ed82, 40aa8a1, 3ba1342).
   - `llm_provider.py` — Multi-provider LLM client (Gemini, Groq, Cerebras) with free-tier fallback chain for CV parsing
   - `preferences.py` — Validates/normalises form data, merges CV data with user preferences
   - `storage.py` — JSON persistence at `data/user_profile.json`
@@ -227,29 +227,29 @@ All sources extend `BaseJobSource` in `src/sources/base.py` which provides `_get
 
 Each source uses `self.relevance_keywords` (property on `BaseJobSource`) to filter irrelevant jobs. This returns dynamic keywords from `SearchConfig` when a profile exists, or falls back to the hard-coded `RELEVANCE_KEYWORDS` from `keywords.py`. Sources with custom queries (JSearch, LinkedIn, FindAJob, NHS Jobs) also check `self.search_queries` before using their hard-coded query lists.
 
-### Scoring (`src/filters/skill_matcher.py`)
+### Scoring (`src/services/skill_matcher.py`)
 
 Four components summing to 0-100: Title match (0-40), Skill match (0-40, primary=3pts/secondary=2pts/tertiary=1pt), Location (0-10), Recency (0-10). Penalties: Negative title keywords (-30), Foreign location (-15). Minimum threshold is `MIN_MATCH_SCORE=30` in settings. Also detects visa sponsorship (`check_visa_flag`) and experience level from title. Two scoring paths: `score_job()` (module-level, uses hard-coded keywords) and `JobScorer(config).score()` (instance-based, uses dynamic `SearchConfig`). The orchestrator selects based on whether a user profile exists.
 
-### Deduplication (`src/filters/deduplicator.py`)
+### Deduplication (`src/services/deduplicator.py`)
 
 Groups by `job.normalized_key()` = (normalized company, normalized title). Keeps the best per group by highest `match_score`, then by data completeness (salary, description, location).
 
-### Notifications (`src/notifications/`)
+### Notifications (`src/services/notifications/`)
 
 `NotificationChannel` ABC in `base.py` with auto-discovery via `get_configured_channels()`. Channels: Email (Gmail SMTP), Slack (Block Kit webhook), Discord (embed webhook). Each channel activates only when its env vars are set.
 
-### Storage (`src/storage/`)
+### Storage (`src/repositories/`)
 
 - `database.py` — Async SQLite (via aiosqlite) with `jobs` table (unique on normalized_company+normalized_title), `run_log` table (includes sources_queried column), and indexes on date_found, first_seen, match_score. Uses WAL journal mode and 5s busy timeout. Auto-purges jobs >30 days old via `purge_old_jobs()`.
 - `csv_export.py` — CSV export per run to `data/exports/`
 
 ## Testing
 
-**412 tests** across 21 test files (count is `pytest --collect-only` output; parametrized tests expand into multiple collected items). Shared fixtures in `tests/conftest.py` (provides `sample_ai_job`, `sample_unrelated_job`, `sample_duplicate_jobs`, `sample_visa_job`, `sample_non_uk_job`, `sample_empty_description_job`). All HTTP calls mocked with `aioresponses`. Uses `pytest-asyncio` for async tests.
+**600 tests** (post-3.5.4 green baseline: 600p / 0f / 3s on Windows) across 21+ test files (count is `pytest --collect-only` output; parametrized tests expand into multiple collected items). The per-file breakdown below is pre-Pillar-2/-3 historical — individual files have grown with later batches (migrations, auth, feed, channels, prefilter, embeddings, enrichment, etc.); the 600 total is the authoritative current number. Shared fixtures in `tests/conftest.py` (provides `sample_ai_job`, `sample_unrelated_job`, `sample_duplicate_jobs`, `sample_visa_job`, `sample_non_uk_job`, `sample_empty_description_job`). All HTTP calls mocked with `aioresponses`. Uses `pytest-asyncio` for async tests.
 
 Key test files:
-- `test_sources.py` — 71 tests: all 48 sources with mocked HTTP responses
+- `test_sources.py` — 71+ tests: all 50 sources with mocked HTTP responses (per-file count grew with Batch-3's 5 new sources)
 - `test_profile.py` — 55 tests: SearchConfig defaults, UserProfile, CV parser, preferences, storage, keyword generator, JobScorer (including cross-domain scoring)
 - `test_linkedin_github.py` — 58 tests: LinkedIn PDF parsing (detection, section split, deterministic + LLM extraction), GitHub API enrichment, CVData merging
 - `test_scorer.py` — 53 tests: scoring components, penalties, word boundaries, experience detection, visa negation, location ordering
@@ -274,7 +274,7 @@ Key test files:
 
 - Python 3.9+ required
 - Dependencies: `requirements.txt` (prod, 12 packages), `requirements-dev.txt` (test — includes prod via `-r`, adds pytest/aioresponses/fpdf2)
-- `.env` file for API keys and webhook URLs (see `.env.example`); free sources (41 of 48) work without any keys
+- `.env` file for API keys and webhook URLs (see `.env.example`); free sources (43 of 50 post-Batch-3) work without any keys
 - Data outputs go to `data/` directory (gitignored): `data/exports/`, `data/reports/`, `data/logs/`, `data/jobs.db`, `data/user_profile.json`
 
 ### Environment Variables
@@ -297,7 +297,7 @@ Key test files:
 ## Important Patterns
 
 - **Adding a new job source:** Create class in `src/sources/`, extend `BaseJobSource`, implement `async fetch_jobs() -> list[Job]`. Use `self.relevance_keywords` and `self.job_titles` (not direct imports). If custom `__init__`, accept `search_config=None` and pass to `super().__init__(session, search_config=search_config)`. Register in both `SOURCE_REGISTRY` dict and `_build_sources()` list in `src/main.py` (passing `search_config=sc`). Add rate limit entry in `RATE_LIMITS` dict in `settings.py`. Add mocked tests in `tests/test_sources.py`. Update the registry count assertion in `tests/test_cli.py`. If keyed, add env var to `settings.py` and `.env.example`.
-- **Adding a new notification channel:** Implement `NotificationChannel` ABC, register in `get_all_channels()` in `src/notifications/base.py`
+- **Adding a new notification channel:** Implement `NotificationChannel` ABC, register in `get_all_channels()` in `src/services/notifications/base.py`
 - **Keyed source pattern:** Accept `api_key` in `__init__`, return `[]` early with an info log if key is empty. Pass `search_config` through to super.
 - **Free source pattern:** Filter results using `self.relevance_keywords` on title+description, use `_is_uk_or_remote()` on location, no auth needed
 - **ATS source pattern:** Accept `companies` list and `search_config=None` in `__init__` with default from `companies.py`, iterate over company slugs, fetch each company's board API
@@ -309,7 +309,7 @@ Key test files:
 ## Rules for Working on This Codebase
 
 1. **Never touch `normalized_key()` in `models.py`** without verifying the deduplicator and database UNIQUE constraint still work. Changing normalization logic can cause duplicate entries or missed dedup.
-2. **Never change `BaseJobSource`** (constructor, properties, retry logic, `_get_json`/`_post_json`/`_get_text`) without checking all 47 source files that inherit from it. Changes propagate to every source.
+2. **Never change `BaseJobSource`** (constructor, properties, retry logic, `_get_json`/`_post_json`/`_get_text`) without checking all 49 source files that inherit from it (post-Batch-3: 47 + 5 new − 3 dropped). Changes propagate to every source.
 3. **Never touch database purge logic** (`purge_old_jobs` in `database.py`) without explicit confirmation. Incorrect purge thresholds can delete valid data.
 4. **Always mock HTTP in tests** — never make live HTTP requests. Use `aioresponses` for all source and notification tests. The test suite must run offline.
 5. **Always run the relevant test suite** after any change: `python -m pytest tests/ -v` for broad changes, or the specific test file for targeted changes.

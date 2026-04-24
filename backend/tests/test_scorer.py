@@ -1,11 +1,21 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
 from src.models import Job
-from src.services.skill_matcher import (
-    score_job, check_visa_flag, _recency_score, _text_contains,
-    _negative_penalty, detect_experience_level, salary_in_range,
-    _location_score, _foreign_location_penalty, JobScorer,
-)
 from src.services.profile.models import SearchConfig
+from src.services.skill_matcher import (
+    JobScorer,
+    _foreign_location_penalty,
+    _location_score,
+    _negative_penalty,
+    _recency_score,
+    _text_contains,
+    check_visa_flag,
+    detect_experience_level,
+    salary_in_range,
+    score_job,
+)
 
 
 def _make_job(**overrides):
@@ -45,6 +55,7 @@ def test_high_match_scores_above_70():
     assert score >= 70, f"Expected >= 70, got {score}"
 
 
+@pytest.mark.fast
 def test_low_match_scores_below_30():
     job = _make_job(
         title="Marketing Manager",
@@ -163,11 +174,15 @@ def test_recency_today_gets_full_points():
     )
     scorer = JobScorer(config)
     job_today = _make_job(
-        title="AI Engineer", location="London, UK", date_found=today,
+        title="AI Engineer",
+        location="London, UK",
+        date_found=today,
         description="Python PyTorch role",
     )
     job_old = _make_job(
-        title="AI Engineer", location="London, UK", date_found=old,
+        title="AI Engineer",
+        location="London, UK",
+        date_found=old,
         description="Python PyTorch role",
     )
     assert scorer.score(job_today) > scorer.score(job_old)
@@ -198,9 +213,20 @@ def test_score_can_reach_100():
         job_titles=["AI Engineer"],
         # Need enough primary skills to hit the 40-point cap (14 × 3 = 42 capped to 40)
         primary_skills=[
-            "Python", "PyTorch", "TensorFlow", "LangChain", "RAG",
-            "Hugging Face", "LLM fine-tuning", "NLP", "Deep Learning",
-            "Neural Networks", "Computer Vision", "SageMaker", "Docker", "Kubernetes",
+            "Python",
+            "PyTorch",
+            "TensorFlow",
+            "LangChain",
+            "RAG",
+            "Hugging Face",
+            "LLM fine-tuning",
+            "NLP",
+            "Deep Learning",
+            "Neural Networks",
+            "Computer Vision",
+            "SageMaker",
+            "Docker",
+            "Kubernetes",
         ],
         secondary_skills=["ChromaDB", "FastAPI"],
         tertiary_skills=[],
@@ -405,27 +431,32 @@ def test_detect_no_level():
 def test_greater_london_gets_points():
     """'Greater London' should get full location points."""
     from src.services.skill_matcher import LOCATION_WEIGHT
+
     assert _location_score("Greater London") == LOCATION_WEIGHT
 
 
 def test_city_of_london_gets_points():
     from src.services.skill_matcher import LOCATION_WEIGHT
+
     assert _location_score("City of London") == LOCATION_WEIGHT
 
 
 def test_scotland_gets_points():
     """Scotland should get location points via alias to UK."""
     from src.services.skill_matcher import LOCATION_WEIGHT
+
     assert _location_score("Scotland") == LOCATION_WEIGHT
 
 
 def test_remote_gets_points():
     from src.services.skill_matcher import LOCATION_WEIGHT
+
     assert _location_score("Remote") == LOCATION_WEIGHT - 2
 
 
 def test_wfh_gets_points():
     from src.services.skill_matcher import LOCATION_WEIGHT
+
     assert _location_score("Work from home") == LOCATION_WEIGHT - 2
 
 
@@ -489,10 +520,8 @@ def test_us_ai_job_scores_lower_than_uk():
         primary_skills=["Python", "PyTorch", "LLM", "RAG"],
     )
     scorer = JobScorer(config)
-    uk_job = _make_job(title="AI Engineer", location="London, UK",
-                       description="Python PyTorch LLM RAG")
-    us_job = _make_job(title="AI Engineer", location="San Francisco, CA",
-                       description="Python PyTorch LLM RAG")
+    uk_job = _make_job(title="AI Engineer", location="London, UK", description="Python PyTorch LLM RAG")
+    us_job = _make_job(title="AI Engineer", location="San Francisco, CA", description="Python PyTorch LLM RAG")
     uk_score = scorer.score(uk_job)
     us_score = scorer.score(us_job)
     assert uk_score - us_score >= 15, f"UK={uk_score}, US={us_score}"
@@ -508,6 +537,7 @@ def test_title_score_no_hardcoded_ai_bias():
     return 0 — regardless of whether it contains AI buzzwords.
     """
     from src.services.skill_matcher import _title_score
+
     # "Technical Program Manager" has no match in JOB_TITLES → 0
     assert _title_score("Technical Program Manager") == 0
     # "AI Workspace Coordinator" also has no match — no AI word boost allowed
@@ -586,7 +616,7 @@ def test_recency_posted_at_high_confidence_scores_full_band():
     """High-confidence posted_at within 1 day → full 10 points."""
     today = datetime.now(timezone.utc).isoformat()
     job = _make_job(
-        date_found="2020-01-01T00:00:00+00:00",   # old first_seen
+        date_found="2020-01-01T00:00:00+00:00",  # old first_seen
         posted_at=today,
         date_confidence="high",
     )
@@ -608,7 +638,7 @@ def test_recency_none_posted_at_with_low_confidence_falls_back_to_first_seen():
     """When posted_at is None and confidence is low, fall back to first_seen capped at 60%."""
     today = datetime.now(timezone.utc).isoformat()
     job = _make_job(
-        date_found=today,          # first_seen = today → raw would be 10
+        date_found=today,  # first_seen = today → raw would be 10
         posted_at=None,
         date_confidence="low",
     )
@@ -701,12 +731,12 @@ class TestGatePass:
     def test_jobscorer_zero_title_good_skills_suppressed(self):
         """Zero title + strong skills + good location + recency → suppressed to ≤25."""
         config = SearchConfig(
-            job_titles=["Cardiology Consultant"],   # deliberately no title match
+            job_titles=["Cardiology Consultant"],  # deliberately no title match
             primary_skills=["Python", "Django", "FastAPI", "Postgres"],
         )
         scorer = JobScorer(config)
         job = _make_job(
-            title="AI Engineer",   # zero overlap with configured title
+            title="AI Engineer",  # zero overlap with configured title
             location="London, UK",
             description="Python Django FastAPI Postgres expert",
             date_found=datetime.now(timezone.utc).isoformat(),
@@ -718,7 +748,7 @@ class TestGatePass:
         """Exact title match but zero skill match → suppressed to ≤25."""
         config = SearchConfig(
             job_titles=["AI Engineer"],
-            primary_skills=["Rust", "Embedded C"],   # none will match the description
+            primary_skills=["Rust", "Embedded C"],  # none will match the description
         )
         scorer = JobScorer(config)
         job = _make_job(
@@ -770,7 +800,7 @@ class TestGatePass:
         config = SearchConfig(
             job_titles=["ML Engineer"],
             primary_skills=["Python", "PyTorch"],
-            core_domain_words={"ml"},           # title partial-match path
+            core_domain_words={"ml"},  # title partial-match path
             supporting_role_words={"engineer"},
         )
         scorer = JobScorer(config)
@@ -779,7 +809,7 @@ class TestGatePass:
         # hit the exact-6 edge we instead use a minimal title which triggers the
         # cap-at-gate via "Ml Ops Engineer" (single core overlap, one support).
         job = _make_job(
-            title="Ml Ops Engineer",   # 1*core + 1*support = 5+3 = 8 (>6 gate)
+            title="Ml Ops Engineer",  # 1*core + 1*support = 5+3 = 8 (>6 gate)
             location="London, UK",
             description="Python PyTorch role.",
             date_found=datetime.now(timezone.utc).isoformat(),
@@ -812,7 +842,7 @@ class TestGatePass:
         """skill_pts just below gate → suppressed even with exact title match."""
         config = SearchConfig(
             job_titles=["ML Engineer"],
-            primary_skills=["Python"],   # only one primary → max 3 points (< gate 6)
+            primary_skills=["Python"],  # only one primary → max 3 points (< gate 6)
         )
         scorer = JobScorer(config)
         job = _make_job(
@@ -835,9 +865,9 @@ class TestGatePass:
         scorer = JobScorer(config)
         job = _make_job(
             title="Marketing Manager",
-            location="Moon",                      # 0 location
+            location="Moon",  # 0 location
             description="Generic role.",
-            date_found="",                          # 0 recency
+            date_found="",  # 0 recency
         )
         assert scorer.score(job) == 10
 
@@ -886,6 +916,7 @@ class TestGatePass:
     def test_gate_settings_exposed_at_module_level(self):
         """MIN_TITLE_GATE / MIN_SKILL_GATE must be importable from core.settings
         so ops can tune them via env vars without editing code."""
-        from src.core.settings import MIN_TITLE_GATE, MIN_SKILL_GATE
+        from src.core.settings import MIN_SKILL_GATE, MIN_TITLE_GATE
+
         assert MIN_TITLE_GATE == 0.15
         assert MIN_SKILL_GATE == 0.15

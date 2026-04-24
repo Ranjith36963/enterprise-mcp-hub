@@ -1,6 +1,7 @@
-import pytest
 import asyncio
 from datetime import datetime, timezone
+
+import pytest
 
 from src.models import Job
 from src.repositories.database import JobDatabase
@@ -28,6 +29,7 @@ def _make_job(**overrides):
     return Job(**defaults)
 
 
+@pytest.mark.fast
 def test_init_creates_tables(db):
     tables = asyncio.run(db.get_tables())
     assert "jobs" in tables

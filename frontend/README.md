@@ -1,0 +1,53 @@
+# Job360 Frontend
+
+Next.js 16 + React 19 dashboard for Job360. Talks to the FastAPI backend for
+job listings, profile, pipeline, and search.
+
+## Prerequisites
+
+- Node 20+ (LTS)
+- npm (bundled with Node). pnpm or yarn also work — lockfile is npm.
+
+## Install
+
+```bash
+cd frontend
+npm install
+```
+
+## Environment
+
+This repo ships a committed `.env.local` with the dev default. If yours is
+missing, create it manually:
+
+```bash
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Point it at whatever host and port the FastAPI backend is running on.
+`NEXT_PUBLIC_*` vars are inlined into the client bundle at build time, so a
+rebuild is needed after changing them.
+
+## Run
+
+```bash
+npm run dev           # dev server on http://localhost:3000
+npm run build         # production build
+npm start             # serve the production build
+npm run lint          # eslint
+```
+
+## Cross-wiring with the backend
+
+1. The backend must be running on the URL in `NEXT_PUBLIC_API_URL`
+   (default `http://localhost:8000`). See
+   [`../backend/README.md`](../backend/README.md).
+2. The backend's `FRONTEND_ORIGIN` env var must include this frontend's
+   origin (default `http://localhost:3000`). Without it, the browser blocks
+   the API calls at the CORS preflight.
+
+## Further reading
+
+- [`../backend/README.md`](../backend/README.md) — API, CLI, worker, migrations
+- [`../docs/README.md`](../docs/README.md) — full docs index
