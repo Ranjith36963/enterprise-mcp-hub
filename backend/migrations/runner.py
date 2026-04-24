@@ -139,23 +139,77 @@ async def up(
     """Apply all pending migrations up to (and including) ``target``.
 
     Returns the list of stems that were applied this call.
+
+    Concurrent-boot safety (Step-1 B11)
+    -----------------------------------
+    FastAPI (``src/api/dependencies.py`` lifespan) and the ARQ worker
+    (``src/workers/settings.py``) both call this on startup. If two processes
+    race against the same SQLite file, the naive path had them both read an
+    identical "applied" set, both run the same migration body, and both
+    INSERT into ``_schema_migrations`` — the second INSERT tripped the
+    ``UNIQUE(id)`` constraint and the process crashed.
+
+    Fix (Option A): for each pending migration we open a short
+    ``BEGIN IMMEDIATE`` write transaction that (a) takes SQLite's reserved
+    lock so only one writer is in the critical section, (b) re-reads the
+    applied set *inside* the transaction so a loser that lost the lock to
+    a winner sees the stem already applied and skips without re-running
+    the SQL, and (c) still swallows ``sqlite3.IntegrityError`` on the final
+    INSERT as a defence-in-depth belt-and-braces — if any exotic path ever
+    slips through the re-check we log-and-continue rather than crash the
+    second booting process.
     """
+    import sqlite3  # stdlib; keeps import local for lazy-import discipline.
+
     mdir = migrations_dir or MIGRATIONS_DIR
     applied_now: list[str] = []
     async with aiosqlite.connect(db_path) as db:
+        # Honour SQLite's internal busy-wait instead of failing fast when
+        # the other writer is mid-transaction. 5 s matches the database
+        # module's default (``PRAGMA busy_timeout = 5000``).
+        await db.execute("PRAGMA busy_timeout = 5000")
         await _ensure_table(db)
-        done = set(await _applied_ids(db))
         for stem in _discover_pairs(mdir):
-            if stem in done:
+            # Cheap check before we bother taking the write lock.
+            if stem in set(await _applied_ids(db)):
+                if target is not None and stem == target:
+                    break
                 continue
             sql = (mdir / f"{stem}.up.sql").read_text()
-            await _apply_up_sql(db, sql)
-            await db.execute(
-                "INSERT INTO _schema_migrations(id, applied_at) VALUES (?, ?)",
-                (stem, datetime.now(timezone.utc).isoformat()),
-            )
-            await db.commit()
-            applied_now.append(stem)
+            # BEGIN IMMEDIATE grabs a RESERVED lock; concurrent writers will
+            # busy-wait up to busy_timeout. Re-check inside the transaction
+            # to catch the race where two coroutines both saw "pending"
+            # before either took the lock.
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                if stem in set(await _applied_ids(db)):
+                    # A concurrent writer applied it while we waited; back out.
+                    await db.rollback()
+                    if target is not None and stem == target:
+                        break
+                    continue
+                await _apply_up_sql(db, sql)
+                try:
+                    await db.execute(
+                        "INSERT INTO _schema_migrations(id, applied_at) VALUES (?, ?)",
+                        (stem, datetime.now(timezone.utc).isoformat()),
+                    )
+                except sqlite3.IntegrityError:
+                    # Belt-and-braces: if a racing writer already recorded
+                    # the same stem (shouldn't happen after the re-check
+                    # above, but costs nothing to guard), swallow and move
+                    # on — the migration's net effect is already applied.
+                    await db.rollback()
+                    if target is not None and stem == target:
+                        break
+                    continue
+                await db.commit()
+                applied_now.append(stem)
+            except BaseException:
+                # Any other failure (bad SQL, missing table) — roll back and
+                # surface loudly.
+                await db.rollback()
+                raise
             if target is not None and stem == target:
                 break
     return applied_now
