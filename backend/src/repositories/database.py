@@ -576,18 +576,35 @@ class JobDatabase:
         return [dict(row) for row in rows]
 
     async def get_job_by_id_with_enrichment(self, job_id: int) -> dict | None:
-        """Same as :meth:`get_job_by_id` plus a LEFT JOIN to job_enrichment."""
+        """Same as :meth:`get_job_by_id` plus a LEFT JOIN to job_enrichment.
+
+        C-1 fix: mirrors the staleness filter from
+        :meth:`get_recent_jobs_with_enrichment` so a single-job lookup
+        cannot surface a ghost-detected expired posting that the list
+        path correctly hides.
+        """
         # _JOBS_ENRICHMENT_JOIN_COLS is a class constant, not user input — S608 is a false positive here.
         sql = (
             f"SELECT {self._JOBS_ENRICHMENT_JOIN_COLS} "  # noqa: S608
             "FROM jobs j "
             "LEFT JOIN job_enrichment je ON je.job_id = j.id "
-            "WHERE j.id = ?"
+            "WHERE j.id = ? "
+            "AND (j.staleness_state IS NULL OR j.staleness_state = 'active')"
         )
         try:
             cursor = await self._conn.execute(sql, (job_id,))
         except aiosqlite.OperationalError:
-            return await self.get_job_by_id(job_id)
+            # Fallback for fresh DBs without migration 0008 — still apply
+            # the staleness filter so the read path stays consistent.
+            cursor = await self._conn.execute(
+                "SELECT * FROM jobs WHERE id = ? " "AND (staleness_state IS NULL OR staleness_state = 'active')",
+                (job_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            cols = [d[0] for d in cursor.description]
+            return dict(zip(cols, row))
         row = await cursor.fetchone()
         if not row:
             return None

@@ -351,3 +351,38 @@ async def test_jobs_response_no_n_plus_one_for_enrichment(
     assert enrichment_select_count["n"] <= 1, (
         f"expected ≤1 SELECT touching job_enrichment, got " f"{enrichment_select_count['n']} — N+1 regression"
     )
+
+
+@pytest.mark.asyncio
+async def test_jobs_action_filter_runs_before_pagination(authenticated_async_context):
+    """C-2 regression guard: when ?action=liked is set, both `total` and the
+    returned page must reflect the action-filtered set, not the unfiltered
+    superset paginated then filtered. Pre-fix this returned `total=5` and
+    `len(jobs)<limit` because the filter ran inside the page loop."""
+    db = await api_deps.get_db()
+
+    # 5 jobs total; mark only 2 as 'liked'
+    ids = []
+    for i in range(5):
+        jid = await _insert_job_row(
+            db,
+            apply_url=f"https://example.com/jobs/c2-{i}",
+            normalized_company=f"acme c2 {i}",
+            normalized_title=f"role c2 {i}",
+        )
+        ids.append(jid)
+
+    async with authenticated_async_context() as client:
+        # Use the public action route so we don't have to look up user.id
+        for jid in ids[:2]:
+            r = await client.post(f"/api/jobs/{jid}/action", json={"action": "liked"})
+            assert r.status_code == 200, r.text
+
+        # Filter by action — both `total` and returned `jobs` must equal 2
+        resp = await client.get("/api/jobs?action=liked&limit=10")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2, f"total must reflect filtered count, got {body['total']}"
+    assert len(body["jobs"]) == 2, f"page must equal filtered count, got {len(body['jobs'])}"
+    for job in body["jobs"]:
+        assert job["action"] == "liked"

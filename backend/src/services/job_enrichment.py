@@ -151,10 +151,24 @@ async def enrich_batch(
                         )
             try:
                 tel.llm_calls += 1
-                return await enrich_job(
+                result = await enrich_job(
                     job,
                     llm_extract_validated_fn=llm_extract_validated_fn,
                 )
+                # B7-1 fix: persist successful enrichments. Without this,
+                # every LLM call's result was discarded — pure cost, no value.
+                if result is not None and conn is not None:
+                    job_id = getattr(job, "id", None)
+                    if job_id is not None:
+                        try:
+                            await save_enrichment(conn, job_id, result)
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "enrich_batch: save_enrichment failed for job %s: %s",
+                                job_id,
+                                e,
+                            )
+                return result
             except asyncio.TimeoutError:
                 tel.timeouts += 1
                 logger.warning(

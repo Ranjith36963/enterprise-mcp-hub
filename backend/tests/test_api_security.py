@@ -71,6 +71,51 @@ async def test_expired_jobs_filtered():
 
 
 # ---------------------------------------------------------------------------
+# C-1 — get_job_by_id_with_enrichment must mirror the staleness filter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_job_by_id_with_enrichment_filters_expired():
+    """A single-job lookup must NOT surface a ghost-detected expired posting.
+
+    Symmetric with test_expired_jobs_filtered: the list path
+    (get_recent_jobs_with_enrichment) and the by-id path
+    (get_job_by_id_with_enrichment) must apply the same staleness predicate
+    so the JobResponse for /jobs/:id can't show what /jobs hides.
+    """
+    db = JobDatabase(":memory:")
+    await db.init_db()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        await db._conn.execute(
+            "INSERT INTO jobs (title, company, location, apply_url, source, "
+            "date_found, normalized_company, normalized_title, first_seen, "
+            "staleness_state) VALUES (?, ?, '', ?, 'reed', ?, ?, ?, ?, 'active')",
+            ("Active Role", "ActiveCo", "https://e/a", now, "activeco", "active role", now),
+        )
+        await db._conn.execute(
+            "INSERT INTO jobs (title, company, location, apply_url, source, "
+            "date_found, normalized_company, normalized_title, first_seen, "
+            "staleness_state) VALUES (?, ?, '', ?, 'reed', ?, ?, ?, ?, 'expired')",
+            ("Expired Role", "ExpiredCo", "https://e/x", now, "expiredco", "expired role", now),
+        )
+        await db._conn.commit()
+
+        active_id = (await (await db._conn.execute("SELECT id FROM jobs WHERE title='Active Role'")).fetchone())[0]
+        expired_id = (await (await db._conn.execute("SELECT id FROM jobs WHERE title='Expired Role'")).fetchone())[0]
+
+        active_row = await db.get_job_by_id_with_enrichment(active_id)
+        expired_row = await db.get_job_by_id_with_enrichment(expired_id)
+
+        assert active_row is not None
+        assert active_row["title"] == "Active Role"
+        assert expired_row is None, "expired single-row lookup must return None"
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
 # B12 — per-user concurrent search cap
 # ---------------------------------------------------------------------------
 

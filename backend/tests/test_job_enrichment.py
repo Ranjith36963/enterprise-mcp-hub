@@ -613,3 +613,38 @@ async def test_enrich_batch_skip_existing_when_flag_set(db_with_schema):
     assert results[0] is None  # was already enriched
     assert results[1] is not None  # got freshly enriched
     assert llm_calls["n"] == 1  # only the un-enriched job touched the LLM
+
+
+@pytest.mark.asyncio
+async def test_enrich_batch_persists_results_to_db(db_with_schema):
+    """B7-1 regression guard: enrich_batch must SAVE the LLM results, not
+    just return them. Without persistence the LLM call burns money for
+    nothing — every subsequent read returns no enrichment, and the next
+    batch re-runs the same LLM calls because skip_existing finds nothing."""
+    from src.services.job_enrichment import enrich_batch
+
+    valid = _make_valid_enrichment()
+
+    async with aiosqlite.connect(db_with_schema) as conn:
+        cur = await conn.execute("INSERT INTO jobs(title) VALUES (?)", ("Persisted",))
+        await conn.commit()
+        job = _sample_job(title="Persisted")
+        job.id = cur.lastrowid
+
+        # Pre-condition: row absent
+        assert await has_enrichment(conn, job.id) is False
+
+        results = await enrich_batch(
+            [job],
+            semaphore_limit=1,
+            skip_existing=False,
+            conn=conn,
+            llm_extract_validated_fn=_mock_llm(valid),
+        )
+
+        # Post-condition: enrichment persisted to DB
+        assert results[0] is not None
+        assert await has_enrichment(conn, job.id) is True
+        loaded = await load_enrichment(conn, job.id)
+        assert loaded is not None
+        assert loaded.title_canonical == valid.title_canonical

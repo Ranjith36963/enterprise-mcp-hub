@@ -362,16 +362,20 @@ async def list_jobs(
     if bucket:
         all_rows = [r for r in all_rows if _compute_bucket(r.get("date_found", "")) == bucket]
 
+    # C-2 + C-3 fix: pre-fetch the user's full action map ONCE so we can
+    # filter by action BEFORE pagination (so `total` is honest and `page`
+    # has the requested size) AND avoid the N+1 round-trip the previous
+    # in-loop get_action_for_job() generated.
+    action_rows = await db.get_actions(user.id)
+    action_map: dict[int, str] = {row["job_id"]: row["action"] for row in action_rows}
+
+    if action is not None:
+        all_rows = [r for r in all_rows if action_map.get(r["id"]) == action]
+
     total = len(all_rows)
     page = all_rows[offset : offset + limit]
 
-    jobs = []
-    for row in page:
-        job_action = await db.get_action_for_job(row["id"], user.id)
-        # Filter by action if specified
-        if action is not None and job_action != action:
-            continue
-        jobs.append(_row_to_job_response(row, job_action))
+    jobs = [_row_to_job_response(row, action_map.get(row["id"])) for row in page]
 
     filters_applied: dict = {}
     if hours is not None:
