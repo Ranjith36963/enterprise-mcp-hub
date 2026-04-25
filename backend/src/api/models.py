@@ -1,7 +1,9 @@
 """Pydantic models for Job360 FastAPI backend."""
+
 from __future__ import annotations
 
 from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -41,9 +43,14 @@ class JobResponse(BaseModel):
     visa_flag: bool
     job_type: str = ""
     experience_level: str = ""
+    # Score-dim breakdown (Pillar 2 Batch 2.9). Per-dim values are computed at
+    # write time but not yet persisted as separate columns — defaulting to 0
+    # keeps the legacy radar-chart behaviour. Surfacing the breakdown will
+    # piggyback on a follow-up migration when JobScorer.score()'s breakdown
+    # is wired into insert_job (rule #19 forbids changing JobScorer defaults).
     role: int = 0
     skill: int = 0
-    seniority: int = 0
+    seniority_score: int = 0
     experience: int = 0
     credentials: int = 0
     location_score: int = 0
@@ -55,6 +62,31 @@ class JobResponse(BaseModel):
     transferable_skills: list[str] = []
     action: Optional[str] = None
     bucket: str = ""
+    # Step-1 B6 — date-model fields (Pillar 3 Batch 1). Persisted on the
+    # `jobs` table; `posted_at` is None when no trustworthy source field
+    # was found, `staleness_state` flips to 'stale' / 'expired' as the
+    # ghost detector runs. Frontend lib/types.ts must mirror these.
+    posted_at: Optional[str] = None
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    date_confidence: Optional[str] = None
+    staleness_state: Optional[str] = None
+    # Step-1 B6 — enrichment fields (Pillar 2 Batch 2.5 subset). Sourced
+    # from the `job_enrichment` row via a LEFT JOIN — None when no row
+    # exists. Mirrors a 13-of-18 user-facing slice of `JobEnrichment`.
+    title_canonical: Optional[str] = None
+    seniority: Optional[str] = None
+    employment_type: Optional[str] = None
+    workplace_type: Optional[str] = None
+    visa_sponsorship: Optional[bool] = None
+    salary_min_gbp: Optional[int] = None
+    salary_max_gbp: Optional[int] = None
+    salary_period: Optional[str] = None
+    salary_currency_original: Optional[str] = None
+    required_skills: Optional[list[str]] = None
+    nice_to_have_skills: Optional[list[str]] = None
+    industry: Optional[str] = None
+    years_experience_min: Optional[int] = None
 
 
 class JobListResponse(BaseModel):
@@ -91,6 +123,7 @@ class ProfileSummary(BaseModel):
 
 class CVDetail(BaseModel):
     """Full extracted CV data for transparent display."""
+
     raw_text: str = ""
     skills: list[str] = []
     job_titles: list[str] = []

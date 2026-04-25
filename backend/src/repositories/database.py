@@ -516,6 +516,83 @@ class JobDatabase:
         cols = [d[0] for d in cursor.description]
         return dict(zip(cols, row))
 
+    # ------------------------------------------------------------------
+    # Step-1 B6 — JOIN-once enrichment prefetch.
+    #
+    # The jobs API surfaces a 13-field enrichment slice on every JobResponse
+    # (see src/api/models.py::JobResponse + src/api/routes/jobs.py).
+    # Issuing one SELECT per job to load enrichment would N+1-explode on a
+    # 100-job list. Instead the route reads jobs LEFT JOIN job_enrichment
+    # in a single query — this method encapsulates the column aliasing
+    # (every job_enrichment column is prefixed `enr_` to avoid collisions
+    # with `experience_level` and `salary` on the jobs side).
+    #
+    # The `job_enrichment` table is shared catalog (rule #10) — no user_id
+    # filter. Per-user state (actions / pipeline) is looked up separately
+    # in the route, not joined here.
+    # ------------------------------------------------------------------
+
+    _JOBS_ENRICHMENT_JOIN_COLS = (
+        "j.*, "
+        "je.title_canonical AS enr_title_canonical, "
+        "je.category AS enr_category, "
+        "je.employment_type AS enr_employment_type, "
+        "je.workplace_type AS enr_workplace_type, "
+        "je.salary AS enr_salary, "
+        "je.required_skills AS enr_required_skills, "
+        "je.preferred_skills AS enr_preferred_skills, "
+        "je.experience_min_years AS enr_experience_min_years, "
+        "je.experience_level AS enr_experience_level, "
+        "je.visa_sponsorship AS enr_visa_sponsorship, "
+        "je.seniority AS enr_seniority"
+    )
+
+    async def get_recent_jobs_with_enrichment(self, days: int = 7, min_score: int = 0) -> list[dict]:
+        """Same as :meth:`get_recent_jobs` plus a LEFT JOIN to job_enrichment.
+
+        Returns one row per job; enrichment columns appear with the ``enr_``
+        prefix and are ``None`` when no enrichment row exists. Falls back
+        to the bare ``SELECT * FROM jobs`` if the enrichment table is
+        missing (fresh test DB without migration 0008 — the jobs route
+        must keep working). Mirrors the Step-1 B9 staleness filter on
+        :meth:`get_recent_jobs` so JobResponse doesn't surface jobs that
+        ghost-detection has marked ``expired``.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        # _JOBS_ENRICHMENT_JOIN_COLS is a class constant, not user input — S608 is a false positive here.
+        sql = (
+            f"SELECT {self._JOBS_ENRICHMENT_JOIN_COLS} "  # noqa: S608
+            "FROM jobs j "
+            "LEFT JOIN job_enrichment je ON je.job_id = j.id "
+            "WHERE j.first_seen >= ? AND j.match_score >= ? "
+            "AND (j.staleness_state IS NULL OR j.staleness_state = 'active') "
+            "ORDER BY j.date_found DESC"
+        )
+        try:
+            cursor = await self._conn.execute(sql, (cutoff, min_score))
+        except aiosqlite.OperationalError:
+            return await self.get_recent_jobs(days=days, min_score=min_score)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_job_by_id_with_enrichment(self, job_id: int) -> dict | None:
+        """Same as :meth:`get_job_by_id` plus a LEFT JOIN to job_enrichment."""
+        # _JOBS_ENRICHMENT_JOIN_COLS is a class constant, not user input — S608 is a false positive here.
+        sql = (
+            f"SELECT {self._JOBS_ENRICHMENT_JOIN_COLS} "  # noqa: S608
+            "FROM jobs j "
+            "LEFT JOIN job_enrichment je ON je.job_id = j.id "
+            "WHERE j.id = ?"
+        )
+        try:
+            cursor = await self._conn.execute(sql, (job_id,))
+        except aiosqlite.OperationalError:
+            return await self.get_job_by_id(job_id)
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return dict(row)
+
     async def close(self):
         if self._conn:
             await self._conn.close()
