@@ -38,9 +38,9 @@ Branch: `step-1-batch-s1` off `main @ 51d5c07`. Tag: `step-1-green`.
 
 | # | Item | Commit |
 |---|---|---|
-| S1 | run_uuid ContextVar propagation + run_log.run_uuid | (pending) |
-| S2 | per-source timer + per_source_errors/duration columns | (pending) |
-| S3 | EnrichmentTelemetry / EmbeddingsTelemetry / HybridTelemetry | (pending) |
+| S1 | run_uuid ContextVar propagation + run_log.run_uuid | d64e9c6 |
+| S2 | per-source timer + per_source_errors/duration columns | d64e9c6 |
+| S3 | EnrichmentTelemetry / EmbeddingsTelemetry / HybridTelemetry | d64e9c6 |
 
 ### Test delta
 

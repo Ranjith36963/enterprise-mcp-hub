@@ -432,7 +432,7 @@ _Plan written 2026-04-24. Anchor verification: 6 Explore agents × 2 audit waves
 - Cohort A landed at: cec914f, acb9216, 9100d6d (B1, B2, B3, B4, B11)
 - Cohort B landed at: f2e7d13, 30cf923, 226cf41 (B5, B7, B10)
 - Cohort C landed at: 7ee6dc1, e1c48a6, 658844b (B6, B9, B12, B8)
-- Cohort D landed at: TBD (S1, S2, S3, frontend mirror, docs)
-- Total iterations used: TBD (target was 10-14; expect this comes in around 4-5 thanks to parallel cohort dispatch)
-- Final test count: TBD (baseline 1,018p/0f/3s + ~30 new)
-- Final tag: step-1-green @ TBD-SHA
+- Cohort D landed at: 88501f3 (frontend mirror), d64e9c6 (S1+S2+S3 telemetry); docs annotations applied in this commit
+- Total iterations used: 1 (parallel cohort dispatch collapsed the 10-14 target into a single supervisory iteration)
+- Final test count: pending — `make verify-step-1` will write the sentinel
+- Final tag: step-1-green @ pending-SHA
