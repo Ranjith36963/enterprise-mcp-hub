@@ -316,10 +316,18 @@ class JobDatabase:
         return cursor.rowcount
 
     async def get_recent_jobs(self, days: int = 7, min_score: int = 0) -> list[dict]:
-        """Return jobs from the last `days` with match_score >= min_score."""
+        """Return jobs from the last `days` with match_score >= min_score.
+
+        Step-1 B9: filters out rows marked ``staleness_state='expired'`` by
+        ghost-detection (Pillar-3 Batch-1). NULL is treated as "not yet
+        classified" → still served (defence-in-depth until the staleness
+        writer lands in Batch S1.5).
+        """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cursor = await self._conn.execute(
-            "SELECT * FROM jobs WHERE first_seen >= ? AND match_score >= ? ORDER BY date_found DESC",
+            "SELECT * FROM jobs WHERE first_seen >= ? AND match_score >= ? "
+            "AND (staleness_state IS NULL OR staleness_state = 'active') "
+            "ORDER BY date_found DESC",
             (cutoff, min_score),
         )
         rows = await cursor.fetchall()

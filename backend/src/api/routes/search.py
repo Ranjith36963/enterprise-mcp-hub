@@ -5,6 +5,7 @@ each `_runs[run_id]` record to the creating user via a stored
 `user_id` field. Cross-user reads return 404 (not 403) — existence
 hiding so run_id enumeration gives no oracle.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api.auth_deps import CurrentUser, require_user
 from src.api.models import SearchStartResponse, SearchStatusResponse
+from src.core import settings
 from src.main import run_search
 
 router = APIRouter(tags=["search"])
@@ -24,17 +26,38 @@ router = APIRouter(tags=["search"])
 # a `user_id` so GET can reject cross-user reads with a 404.
 _runs: dict[str, dict] = {}
 
+# Statuses that count toward the per-user concurrent cap. A run that has
+# transitioned to `completed` or `failed` no longer holds compute budget,
+# so it must NOT count.
+_ACTIVE_STATUSES = frozenset({"pending", "running"})
+
+
+def _active_run_count_for_user(user_id: str) -> int:
+    """Count runs in `_runs` owned by `user_id` that are still in flight."""
+    return sum(1 for run in _runs.values() if run.get("user_id") == user_id and run.get("status") in _ACTIVE_STATUSES)
+
 
 @router.post("/search", response_model=SearchStartResponse)
 async def start_search(
     source: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_user),  # noqa: B008  # FastAPI dep idiom
 ):
     """Start an async job search run. Returns a run_id to poll for status.
 
     The run_id record is tagged with `user.id`; only the creating user
     can later read its status.
+
+    Step-1 B12: enforces ``MAX_CONCURRENT_SEARCHES_PER_USER``. If the
+    caller already has that many runs with status ``pending``/``running``
+    queued, returns HTTP 429. Counting is per-user, so other users are
+    unaffected by one user's burst.
     """
+    if _active_run_count_for_user(user.id) >= settings.MAX_CONCURRENT_SEARCHES_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many concurrent searches; wait for one to finish before starting another.",
+        )
+
     run_id = uuid.uuid4().hex[:12]
     _runs[run_id] = {
         "user_id": user.id,
@@ -58,7 +81,7 @@ async def start_search(
 @router.get("/search/{run_id}/status", response_model=SearchStatusResponse)
 async def search_status(
     run_id: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_user),  # noqa: B008  # FastAPI dep idiom
 ):
     """Poll the status of a running or completed search.
 

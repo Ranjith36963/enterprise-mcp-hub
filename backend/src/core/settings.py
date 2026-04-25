@@ -55,6 +55,12 @@ MAX_DAYS_OLD = 7
 # noise-floor traffic and keeps free-tier provider quotas usable.
 ENRICHMENT_THRESHOLD = int(os.getenv("ENRICHMENT_THRESHOLD", "60"))
 
+# Step-1 B12 — per-user concurrent search cap. POST /search refuses with
+# HTTP 429 once a user already has this many runs in `pending`/`running`
+# status. Prevents a single authed user from exhausting LLM credits via
+# burst dispatch.
+MAX_CONCURRENT_SEARCHES_PER_USER = int(os.getenv("MAX_CONCURRENT_SEARCHES_PER_USER", "3"))
+
 # Pillar 2 Batch 2.2 — gate-pass scoring
 # A job must clear BOTH the title gate AND the skill gate to receive a linear
 # score; otherwise the score is suppressed to max(10, (title+skill)*0.25) so
