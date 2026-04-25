@@ -13,6 +13,69 @@
 
 ---
 
+## Step 1.5 — Pre-Step-2 Stabilisation (MERGED 2026-04-25)
+
+Branch: `step-1-5-batch` off `main @ 17ccdf0`. Three cohort commits + sentinel.
+
+### Blocker closure (21 of 21)
+
+| Cohort | # | Blocker | Commit |
+|---|---|---|---|
+| X | S1.1-A | Job dataclass missing 9 per-dim score fields | 5ef2e49 |
+| X | S1.1-B | jobs table missing 9 score-dim columns (migration 0011) | 5ef2e49 |
+| X | S1.1-C | main.py captured only breakdown.match_score, dropped 8 dims | 5ef2e49 |
+| X | S1.1-D | insert_job persisted only match_score, not the breakdown | 5ef2e49 |
+| X | S1.5-A | ghost_detection.transition() never invoked from absence sweep | 5ef2e49 |
+| X | S1.5-B | update_last_seen hardcoded staleness_state='active' (helper added) | 5ef2e49 |
+| X | S1.5-C | mark_missed_for_source incremented misses without recomputing state | 5ef2e49 |
+| Y | S1.1-E | _JOBS_ENRICHMENT_JOIN_COLS auto-projects new columns via j.* | 5044b42 |
+| Y | S1.1-F | _row_to_job_response now extracts 9 dim fields from each row | 5044b42 |
+| Y | S1.1-G | JobResponse admission comment replaced with post-fix doc | 5044b42 |
+| Y | S1.1-H | test_jobs_response_includes_score_dim_breakdown value-presence | 5044b42 |
+| Y | S1.5-D | _maybe_normalise_skills_via_esco wired into cv_parser | 5044b42 |
+| Y | S1.5-E | CVData.cv_skills_esco field surfaces ESCO URI map | 5044b42 |
+| Y | S1.5-F | ProfileResponse.skill_tiers populated via tier_skills_by_evidence | 5044b42 |
+| Z | S3-A | GET /profile/versions wraps list_profile_versions | a56f028 |
+| Z | S3-B | POST /profile/versions/{id}/restore wraps restore_profile_version | a56f028 |
+| Z | S3-C | GET /profile/json-resume wraps CVData.to_json_resume | a56f028 |
+| Z | S3-D | GET /notifications + db.get/count_notification_ledger | a56f028 |
+| Z | S3-E | ProfileResponse adds provenance + linkedin_subsections + temporal | a56f028 |
+| Z | S3-F | JobResponse.dedup_group_ids: Optional[list[int]] = None placeholder | a56f028 |
+| Z | S3-G | 6 new Pydantic models (ProfileVersionSummary, ...) in api/models.py | a56f028 |
+
+### Test delta
+
+Baseline: 1,056p / 0f / 4s (post-Step-1)
+Step-1.5 added: ~28 new tests (7 dim/staleness + 7 ESCO + 12 endpoint + 1 dim-roundtrip + 1 dim-value-presence)
+Final: see `make verify-step-1-5` for actual count.
+
+### The bombshell (why this batch existed)
+
+Step 1 claimed "all 7 dims non-zero" as exit criteria. The reviewer never
+actually checked a JobResponse body — `_row_to_job_response()` literally
+hard-coded every dim to 0 because the columns weren't persisted. Step 1.5
+closes that with migration 0011 + writer + serializer + value-presence
+test, codified into CLAUDE.md rule #21.
+
+### Deferred to follow-up batches (explicitly tracked)
+
+- Dedup-group writer batch — `JobResponse.dedup_group_ids` ships as the
+  field shape only; population requires `deduplicator.deduplicate()`
+  return-type change + `job_dedup_groups` table.
+- Date-confidence ternary fix — source-by-source audit for
+  `date_confidence='medium'` heuristic. ~14 source files.
+- Frontend types.ts mirror — Step 2 cohort D rewrites these lines, no
+  point updating now.
+- Notification body capture — `notification_ledger` schema needs
+  `body TEXT` column. Migration + retrofit of ledger writers.
+
+### Plan reference
+
+`docs/step_1_5_plan.md` (executed-version — this log replaces the
+in-flight progress notes).
+
+---
+
 ## Step 1 — Engine→API Seam (MERGED 2026-04-24)
 
 Branch: `step-1-batch-s1` off `main @ 51d5c07`. Tag: `step-1-green`.
