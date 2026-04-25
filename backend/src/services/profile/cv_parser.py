@@ -79,6 +79,7 @@ CV TEXT:
 
 # ── File reading (infrastructure — not LLM) ─────────────────────
 
+
 def extract_text_from_pdf(file_path: str) -> str:
     """Extract text from a PDF file using pdfplumber."""
     try:
@@ -172,8 +173,13 @@ def extract_text(file_path: str) -> str:
 # ── LLM-powered CV analysis ─────────────────────────────────────
 
 _SECTION_HINT_HEADINGS = (
-    "summary", "experience", "education", "skills",
-    "certifications", "projects", "achievements",
+    "summary",
+    "experience",
+    "education",
+    "skills",
+    "certifications",
+    "projects",
+    "achievements",
 )
 
 
@@ -209,8 +215,7 @@ def _build_section_hint(file_path: str) -> str:
         return ""
     return (
         "\n\nPRE-SEGMENTED SECTIONS (from PDF layout analysis — use as "
-        "structural hints; the full raw text above is authoritative):\n"
-        + "\n\n".join(parts)
+        "structural hints; the full raw text above is authoritative):\n" + "\n\n".join(parts)
     )
 
 
@@ -257,16 +262,12 @@ async def parse_cv_async(file_path: str) -> CVData:
         # down) still raise so operators are alerted.
         msg = str(e).lower()
         if "validation" in msg:
-            logger.warning(
-                "CVSchema validation exhausted retries; using defensive coercion: %s", e
-            )
+            logger.warning("CVSchema validation exhausted retries; using defensive coercion: %s", e)
             try:
                 raw = await llm_extract(prompt, system=_CV_SYSTEM)
                 return _llm_result_to_cvdata(raw_text, raw)
             except Exception as e2:  # noqa: BLE001
-                logger.warning(
-                    "Defensive fallback also failed; returning CVData with raw_text only: %s", e2
-                )
+                logger.warning("Defensive fallback also failed; returning CVData with raw_text only: %s", e2)
                 return CVData(raw_text=raw_text)
         logger.error("LLM CV analysis failed: %s", e)
         raise
@@ -282,14 +283,61 @@ def parse_cv(file_path: str) -> CVData:
     if loop and loop.is_running():
         # Already in an async context — create a new thread to avoid nested event loop
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             return pool.submit(lambda: asyncio.run(parse_cv_async(file_path))).result()
     else:
         return asyncio.run(parse_cv_async(file_path))
 
 
-from src.services.profile._llm_utils import coerce_str as _coerce_str
-from src.services.profile._llm_utils import coerce_str_list as _coerce_str_list
+from src.services.profile._llm_utils import coerce_str as _coerce_str  # noqa: E402
+from src.services.profile._llm_utils import coerce_str_list as _coerce_str_list  # noqa: E402
+
+
+def _maybe_normalise_skills_via_esco(
+    skills: list[str],
+) -> tuple[list[str], dict[str, str]]:
+    """Step-1.5 S1.5-D — ESCO-normalise raw skill strings when the
+    ``SEMANTIC_ENABLED`` flag is on AND the ESCO index artefacts are on
+    disk. Returns ``(canonical_skills, {canonical_label: esco_uri})``.
+
+    Skills with no confident match (cosine < 0.55) pass through unchanged
+    and contribute no entry to the URI map. The flag-off / no-data path
+    is the identity transform → graceful no-op (CLAUDE.md rule #18).
+
+    The normaliser singleton lazy-loads sentence-transformers + the
+    embedding matrix on first call, then caches both for the process
+    lifetime — calling per-skill in a loop is intentional and cheap.
+    """
+    from src.core.settings import SEMANTIC_ENABLED  # noqa: PLC0415 — lazy
+
+    if not SEMANTIC_ENABLED:
+        return skills, {}
+    try:
+        from src.services.profile.skill_normalizer import (  # noqa: PLC0415
+            is_available,
+            normalize_skill,
+        )
+    except Exception:
+        return skills, {}
+    if not is_available():
+        return skills, {}
+
+    canonical: list[str] = []
+    esco_map: dict[str, str] = {}
+    for raw in skills:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        try:
+            match = normalize_skill(raw)
+        except Exception:
+            match = None
+        if match is not None and match.label:
+            canonical.append(match.label)
+            esco_map[match.label] = match.uri
+        else:
+            canonical.append(raw)
+    return canonical, esco_map
 
 
 def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
@@ -300,6 +348,9 @@ def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
     """
     # Scoring-semantic fields (flow into SearchConfig)
     skills = _coerce_str_list(result.get("skills"))
+    # Step-1.5 S1.5-D/E — opt-in ESCO normalisation. No-op when
+    # SEMANTIC_ENABLED is false or the ESCO index is missing.
+    skills, cv_skills_esco = _maybe_normalise_skills_via_esco(skills)
 
     # Display-only fields (NOT used in scoring — kept separate to avoid pollution)
     name = _coerce_str(result.get("name"))
@@ -368,6 +419,5 @@ def _llm_result_to_cvdata(raw_text: str, result: dict) -> CVData:
         headline=headline,
         location=location,
         achievements=achievements,
+        cv_skills_esco=cv_skills_esco,
     )
-
-

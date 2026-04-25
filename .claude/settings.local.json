@@ -149,7 +149,8 @@
       "WebFetch(domain:app.meetdex.ai)",
       "WebFetch(domain:app.usesprout.com)",
       "WebFetch(domain:hiring.cafe)",
-      "Skill(ralph-loop:ralph-loop)"
+      "Skill(ralph-loop:ralph-loop)",
+      "Bash(ruff format *)"
     ]
   },
   "disabledMcpjsonServers": [

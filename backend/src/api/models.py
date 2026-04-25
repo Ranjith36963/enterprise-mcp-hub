@@ -43,11 +43,13 @@ class JobResponse(BaseModel):
     visa_flag: bool
     job_type: str = ""
     experience_level: str = ""
-    # Score-dim breakdown (Pillar 2 Batch 2.9). Per-dim values are computed at
-    # write time but not yet persisted as separate columns — defaulting to 0
-    # keeps the legacy radar-chart behaviour. Surfacing the breakdown will
-    # piggyback on a follow-up migration when JobScorer.score()'s breakdown
-    # is wired into insert_job (rule #19 forbids changing JobScorer defaults).
+    # Score-dim breakdown (Pillar 2 Batch 2.9). Step-1.5 S1.1 wired the
+    # 9 columns end-to-end (migration 0011 → Job dataclass → main.py
+    # capture → insert_job → _row_to_job_response). `role`/`skill`/
+    # `location_score`/`recency`/`seniority_score` carry their respective
+    # ScoreBreakdown component each run; the remaining four
+    # (experience/credentials/semantic/penalty) persist as 0 until the
+    # engine starts producing those signals — see CLAUDE.md rule #21.
     role: int = 0
     skill: int = 0
     seniority_score: int = 0
@@ -146,6 +148,15 @@ class ProfileResponse(BaseModel):
     summary: ProfileSummary
     preferences: dict
     cv_detail: CVDetail | None = None
+    # Step-1.5 S1.5-F — evidence-based skill tiering surfaced via
+    # ``services.profile.skill_tiering.tier_skills_by_evidence``. Maps
+    # tier name → ordered list of skill names. Empty dict when no profile
+    # is loaded (or the profile has no skills yet).
+    skill_tiers: dict[str, list[str]] = {}
+    # Step-1.5 S1.5-D/E — ESCO concept URIs per skill (canonical_label →
+    # esco_uri). Mirrors `CVData.cv_skills_esco`. Empty when SEMANTIC is
+    # off or the index is missing — gracefully degrades.
+    skill_esco: dict[str, str] = {}
 
 
 class LinkedInResponse(BaseModel):

@@ -17,11 +17,53 @@
 --
 -- Self-bootstrapping schema guard
 -- -------------------------------
--- The ALTER TABLE ADD COLUMN sequence is the forward path for DBs that
--- already had the legacy jobs schema. The fresh-init path runs through
--- JobDatabase._migrate() in database.py, which mirrors this same column
--- list. The migration runner swallows "duplicate column name" errors so
--- both paths converge to the same shape.
+-- Some test fixtures (test_auth_routes::temp_db, test_channels_routes,
+-- test_feed_service, test_tenancy_isolation) call `runner.up()` WITHOUT
+-- first calling `JobDatabase.init_db()`, so the `jobs` table may not exist
+-- at all. Production always creates the table via init_db() before
+-- migrations run, but the migration must work from every starting state.
+-- The CREATE TABLE IF NOT EXISTS declares the full post-0011 jobs shape;
+-- the ALTER statements that follow remain the forward path for DBs that
+-- already had the legacy jobs table. When both surfaces produce the same
+-- column, the migration runner swallows the resulting "duplicate column
+-- name" errors (see runner._apply_up_sql).
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT DEFAULT '',
+    salary_min REAL,
+    salary_max REAL,
+    description TEXT DEFAULT '',
+    apply_url TEXT NOT NULL,
+    source TEXT NOT NULL,
+    date_found TEXT NOT NULL,
+    match_score INTEGER DEFAULT 0,
+    visa_flag INTEGER DEFAULT 0,
+    experience_level TEXT DEFAULT '',
+    normalized_company TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    posted_at TEXT,
+    first_seen_at TEXT,
+    last_seen_at TEXT,
+    last_updated_at TEXT,
+    date_confidence TEXT DEFAULT 'low',
+    date_posted_raw TEXT,
+    consecutive_misses INTEGER DEFAULT 0,
+    staleness_state TEXT DEFAULT 'active',
+    role INTEGER DEFAULT 0,
+    skill INTEGER DEFAULT 0,
+    seniority_score INTEGER DEFAULT 0,
+    experience INTEGER DEFAULT 0,
+    credentials INTEGER DEFAULT 0,
+    location_score INTEGER DEFAULT 0,
+    recency INTEGER DEFAULT 0,
+    semantic INTEGER DEFAULT 0,
+    penalty INTEGER DEFAULT 0,
+    UNIQUE(normalized_company, normalized_title)
+);
 
 ALTER TABLE jobs ADD COLUMN role INTEGER DEFAULT 0;
 ALTER TABLE jobs ADD COLUMN skill INTEGER DEFAULT 0;

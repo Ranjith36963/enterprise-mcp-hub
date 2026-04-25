@@ -233,6 +233,59 @@ async def _insert_enrichment_row(db: JobDatabase, job_id: int, **overrides) -> N
 
 
 @pytest.mark.asyncio
+async def test_jobs_response_includes_score_dim_breakdown(authenticated_async_context):
+    """Step-1.5 S1.1-H — JobResponse must surface the per-dim breakdown
+    columns added by migration 0011, not silently default them all to 0.
+
+    This is the value-presence test the Step-1 reviewer never wrote
+    (CLAUDE.md rule #21). Schema-presence already passed in Step 1; what
+    failed silently was that `_row_to_job_response()` never extracted the
+    fields. With migration 0011 + the writer + the serializer all wired,
+    a job inserted with role=35/skill=30/etc. must round-trip non-zero.
+    """
+    db = await api_deps.get_db()
+    job_id = await _insert_job_row(
+        db,
+        match_score=85,
+        role=35,
+        skill=30,
+        seniority_score=4,
+        location_score=8,
+        recency=6,
+        semantic=2,
+    )
+    async with authenticated_async_context() as client:
+        resp = await client.get(f"/api/jobs/{job_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    # The bombshell-fix assertion: at least one dim must be non-zero.
+    assert any(
+        body.get(dim, 0) > 0
+        for dim in (
+            "role",
+            "skill",
+            "seniority_score",
+            "experience",
+            "credentials",
+            "location_score",
+            "recency",
+            "semantic",
+        )
+    ), f"all dims defaulted to 0 — serializer regression: {body}"
+    # And specifically: the values inserted must round-trip exactly.
+    assert body["role"] == 35
+    assert body["skill"] == 30
+    assert body["seniority_score"] == 4
+    assert body["location_score"] == 8
+    assert body["recency"] == 6
+    assert body["semantic"] == 2
+    # Unset dims default to 0 (Pillar 2.9 sentinel for "not scored").
+    assert body["experience"] == 0
+    assert body["credentials"] == 0
+    assert body["penalty"] == 0
+
+
+@pytest.mark.asyncio
 async def test_jobs_response_includes_date_model_fields(authenticated_async_context):
     """B6: GET /jobs/:id surfaces the 5 lifecycle/date columns."""
     pinned = "2026-04-20T08:00:00+00:00"

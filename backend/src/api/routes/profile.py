@@ -1,4 +1,5 @@
 """Profile routes for Job360 FastAPI backend."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.api.auth_deps import CurrentUser, require_user
-from src.api.dependencies import get_db, save_upload_to_temp
+from src.api.dependencies import save_upload_to_temp
 from src.api.models import CVDetail, GitHubResponse, LinkedInResponse, ProfileResponse, ProfileSummary
 from src.services.profile.cv_parser import parse_cv_async
 from src.services.profile.github_enricher import enrich_cv_from_github, fetch_github_profile
@@ -47,15 +48,39 @@ def _build_profile_response(profile: UserProfile) -> ProfileResponse:
         achievements=getattr(cv, "achievements", []),
         highlights=cv.highlights if hasattr(cv, "highlights") else cv.skills,
     )
+
+    # Step-1.5 S1.5-F — evidence-based tiering. Walk the profile, build
+    # per-skill evidence rows, then split into primary/secondary/tertiary
+    # by accumulated weight. Empty dict if the helper raises (e.g. brand
+    # new profile with no fields populated).
+    skill_tiers: dict[str, list[str]] = {}
+    try:
+        from src.services.profile.skill_tiering import (  # noqa: PLC0415 — lazy
+            collect_evidence_from_profile,
+            tier_skills_by_evidence,
+        )
+
+        evidence = collect_evidence_from_profile(profile)
+        primary, secondary, tertiary = tier_skills_by_evidence(evidence)
+        skill_tiers = {
+            "primary": primary,
+            "secondary": secondary,
+            "tertiary": tertiary,
+        }
+    except Exception:
+        skill_tiers = {}
+
     return ProfileResponse(
         summary=summary,
         preferences=asdict(profile.preferences),
         cv_detail=cv_detail if cv.raw_text else None,
+        skill_tiers=skill_tiers,
+        skill_esco=getattr(cv, "cv_skills_esco", {}) or {},
     )
 
 
 @router.get("/profile", response_model=ProfileResponse)
-async def get_profile(user: CurrentUser = Depends(require_user)):
+async def get_profile(user: CurrentUser = Depends(require_user)):  # noqa: B008 — FastAPI dependency-injection idiom
     """Return the caller's profile summary.
 
     Per-user storage landed in Batch 3.5.2 — each user has their own row
@@ -70,9 +95,9 @@ async def get_profile(user: CurrentUser = Depends(require_user)):
 
 @router.post("/profile", response_model=ProfileResponse)
 async def upsert_profile(
-    cv: UploadFile = File(None),
-    preferences: str = Form(None),
-    user: CurrentUser = Depends(require_user),
+    cv: UploadFile = File(None),  # noqa: B008 — FastAPI dependency-injection idiom
+    preferences: str = Form(None),  # noqa: B008 — FastAPI dependency-injection idiom
+    user: CurrentUser = Depends(require_user),  # noqa: B008 — FastAPI dependency-injection idiom
 ):
     """Create or update the caller's profile with CV and/or preferences."""
     profile = load_profile(user.id) or UserProfile()
@@ -86,7 +111,7 @@ async def upsert_profile(
             try:
                 cv_data = await parse_cv_async(tmp_path)
             except RuntimeError as e:
-                raise HTTPException(status_code=503, detail=str(e))
+                raise HTTPException(status_code=503, detail=str(e)) from e
             profile.cv_data = cv_data
         finally:
             try:
@@ -128,8 +153,8 @@ async def upsert_profile(
 
 @router.post("/profile/linkedin", response_model=LinkedInResponse)
 async def upload_linkedin(
-    file: UploadFile = File(...),
-    user: CurrentUser = Depends(require_user),
+    file: UploadFile = File(...),  # noqa: B008 — FastAPI dependency-injection idiom
+    user: CurrentUser = Depends(require_user),  # noqa: B008 — FastAPI dependency-injection idiom
 ):
     """Enrich user profile with a LinkedIn 'Save to PDF' profile export."""
     content = await file.read()
@@ -154,8 +179,8 @@ async def upload_linkedin(
 
 @router.post("/profile/github", response_model=GitHubResponse)
 async def upload_github(
-    username: str = Form(...),
-    user: CurrentUser = Depends(require_user),
+    username: str = Form(...),  # noqa: B008 — FastAPI dependency-injection idiom
+    user: CurrentUser = Depends(require_user),  # noqa: B008 — FastAPI dependency-injection idiom
 ):
     """Enrich the caller's profile with GitHub public data."""
     github_data = await fetch_github_profile(username)

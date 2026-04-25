@@ -123,6 +123,19 @@ def _row_to_job_response(row: dict, action: str | None = None) -> JobResponse:
         apply_url=row.get("apply_url", ""),
         visa_flag=bool(row.get("visa_flag", 0)),
         experience_level=row.get("experience_level", ""),
+        # Step-1.5 S1.1-F — surface the per-dim breakdown columns added by
+        # migration 0011. The j.* projection in _JOBS_ENRICHMENT_JOIN_COLS
+        # already carries them; without these reads JobResponse would keep
+        # defaulting every dim to 0 (the bug Step 1's exit criteria missed).
+        role=row.get("role", 0) or 0,
+        skill=row.get("skill", 0) or 0,
+        seniority_score=row.get("seniority_score", 0) or 0,
+        experience=row.get("experience", 0) or 0,
+        credentials=row.get("credentials", 0) or 0,
+        location_score=row.get("location_score", 0) or 0,
+        recency=row.get("recency", 0) or 0,
+        semantic=row.get("semantic", 0) or 0,
+        penalty=row.get("penalty", 0) or 0,
         action=action,
         bucket=_compute_bucket(row.get("date_found", "")),
         # Date-model fields (jobs table columns; Pillar 3 Batch 1).

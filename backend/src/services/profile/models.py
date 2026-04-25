@@ -55,9 +55,17 @@ class CVData:
     # LinkedIn-stated ones.
     industries: list[str] = field(default_factory=list)
     cv_languages: list[str] = field(default_factory=list)
+    # Step-1.5 S1.5-D — ESCO normalisation map populated by
+    # ``cv_parser._llm_result_to_cvdata`` when ``SEMANTIC_ENABLED=true`` and
+    # the ESCO index is on disk. Maps the *canonical* skill label (which
+    # also replaces the entry in ``skills``) → its ESCO concept URI. Empty
+    # when ESCO is off / unavailable — gracefully matches the pre-ESCO
+    # behaviour. ProfileResponse expansion surfaces this as
+    # ``skill_provenance``.
+    cv_skills_esco: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_json_resume(cls, data: dict) -> "CVData":
+    def from_json_resume(cls, data: dict) -> CVData:
         """Batch 1.8b — inverse of ``to_json_resume``. Build a CVData
         from a JSON Resume–shaped dict.
 
@@ -72,9 +80,7 @@ class CVData:
             return cls()
         basics = data.get("basics") or {}
         location_obj = basics.get("location") if isinstance(basics, dict) else None
-        loc = (
-            location_obj.get("address", "") if isinstance(location_obj, dict) else ""
-        )
+        loc = location_obj.get("address", "") if isinstance(location_obj, dict) else ""
 
         linkedin_positions = [
             {
@@ -274,7 +280,7 @@ class UserPreferences:
     # without string juggling. None → user has no preference → neutral score.
     # `needs_visa` gates the visa scorer — when False the dim returns 0
     # (no reward for something the user doesn't need).
-    preferred_workplace: Optional[str] = None   # "remote" | "hybrid" | "onsite" | None
+    preferred_workplace: Optional[str] = None  # "remote" | "hybrid" | "onsite" | None
     needs_visa: bool = False
 
 
@@ -286,10 +292,7 @@ class UserProfile:
     @property
     def is_complete(self) -> bool:
         has_cv = bool(self.cv_data.raw_text)
-        has_prefs = bool(
-            self.preferences.target_job_titles
-            or self.preferences.additional_skills
-        )
+        has_prefs = bool(self.preferences.target_job_titles or self.preferences.additional_skills)
         return has_cv or has_prefs
 
 
@@ -316,6 +319,7 @@ class SearchConfig:
         for meaningful job matching.
         """
         from src.core.keywords import LOCATIONS, VISA_KEYWORDS
+
         return cls(
             job_titles=[],
             primary_skills=[],
