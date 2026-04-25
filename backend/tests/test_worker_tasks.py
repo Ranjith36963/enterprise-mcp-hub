@@ -1,4 +1,5 @@
 """Phase 5 worker task tests — no Redis, direct function calls."""
+
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -162,8 +163,8 @@ async def test_score_and_ingest_skips_users_failing_prefilter(worker_db):
             ctx,
             job_id=1,
             users_override=[
-                ("alice", FilterProfile(skills={"python"}), 80),     # passes
-                ("bob", FilterProfile(skills={"haskell"}), 80),      # skill miss — filtered
+                ("alice", FilterProfile(skills={"python"}), 80),  # passes
+                ("bob", FilterProfile(skills={"haskell"}), 80),  # skill miss — filtered
             ],
         )
         cur = await db.execute("SELECT user_id FROM user_feed")
@@ -180,12 +181,8 @@ async def test_score_and_ingest_is_idempotent(worker_db):
             "enqueue": lambda *a: None,
             "scorer": lambda user_id, job: 85,
         }
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
         cur = await db.execute("SELECT COUNT(*) FROM user_feed WHERE user_id = 'alice'")
         (count,) = await cur.fetchone()
     assert count == 1
@@ -200,15 +197,9 @@ async def test_ledger_idempotent_per_channel(worker_db):
             "scorer": lambda user_id, job: 85,
         }
         # Two runs with same (user, job, channel='instant') — ledger unique
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM notification_ledger WHERE user_id='alice' AND job_id=1"
-        )
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
+        cur = await db.execute("SELECT COUNT(*) FROM notification_ledger WHERE user_id='alice' AND job_id=1")
         (count,) = await cur.fetchone()
     assert count == 1  # UNIQUE(user_id, job_id, channel) held
 
@@ -227,9 +218,7 @@ async def test_instant_notification_suppressed_below_threshold(worker_db):
             job_id=1,
             users_override=[("alice", FilterProfile(), 90)],  # job scores 85 < 90
         )
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM notification_ledger WHERE user_id='alice'"
-        )
+        cur = await db.execute("SELECT COUNT(*) FROM notification_ledger WHERE user_id='alice'")
         (count,) = await cur.fetchone()
     assert result["notifications_queued"] == 0
     assert count == 0
@@ -243,13 +232,9 @@ async def test_mark_ledger_sent_updates_status(worker_db):
             "enqueue": lambda *a: None,
             "scorer": lambda user_id, job: 85,
         }
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
         await mark_ledger_sent(db, user_id="alice", job_id=1, channel="instant")
-        cur = await db.execute(
-            "SELECT status, sent_at FROM notification_ledger WHERE user_id='alice'"
-        )
+        cur = await db.execute("SELECT status, sent_at FROM notification_ledger WHERE user_id='alice'")
         row = await cur.fetchone()
     assert row[0] == "sent"
     assert row[1] is not None
@@ -263,21 +248,68 @@ async def test_mark_ledger_failed_increments_retry(worker_db):
             "enqueue": lambda *a: None,
             "scorer": lambda user_id, job: 85,
         }
-        await score_and_ingest(
-            ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)]
-        )
-        await mark_ledger_failed(
-            db, user_id="alice", job_id=1, channel="instant", error="503"
-        )
-        await mark_ledger_failed(
-            db, user_id="alice", job_id=1, channel="instant", error="503"
-        )
-        cur = await db.execute(
-            "SELECT status, error_message, retry_count FROM notification_ledger"
-        )
+        await score_and_ingest(ctx, job_id=1, users_override=[("alice", FilterProfile(), 80)])
+        await mark_ledger_failed(db, user_id="alice", job_id=1, channel="instant", error="503")
+        await mark_ledger_failed(db, user_id="alice", job_id=1, channel="instant", error="503")
+        cur = await db.execute("SELECT status, error_message, retry_count FROM notification_ledger")
         row = await cur.fetchone()
     assert tuple(row) == ("failed", "503", 2)
 
 
 async def _append(lst, args):
     lst.append(args)
+
+
+# Step-1 B5 — multi-dim wiring at the worker JobScorer call site.
+
+
+@pytest.mark.asyncio
+async def test_score_and_ingest_passes_user_prefs_and_enrichment_lookup(worker_db, monkeypatch):
+    """The worker MUST construct each per-user JobScorer with both
+    `user_preferences` (from that user's loaded profile) AND a callable
+    `enrichment_lookup`. This activates the Pillar 2 Batch 2.9 multi-dim
+    scoring path. Without these kwargs, score_and_ingest silently drops to
+    the legacy 4-component formula and the upgrade is invisible.
+    """
+    from src.services.profile.models import CVData, UserPreferences, UserProfile
+    from src.services.skill_matcher import ScoreBreakdown
+
+    # The worker's _scorer_for() loads the user's profile. We inject a fake
+    # so the test is deterministic and doesn't depend on a seeded
+    # user_profiles table.
+    fake_profile = UserProfile(
+        cv_data=CVData(raw_text="dummy CV"),
+        preferences=UserPreferences(target_job_titles=["Engineer"], salary_min=50000),
+    )
+    monkeypatch.setattr("src.workers.tasks._user_profile_for", lambda user_id: fake_profile)
+
+    captured: list[dict] = []
+
+    class _SpyScorer:
+        def __init__(self, config, *, user_preferences=None, enrichment_lookup=None):
+            captured.append(
+                {
+                    "user_preferences": user_preferences,
+                    "enrichment_lookup": enrichment_lookup,
+                }
+            )
+
+        def score(self, job):
+            return ScoreBreakdown(match_score=99)
+
+    monkeypatch.setattr("src.workers.tasks.JobScorer", _SpyScorer)
+
+    async with aiosqlite.connect(worker_db) as db:
+        ctx = {"db": db, "enqueue": lambda *a: None}  # NB: no 'scorer' override
+        result = await score_and_ingest(
+            ctx,
+            job_id=1,
+            users_override=[("alice", FilterProfile(), 80)],
+        )
+
+    assert result["ingested"] == 1
+    assert len(captured) == 1
+    assert (
+        captured[0]["user_preferences"] is fake_profile.preferences
+    ), "JobScorer must receive the loaded user's preferences"
+    assert callable(captured[0]["enrichment_lookup"]), "enrichment_lookup must be a callable (job)->Enrichment|None"

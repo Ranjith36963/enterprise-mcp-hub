@@ -31,6 +31,7 @@ from src.services.domain_classifier import (
     classify_user_domain,
     source_matches_user_domains,
 )
+from src.services.job_enrichment import ENRICHMENT_ENABLED, _build_enrichment_lookup
 from src.services.notifications.base import get_configured_channels
 from src.services.notifications.report_generator import generate_markdown_report
 from src.services.profile.keyword_generator import generate_search_config
@@ -347,7 +348,6 @@ async def run_search(
         }
 
     search_config = generate_search_config(profile)
-    scorer = JobScorer(search_config)
     logger.info("  Using dynamic keywords from user profile")
     logger.info("=" * 60)
 
@@ -361,6 +361,22 @@ async def run_search(
         purged = await db.purge_old_jobs(days=30)
         if purged:
             logger.info("Purged %s jobs older than 30 days", purged)
+
+        # Pillar 2 Batch 2.9 — wire user_preferences + enrichment_lookup so the
+        # multi-dim path (seniority/salary/visa/workplace) activates when both
+        # a profile and at least one job_enrichment row exist. When
+        # ENRICHMENT_ENABLED is false we pass an empty dict so the lookup
+        # callable always returns None and the multi-dim contribution is 0
+        # (CLAUDE.md rule #19 — legacy callers see legacy behaviour).
+        if ENRICHMENT_ENABLED:
+            enrichment_lookup_dict = await _build_enrichment_lookup(db._conn)
+        else:
+            enrichment_lookup_dict = {}
+        scorer = JobScorer(
+            search_config,
+            user_preferences=profile.preferences if profile else None,
+            enrichment_lookup=lambda job: enrichment_lookup_dict.get(getattr(job, "id", None)),
+        )
 
         # Create session
         connector = aiohttp.TCPConnector(limit=30, limit_per_host=5)

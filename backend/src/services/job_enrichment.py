@@ -11,12 +11,14 @@ CLAUDE.md compliance:
   * Rule #10 — `job_enrichment` is a **shared catalog** table (no user_id
     column). Per-user state continues to live in `user_feed` / `user_actions`.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable
+from typing import Callable, Optional
 
 import aiosqlite
 
@@ -28,9 +30,7 @@ logger = logging.getLogger("job360.services.job_enrichment")
 
 # Feature flag — plan Appendix B. Default-off behaviour must exactly match
 # pre-Batch-2.5 (no enrichment calls, no DB writes).
-ENRICHMENT_ENABLED = os.getenv("ENRICHMENT_ENABLED", "false").lower() in {
-    "1", "true", "yes", "on"
-}
+ENRICHMENT_ENABLED = os.getenv("ENRICHMENT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
 
 # The callable type of `llm_extract_validated` — declared so test doubles can
@@ -145,6 +145,87 @@ async def save_enrichment(
     await conn.commit()
 
 
+async def _build_enrichment_lookup(
+    conn: aiosqlite.Connection,
+) -> dict[int, JobEnrichment]:
+    """Bulk-load every persisted ``job_enrichment`` row into a dict.
+
+    Used by both the CLI ``run_search`` and the ARQ ``score_and_ingest`` worker
+    to wire ``JobScorer(..., enrichment_lookup=...)`` (Pillar 2 Batch 2.9).
+    The returned mapping is keyed by ``job_id`` (the same primary key as the
+    parent ``jobs`` table). Call sites typically wrap it as
+    ``lambda job: lookup.get(getattr(job, 'id', None))`` since
+    ``JobScorer._enrichment_lookup`` expects a callable.
+
+    Returns an empty dict when the table is empty or absent — callers should
+    treat ``{}`` as "no enrichment available, fall back to legacy 4-component
+    scoring" per CLAUDE.md rule #19.
+    """
+    try:
+        cur = await conn.execute(
+            """
+            SELECT job_id, title_canonical, category, employment_type, workplace_type,
+                   locations, salary, required_skills, preferred_skills,
+                   experience_min_years, experience_level, requirements_summary,
+                   language, employer_type, visa_sponsorship, seniority,
+                   remote_region, apply_instructions, red_flags
+            FROM job_enrichment
+            """
+        )
+    except aiosqlite.OperationalError:
+        # Table not yet migrated (e.g. fresh test DB without 0008). Return empty.
+        return {}
+    rows = await cur.fetchall()
+    lookup: dict[int, JobEnrichment] = {}
+    for row in rows:
+        try:
+            (
+                job_id,
+                title_canonical,
+                category,
+                employment_type,
+                workplace_type,
+                locations_json,
+                salary_json,
+                required_json,
+                preferred_json,
+                experience_min_years,
+                experience_level,
+                requirements_summary,
+                language,
+                employer_type,
+                visa_sponsorship,
+                seniority,
+                remote_region,
+                apply_instructions,
+                red_flags_json,
+            ) = row
+            lookup[int(job_id)] = JobEnrichment(
+                title_canonical=title_canonical,
+                category=category,
+                employment_type=employment_type,
+                workplace_type=workplace_type,
+                locations=json.loads(locations_json) if locations_json else [],
+                salary=json.loads(salary_json) if salary_json else {},
+                required_skills=json.loads(required_json) if required_json else [],
+                preferred_skills=json.loads(preferred_json) if preferred_json else [],
+                experience_min_years=experience_min_years,
+                experience_level=experience_level,
+                requirements_summary=requirements_summary or "",
+                language=language,
+                employer_type=employer_type,
+                visa_sponsorship=visa_sponsorship,
+                seniority=seniority,
+                remote_region=remote_region,
+                apply_instructions=apply_instructions,
+                red_flags=json.loads(red_flags_json) if red_flags_json else [],
+            )
+        except Exception as exc:  # noqa: BLE001 — never crash on a single bad row
+            logger.warning("Skipping malformed job_enrichment row: %s", exc)
+            continue
+    return lookup
+
+
 async def load_enrichment(
     conn: aiosqlite.Connection,
     job_id: int,
@@ -170,11 +251,24 @@ async def load_enrichment(
     if row is None:
         return None
     (
-        title_canonical, category, employment_type, workplace_type,
-        locations_json, salary_json, required_json, preferred_json,
-        experience_min_years, experience_level, requirements_summary,
-        language, employer_type, visa_sponsorship, seniority,
-        remote_region, apply_instructions, red_flags_json,
+        title_canonical,
+        category,
+        employment_type,
+        workplace_type,
+        locations_json,
+        salary_json,
+        required_json,
+        preferred_json,
+        experience_min_years,
+        experience_level,
+        requirements_summary,
+        language,
+        employer_type,
+        visa_sponsorship,
+        seniority,
+        remote_region,
+        apply_instructions,
+        red_flags_json,
     ) = row
     return JobEnrichment(
         title_canonical=title_canonical,

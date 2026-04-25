@@ -18,6 +18,7 @@ import aiosqlite
 
 from src.models import Job
 from src.services.feed import FeedService
+from src.services.job_enrichment import _build_enrichment_lookup
 from src.services.prefilter import FilterProfile, passes_prefilter
 from src.services.profile.models import SearchConfig
 from src.services.skill_matcher import JobScorer
@@ -97,9 +98,22 @@ async def score_and_ingest(
     scorer_fn: Optional[Callable[[str, Job], int]] = ctx.get("scorer")
     user_scorers: dict[str, JobScorer] = {}
 
+    # Pillar 2 Batch 2.9 — enrichment lookup is the same for every user
+    # (job_enrichment is shared catalog per CLAUDE.md rule #10). Build once,
+    # share across the per-user scorer cache. Empty dict ⇒ no rows ⇒
+    # multi-dim contributes 0 (legacy 4-component path preserved).
+    enrichment_lookup_dict = await _build_enrichment_lookup(db)
+    enrichment_lookup_fn = lambda job: enrichment_lookup_dict.get(getattr(job, "id", None))  # noqa: E731
+
     def _scorer_for(user_id: str) -> JobScorer:
         if user_id not in user_scorers:
-            user_scorers[user_id] = JobScorer(_search_config_for(user_id))
+            profile = _user_profile_for(user_id)
+            prefs = profile.preferences if profile is not None else None
+            user_scorers[user_id] = JobScorer(
+                _search_config_for(user_id),
+                user_preferences=prefs,
+                enrichment_lookup=enrichment_lookup_fn,
+            )
         return user_scorers[user_id]
 
     for user_id, profile, threshold in targets:
@@ -286,6 +300,24 @@ async def mark_ledger_failed_task(ctx: dict, user_id: str, job_id: int, channel:
 
 
 # ---------- helpers ----------------------------------------------------
+
+
+def _user_profile_for(user_id: str):
+    """Load the user's full ``UserProfile`` from the user_profiles table.
+
+    Returns ``None`` on any failure — no row, schema drift, JSON decode
+    error — so callers can skip multi-dim wiring and stay on the legacy
+    4-component path (CLAUDE.md rule #19).
+    """
+    try:
+        from src.services.profile.storage import load_profile
+
+        profile = load_profile(user_id)
+        if profile and profile.is_complete:
+            return profile
+    except Exception:  # noqa: BLE001, S110 — defensive, multi-dim is opt-in
+        pass
+    return None
 
 
 def _search_config_for(user_id: str) -> SearchConfig:

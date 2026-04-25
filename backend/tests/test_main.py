@@ -1,11 +1,12 @@
-import re
 import asyncio
+import re
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from aioresponses import aioresponses
 
-from src.main import run_search, SOURCE_INSTANCE_COUNT, _build_sources
+from src.main import SOURCE_INSTANCE_COUNT, _build_sources, run_search
 
 
 def _run(coro):
@@ -75,12 +76,19 @@ def _mock_free_sources(m, arbeitnow_payload=None):
     m.get(re.compile(r"https://www\.careerjet\.co\.uk/.*"), body="<html></html>", repeat=True)
 
 
-MOCK_JOB_PAYLOAD = {"data": [{
-    "slug": "ai-1", "title": "AI Engineer",
-    "company_name": "TestCo", "location": "London, UK",
-    "description": "Python PyTorch TensorFlow LangChain RAG LLM Deep Learning role",
-    "url": "https://example.com/ai-1", "tags": ["ai", "python"],
-}]}
+MOCK_JOB_PAYLOAD = {
+    "data": [
+        {
+            "slug": "ai-1",
+            "title": "AI Engineer",
+            "company_name": "TestCo",
+            "location": "London, UK",
+            "description": "Python PyTorch TensorFlow LangChain RAG LLM Deep Learning role",
+            "url": "https://example.com/ai-1",
+            "tags": ["ai", "python"],
+        }
+    ]
+}
 
 
 def _patch_no_notifications():
@@ -93,6 +101,7 @@ def _patch_no_notifications():
 
 def test_run_search_completes_without_keys():
     """With no API keys and mocked free sources, run_search should complete without error."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m)
@@ -100,21 +109,26 @@ def test_run_search_completes_without_keys():
                 stats = await run_search(db_path=":memory:")
                 assert stats["sources_queried"] > 0
                 assert isinstance(stats["total_found"], int)
+
     _run(_test())
 
 
 def test_run_search_with_mock_jobs():
     """When sources return jobs, they should be scored, deduped, and stored."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
             with _patch_no_notifications():
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                         patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
+                    with (
+                        patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                        patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                    ):
                         stats = await run_search(db_path=":memory:")
                         assert stats["total_found"] >= 1
                         assert stats["new_jobs"] >= 1
+
     _run(_test())
 
 
@@ -123,21 +137,26 @@ def test_run_search_with_mock_jobs():
 
 def test_jobs_are_scored_with_recency():
     """Mock job posted today should have recency points included in score."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
             with _patch_no_notifications():
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                         patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
+                    with (
+                        patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                        patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                    ):
                         stats = await run_search(db_path=":memory:")
                         assert stats["new_jobs"] >= 1
                         assert stats["total_found"] >= 1
+
     _run(_test())
 
 
 def test_all_notification_channels_called():
     """When new jobs are found, all configured notification channels should be invoked."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
@@ -151,32 +170,40 @@ def test_all_notification_channels_called():
 
             with patch("src.main.get_configured_channels", return_value=mock_channels):
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                         patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
+                    with (
+                        patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                        patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                    ):
                         stats = await run_search(db_path=":memory:")
                         if stats["new_jobs"] > 0:
                             for ch in mock_channels:
                                 ch.send.assert_awaited_once()
+
     _run(_test())
 
 
 def test_run_search_scores_within_range():
     """Jobs returned from a run should have match_score between 0 and 100."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
             with _patch_no_notifications():
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                         patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
+                    with (
+                        patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                        patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                    ):
                         stats = await run_search(db_path=":memory:")
                         assert stats["total_found"] >= 1
                         assert stats["new_jobs"] >= 1
+
     _run(_test())
 
 
 def test_stats_include_per_source():
     """Stats dict must include per_source breakdown with source entries for all sources."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m)
@@ -185,13 +212,17 @@ def test_stats_include_per_source():
                 assert "per_source" in stats
                 assert isinstance(stats["per_source"], dict)
                 assert len(stats["per_source"]) == SOURCE_INSTANCE_COUNT
+
     _run(_test())
 
 
 def test_second_run_finds_no_new_jobs():
     """Running twice with same jobs should find 0 new jobs on second run (DB dedup)."""
+
     async def _test():
-        import tempfile as tf, os
+        import os
+        import tempfile as tf
+
         with tf.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         try:
@@ -199,8 +230,10 @@ def test_second_run_finds_no_new_jobs():
                 _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
                 with _patch_no_notifications():
                     with tempfile.TemporaryDirectory() as tmpdir:
-                        with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                             patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
+                        with (
+                            patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                            patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                        ):
                             stats1 = await run_search(db_path=db_path)
                             assert stats1["new_jobs"] >= 1
 
@@ -212,11 +245,13 @@ def test_second_run_finds_no_new_jobs():
                     assert stats2["new_jobs"] == 0
         finally:
             os.unlink(db_path)
+
     _run(_test())
 
 
 def test_run_search_no_notify_skips_channels():
     """With no_notify=True, notification channels should not be called."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
@@ -229,20 +264,28 @@ def test_run_search_no_notify_skips_channels():
 
             with patch("src.main.get_configured_channels", return_value=mock_channels):
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    with patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"), \
-                         patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"):
-                        stats = await run_search(db_path=":memory:", no_notify=True)
+                    with (
+                        patch("src.main.EXPORTS_DIR", Path(tmpdir) / "exports"),
+                        patch("src.main.REPORTS_DIR", Path(tmpdir) / "reports"),
+                    ):
+                        await run_search(db_path=":memory:", no_notify=True)
                         # Channels should NOT have been called
                         for ch in mock_channels:
                             ch.send.assert_not_awaited()
+
     _run(_test())
 
 
 def test_run_search_auto_purge():
     """run_search should auto-purge jobs older than 30 days."""
+
     async def _test():
-        import tempfile as tf, os
-        from datetime import datetime as dt, timezone as tz, timedelta
+        import os
+        import tempfile as tf
+        from datetime import datetime as dt
+        from datetime import timedelta
+        from datetime import timezone as tz
+
         from src.repositories.database import JobDatabase
 
         with tf.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -258,9 +301,22 @@ def test_run_search_auto_purge():
                  apply_url, source, date_found, match_score, visa_flag,
                  normalized_company, normalized_title, first_seen)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                ("Old Job", "OldCo", "London", None, None, "",
-                 "https://example.com/old", "test", old_date, 50, 0,
-                 "oldco", "old job", old_date),
+                (
+                    "Old Job",
+                    "OldCo",
+                    "London",
+                    None,
+                    None,
+                    "",
+                    "https://example.com/old",
+                    "test",
+                    old_date,
+                    50,
+                    0,
+                    "oldco",
+                    "old job",
+                    old_date,
+                ),
             )
             await db._conn.commit()
             count_before = await db.count_jobs()
@@ -288,6 +344,7 @@ def test_run_search_auto_purge():
                 os.unlink(db_path)
             except PermissionError:
                 pass  # Windows file lock
+
     _run(_test())
 
 
@@ -300,11 +357,13 @@ def test_source_instance_count_matches_build_sources():
             async with aiohttp.ClientSession() as session:
                 sources = _build_sources(session)
                 assert len(sources) == SOURCE_INSTANCE_COUNT
+
     _run(_test())
 
 
 def test_failed_source_tracked_as_none():
     """A source that raises an exception should appear in per_source with count 0."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m)
@@ -313,14 +372,16 @@ def test_failed_source_tracked_as_none():
                 # All sources should be present in per_source
                 assert len(stats["per_source"]) == SOURCE_INSTANCE_COUNT
                 # Values should be non-negative integers
-                for name, count in stats["per_source"].items():
+                for _name, count in stats["per_source"].items():
                     assert isinstance(count, int)
                     assert count >= 0
+
     _run(_test())
 
 
 def test_dry_run_skips_db_writes():
     """Dry run should return stats without writing to DB."""
+
     async def _test():
         with aioresponses() as m:
             _mock_free_sources(m, arbeitnow_payload=MOCK_JOB_PAYLOAD)
@@ -328,4 +389,117 @@ def test_dry_run_skips_db_writes():
                 stats = await run_search(db_path=":memory:", dry_run=True)
                 assert stats["sources_queried"] > 0
                 assert isinstance(stats["total_found"], int)
+
     _run(_test())
+
+
+# Step-1 B5 — multi-dim wiring at the CLI JobScorer call site.
+
+
+def test_run_search_wires_user_preferences_and_enrichment_lookup():
+    """When a profile + at least one job_enrichment row exist AND
+    ENRICHMENT_ENABLED is true, run_search MUST construct JobScorer with
+    BOTH user_preferences (from the loaded profile) AND a non-trivial
+    enrichment_lookup callable. Without these kwargs, the Pillar 2 Batch
+    2.9 multi-dim path stays inert and the upgrade is invisible.
+    """
+    from src.services.profile.models import CVData, UserPreferences, UserProfile
+
+    fake_profile = UserProfile(
+        cv_data=CVData(raw_text="dummy CV content"),
+        preferences=UserPreferences(target_job_titles=["Engineer"]),
+    )
+
+    captured: dict = {}
+
+    class _SpyScorer:
+        def __init__(self, config, *, user_preferences=None, enrichment_lookup=None):
+            captured["config"] = config
+            captured["user_preferences"] = user_preferences
+            captured["enrichment_lookup"] = enrichment_lookup
+
+        def score(self, job):
+            from src.services.skill_matcher import ScoreBreakdown
+
+            return ScoreBreakdown(match_score=0)
+
+        def check_visa_flag(self, job):
+            return False
+
+    fake_lookup = {42: object()}  # one fake enrichment "row"
+
+    async def _fake_build_lookup(_conn):
+        return fake_lookup
+
+    async def _test():
+        with aioresponses() as m:
+            _mock_free_sources(m)
+            with (
+                _patch_no_notifications(),
+                patch("src.main.load_profile", return_value=fake_profile),
+                patch("src.main.ENRICHMENT_ENABLED", True),
+                patch("src.main._build_enrichment_lookup", _fake_build_lookup),
+                patch("src.main.JobScorer", _SpyScorer),
+            ):
+                await run_search(db_path=":memory:", dry_run=True)
+
+    _run(_test())
+
+    assert (
+        captured["user_preferences"] is fake_profile.preferences
+    ), "JobScorer must receive the loaded profile's preferences"
+    assert callable(captured["enrichment_lookup"]), "enrichment_lookup must be a callable (job)->Enrichment|None"
+    # Sanity: the callable must be backed by the dict we supplied — pass it a
+    # job-like object with id=42 and confirm it returns our sentinel.
+    sentinel = fake_lookup[42]
+    fake_job = MagicMock()
+    fake_job.id = 42
+    assert captured["enrichment_lookup"](fake_job) is sentinel
+    # And id absent / unknown returns None (so default 4-component path holds).
+    no_id_job = MagicMock(spec=[])  # no id attr
+    assert captured["enrichment_lookup"](no_id_job) is None
+
+
+def test_run_search_inert_when_enrichment_disabled():
+    """ENRICHMENT_ENABLED=false ⇒ enrichment_lookup is built from {} so the
+    callable returns None for every job. This preserves the legacy
+    4-component formula per CLAUDE.md rule #19.
+    """
+    from src.services.profile.models import CVData, UserPreferences, UserProfile
+
+    fake_profile = UserProfile(
+        cv_data=CVData(raw_text="dummy CV content"),
+        preferences=UserPreferences(target_job_titles=["Engineer"]),
+    )
+    captured: dict = {}
+
+    class _SpyScorer:
+        def __init__(self, config, *, user_preferences=None, enrichment_lookup=None):
+            captured["enrichment_lookup"] = enrichment_lookup
+
+        def score(self, job):
+            from src.services.skill_matcher import ScoreBreakdown
+
+            return ScoreBreakdown(match_score=0)
+
+        def check_visa_flag(self, job):
+            return False
+
+    async def _test():
+        with aioresponses() as m:
+            _mock_free_sources(m)
+            with (
+                _patch_no_notifications(),
+                patch("src.main.load_profile", return_value=fake_profile),
+                patch("src.main.ENRICHMENT_ENABLED", False),
+                patch("src.main.JobScorer", _SpyScorer),
+            ):
+                await run_search(db_path=":memory:", dry_run=True)
+
+    _run(_test())
+
+    # Lookup is built but every call returns None (empty dict backing it).
+    assert callable(captured["enrichment_lookup"])
+    fake_job = MagicMock()
+    fake_job.id = 1
+    assert captured["enrichment_lookup"](fake_job) is None
