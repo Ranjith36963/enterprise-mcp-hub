@@ -19,6 +19,7 @@ from src.core.settings import (
     REED_API_KEY,
     REPORTS_DIR,
     REQUEST_TIMEOUT,
+    SEMANTIC_ENABLED,
     SERPAPI_KEY,
 )
 from src.core.tenancy import DEFAULT_TENANT_ID
@@ -541,6 +542,52 @@ async def run_search(
 
             new_jobs.sort(key=lambda j: (j.match_score, salary_in_range(j)), reverse=True)
             logger.info("New jobs: %s", len(new_jobs))
+
+            # Step-1 B8 — vector index upsert for newly-inserted jobs.
+            # Gated on SEMANTIC_ENABLED (CLAUDE.md rule #18 — opt-in default OFF).
+            # Heavy deps (sentence_transformers, chromadb) are imported lazily
+            # INSIDE this if-block per CLAUDE.md rule #16 — top-level import would
+            # pay sentence-transformers' 2s startup cost on every CLI invocation.
+            if SEMANTIC_ENABLED and new_jobs:
+                from src.services.embeddings import MODEL_NAME, encode_job  # noqa: PLC0415 — lazy by design (rule #16)
+                from src.services.job_enrichment import load_enrichment  # noqa: PLC0415
+                from src.services.vector_index import VectorIndex  # noqa: PLC0415
+
+                try:
+                    vix = VectorIndex()
+                except Exception as e:
+                    logger.warning("VectorIndex init failed; skipping vector upsert: %s", e)
+                    vix = None
+
+                if vix is not None:
+                    for j in new_jobs:
+                        try:
+                            # Look up the persisted row id (insert_job returned bool only).
+                            row_cursor = await db._conn.execute(
+                                "SELECT id FROM jobs WHERE normalized_company = ? AND normalized_title = ?",
+                                j.normalized_key(),
+                            )
+                            row = await row_cursor.fetchone()
+                            if row is None:
+                                continue
+                            job_id = row[0]
+                            try:
+                                enrichment = await load_enrichment(db._conn, job_id)
+                            except Exception:
+                                enrichment = None
+                            vec = encode_job(j, enrichment)
+                            vix.upsert(
+                                job_id=job_id,
+                                vector=vec,
+                                metadata={"title": j.title, "company": j.company},
+                            )
+                            await db._conn.execute(
+                                "INSERT OR REPLACE INTO job_embeddings(job_id, model_version) VALUES (?, ?)",
+                                (job_id, MODEL_NAME),
+                            )
+                        except Exception as e:
+                            logger.warning("vector upsert failed for job %r: %s", j.title, e)
+                    await db.commit()
 
             # Stats
             stats = {

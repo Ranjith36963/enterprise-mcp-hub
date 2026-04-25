@@ -158,6 +158,106 @@ def _row_to_job_response(row: dict, action: str | None = None) -> JobResponse:
     )
 
 
+def _maybe_apply_hybrid_reorder(rows: list[dict], *, profile=None) -> list[dict]:
+    """Step-1 B8 — when ``?mode=hybrid`` is requested, fuse keyword + semantic
+    rankings via RRF and reorder ``rows`` accordingly.
+
+    Always degrades to the keyword order on:
+    - SEMANTIC_ENABLED is false
+    - the semantic stack (sentence_transformers / chromadb) isn't installed
+    - the vector index is empty
+    - any exception from the semantic path
+
+    Lazy-imports the heavy modules per CLAUDE.md rule #16. Returns the
+    original list unchanged when degradation triggers.
+    """
+    try:
+        from src.core.settings import SEMANTIC_ENABLED  # noqa: PLC0415 — lazy
+    except Exception:
+        return rows
+
+    if not SEMANTIC_ENABLED:
+        return rows
+
+    try:
+        from src.services.retrieval import (  # noqa: PLC0415 — lazy (rule #16)
+            is_hybrid_available,
+            reciprocal_rank_fusion,
+        )
+        from src.services.vector_index import VectorIndex  # noqa: PLC0415
+    except Exception as e:
+        logger.warning("hybrid mode requested but retrieval stack unavailable: %s", e)
+        return rows
+
+    try:
+        vix = VectorIndex()
+        count = vix.count()
+    except Exception as e:
+        logger.warning("hybrid mode requested but VectorIndex unavailable: %s", e)
+        return rows
+
+    if not is_hybrid_available(count):
+        logger.warning(
+            "hybrid mode requested but vector index is empty (count=%d); " "falling back to keyword",
+            count,
+        )
+        return rows
+
+    if not rows:
+        return rows
+
+    # Build the keyword-ranked id list (rows arrive in keyword order).
+    keyword_ids = [r["id"] for r in rows if r.get("id") is not None]
+
+    # Stage B — semantic top-K via Chroma. Use the highest-scored job as a
+    # cheap query proxy when no profile vector is available; this keeps the
+    # endpoint usable without a full per-user query-vector cache.
+    semantic_ids: list[int] = []
+    try:
+        from src.services.embeddings import encode_job  # noqa: PLC0415
+
+        # Cheap proxy: encode the title of the best keyword hit.
+        # NOTE: a richer implementation would build a vector from the
+        # caller's profile; that lands behind a follow-up flag.
+        head = rows[0]
+
+        class _StubJob:
+            def __init__(self, title: str, description: str = ""):
+                self.title = title
+                self.description = description
+
+        stub = _StubJob(head.get("title", ""), head.get("description", ""))
+        query_vec = encode_job(stub, None)
+        sem_pairs = vix.query(query_vec, k=min(500, max(len(keyword_ids), 50)))
+        semantic_ids = [job_id for job_id, _dist in sem_pairs]
+    except Exception as e:
+        logger.warning("hybrid retrieval failed: %s; falling back to keyword", e)
+        return rows
+
+    if not semantic_ids:
+        return rows
+
+    # Fuse and reorder.
+    fused = reciprocal_rank_fusion([keyword_ids, semantic_ids], k=60)
+    fused_ids = [item for item, _score in fused]
+
+    by_id = {r["id"]: r for r in rows if r.get("id") is not None}
+    reordered: list[dict] = []
+    seen: set[int] = set()
+    for jid in fused_ids:
+        if jid in by_id and jid not in seen:
+            reordered.append(by_id[jid])
+            seen.add(jid)
+    # Append any keyword rows not in the fused set (shouldn't happen, but
+    # belt-and-braces — never lose rows the user would have seen).
+    for r in rows:
+        rid = r.get("id")
+        if rid is not None and rid not in seen:
+            reordered.append(r)
+            seen.add(rid)
+    return reordered
+
+
 @router.get("/jobs/export")
 async def export_jobs(
     db: JobDatabase = Depends(get_db),  # noqa: B008 — FastAPI dependency-injection idiom
@@ -224,14 +324,15 @@ async def list_jobs(
     db: JobDatabase = Depends(get_db),  # noqa: B008 — FastAPI dependency-injection idiom
     user: CurrentUser = Depends(require_user),  # noqa: B008 — FastAPI dependency-injection idiom
 ):
-    # Batch 2.7 — reserve the `mode` param. Hybrid retrieval activates only
-    # when SEMANTIC_ENABLED AND the vector index is populated; absent either,
-    # we silently serve the keyword (SQL) path so pre-Batch-2.6 rollouts keep
-    # working. The actual semantic re-ranking runs in services/retrieval.py.
-    _ = mode  # reserved for downstream wiring (issue-#N)
+    # Step-1 B8 — wire ?mode=hybrid through services.retrieval. Falls back
+    # to the keyword path silently when SEMANTIC_ENABLED is off, the vector
+    # index is empty, or the semantic stack isn't installed.
     days = (hours // 24) + 1 if hours else 7
     # Step-1 B6: single LEFT JOIN avoids per-job enrichment lookups (N+1).
     all_rows = await db.get_recent_jobs_with_enrichment(days=days, min_score=min_score or 0)
+
+    if mode == "hybrid":
+        all_rows = _maybe_apply_hybrid_reorder(all_rows, profile=None)
 
     # Filter by hours cutoff
     if hours is not None:
