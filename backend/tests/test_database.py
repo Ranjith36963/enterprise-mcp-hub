@@ -128,6 +128,37 @@ def test_insert_job_defaults_first_seen_at_to_now_when_none(db):
     assert got >= before - timedelta(seconds=5), f"first_seen_at not defaulted to now: got {row['first_seen_at']}"
 
 
+def test_dim_columns_round_trip(db):
+    """Step-1.5 S1.1-D — every per-dim score field on the Job dataclass must
+    survive insert_job → get_recent_jobs unchanged. This is the value-presence
+    test the Step-1 reviewer never wrote (CLAUDE.md rule #21 will codify it).
+    """
+    job = _make_job(
+        title="Dim Carrier",
+        company="ScoreCo",
+        match_score=85,
+        role=35,
+        skill=30,
+        location_score=8,
+        recency=6,
+        seniority_score=4,
+        semantic=2,
+    )
+    asyncio.run(db.insert_job(job))
+    rows = asyncio.run(db.get_recent_jobs(days=9999))
+    row = next(r for r in rows if r["title"] == "Dim Carrier")
+    assert row["role"] == 35
+    assert row["skill"] == 30
+    assert row["location_score"] == 8
+    assert row["recency"] == 6
+    assert row["seniority_score"] == 4
+    assert row["semantic"] == 2
+    # Unset dims must default to 0, not NULL — JobResponse declares int.
+    assert row["experience"] == 0
+    assert row["credentials"] == 0
+    assert row["penalty"] == 0
+
+
 def test_get_last_source_counts_empty(db):
     """get_last_source_counts should return empty dict when no runs exist."""
     result = asyncio.run(db.get_last_source_counts(5))

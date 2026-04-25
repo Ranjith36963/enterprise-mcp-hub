@@ -525,9 +525,19 @@ async def run_search(
             # Score all jobs using the user's profile (scorer always exists — guarded at start).
             # Step-1 B4: JobScorer.score() now returns a ScoreBreakdown — surface
             # the scalar match_score on the Job so the MIN_MATCH_SCORE filter still works.
+            # Step-1.5 S1.1-C: capture every dim component so the breakdown survives
+            # the round-trip to the API. Names map ScoreBreakdown → JobResponse:
+            # title_score → role; recency_score → recency; *_score fields kept
+            # as-is. Engine doesn't currently produce experience/credentials/
+            # semantic/penalty — those columns persist as 0 until later batches.
             for job in all_jobs:
                 breakdown = scorer.score(job)
                 job.match_score = breakdown.match_score
+                job.role = breakdown.title_score
+                job.skill = breakdown.skill_score
+                job.location_score = breakdown.location_score
+                job.recency = breakdown.recency_score
+                job.seniority_score = breakdown.seniority_score
                 job.visa_flag = scorer.check_visa_flag(job)
                 job.experience_level = detect_experience_level(job.title)
 

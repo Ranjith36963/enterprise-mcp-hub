@@ -2,9 +2,9 @@
 active: true
 iteration: 1
 session_id:
-max_iterations: 20
-completion_promise: "pillar2-generator-complete"
-started_at: "2026-04-20T20:12:48Z"
+max_iterations: 15
+completion_promise: "STEP-1.5-GREEN"
+started_at: "2026-04-25T00:00:00Z"
 ---
 
-Read docs/pillar2_generator_prompt.md in full, then execute one batch per iteration in the exact order given in docs/pillar2_implementation_plan.md §7 (2.2 → 2.1 → 2.3 → 2.4 → 2.5 → 2.9 → 2.6 → 2.7 → 2.8 → 2.10). Follow every rule in the prompt — TDD RED→GREEN, one commit per batch, update docs/pillar2_progress.md after each batch, halt on any Stop Condition. Only emit <promise>pillar2-generator-complete</promise> after all 10 batches are merged, pytest shows ≥700p/0f/3s, and the git tag pillar2-generator-complete is pushed.
+Implement docs/step_1_5_plan.md in cohorts X→Y→Z. Cohort X persists 9 score-dim columns (S1.1-A,B,C,D) and wires the staleness state machine (S1.5-A,B,C); Cohort Y surfaces dims through the API + ESCO-normalises CV skills + tiers in ProfileResponse; Cohort Z ships GET /profile/versions, POST /profile/versions/{id}/restore, GET /profile/json-resume, GET /notifications, plus 6 new Pydantic models, the ProfileResponse expansion, and JobResponse.dedup_group_ids. Verification gate is `make verify-step-1.5`. Only emit <promise>STEP-1.5-GREEN</promise> after the gate passes including the value-presence assertion (at least one JobResponse has a non-zero dim) and the sentinel `.claude/step-1-5-verified.txt` is written at the green commit.

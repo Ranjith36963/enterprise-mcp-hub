@@ -148,7 +148,8 @@
       "Bash(SEMANTIC_ENABLED=false ENRICHMENT_ENABLED=false python -c \"from backend.src.api.main import app; print\\('✓ Cold import successful \\(no heavy deps loaded\\)'\\)\")",
       "WebFetch(domain:app.meetdex.ai)",
       "WebFetch(domain:app.usesprout.com)",
-      "WebFetch(domain:hiring.cafe)"
+      "WebFetch(domain:hiring.cafe)",
+      "Skill(ralph-loop:ralph-loop)"
     ]
   },
   "disabledMcpjsonServers": [

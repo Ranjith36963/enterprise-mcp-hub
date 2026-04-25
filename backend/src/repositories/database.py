@@ -106,6 +106,16 @@ class JobDatabase:
             ("date_posted_raw", "TEXT"),
             ("consecutive_misses", "INTEGER DEFAULT 0"),
             ("staleness_state", "TEXT DEFAULT 'active'"),
+            # Step-1.5 S1.1 — per-dim score columns (migration 0011 mirror).
+            ("role", "INTEGER DEFAULT 0"),
+            ("skill", "INTEGER DEFAULT 0"),
+            ("seniority_score", "INTEGER DEFAULT 0"),
+            ("experience", "INTEGER DEFAULT 0"),
+            ("credentials", "INTEGER DEFAULT 0"),
+            ("location_score", "INTEGER DEFAULT 0"),
+            ("recency", "INTEGER DEFAULT 0"),
+            ("semantic", "INTEGER DEFAULT 0"),
+            ("penalty", "INTEGER DEFAULT 0"),
         ]
         run_log_migrations = [
             # Step-0 pre-flight — migration 0010 observability columns.
@@ -171,8 +181,11 @@ class JobDatabase:
              apply_url, source, date_found, match_score, visa_flag,
              experience_level, normalized_company, normalized_title, first_seen,
              posted_at, first_seen_at, last_seen_at, date_confidence,
-             date_posted_raw)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             date_posted_raw,
+             role, skill, seniority_score, experience, credentials,
+             location_score, recency, semantic, penalty)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.title,
                 job.company,
@@ -194,6 +207,15 @@ class JobDatabase:
                 last_seen_at,
                 job.date_confidence,
                 job.date_posted_raw,
+                job.role,
+                job.skill,
+                job.seniority_score,
+                job.experience,
+                job.credentials,
+                job.location_score,
+                job.recency,
+                job.semantic,
+                job.penalty,
             ),
         )
         return cursor.rowcount > 0
@@ -209,26 +231,83 @@ class JobDatabase:
         )
         await self._conn.commit()
 
+    async def update_staleness_state(self, job_id: int, new_state: str) -> None:
+        """Persist a single job's staleness_state. Step-1.5 S1.5-B helper.
+
+        No commit here — the caller batches commits (see
+        :meth:`mark_missed_for_source`) so a multi-job sweep stays atomic.
+        """
+        await self._conn.execute(
+            "UPDATE jobs SET staleness_state = ? WHERE id = ?",
+            (new_state, job_id),
+        )
+
     async def mark_missed_for_source(self, source: str, seen_keys: set[tuple[str, str]]) -> int:
-        """Increment consecutive_misses for every job of `source` not in `seen_keys`.
+        """Increment consecutive_misses for every job of `source` not in `seen_keys`,
+        then recompute `staleness_state` via the ghost-detection state machine.
 
         Scrape-completeness gates (rolling-average checks) are the CALLER's
         responsibility — only call this after a scrape is deemed healthy, per
-        pillar_3_batch_1.md §3 Step 1. Returns the count of jobs marked missed.
+        pillar_3_batch_1.md §3 Step 1.
+
+        Step-1.5 S1.5-C: prior to this batch the row's misses counter went up
+        but its `staleness_state` never advanced past 'active' — the
+        :func:`src.services.ghost_detection.transition` function existed but
+        was never called from a write path. Now every missed job is run
+        through `transition(misses+1, age_hours_since_last_seen)` and the
+        resulting state is persisted. CONFIRMED_EXPIRED is treated as sticky
+        (set elsewhere by direct-URL verification) — never demoted here.
+
+        Returns the count of jobs marked missed.
         """
+        # Lazy import — pure function, no transitive heavy deps, but the
+        # import sits inside ``services`` and we keep ``database.py`` free
+        # of services-layer top-level imports.
+        from src.services.ghost_detection import StalenessState, transition  # noqa: PLC0415
+
         cursor = await self._conn.execute(
-            "SELECT id, normalized_company, normalized_title " "FROM jobs WHERE source = ?",
+            "SELECT id, normalized_company, normalized_title, "
+            "consecutive_misses, last_seen_at, staleness_state "
+            "FROM jobs WHERE source = ?",
             (source,),
         )
         rows = await cursor.fetchall()
-        missed_ids = [row[0] for row in rows if (row[1], row[2]) not in seen_keys]
-        for job_id in missed_ids:
+        now = datetime.now(timezone.utc)
+        missed_count = 0
+        for row in rows:
+            job_id = row[0]
+            key = (row[1], row[2])
+            if key in seen_keys:
+                continue
+            current_state = row[5] or StalenessState.ACTIVE.value
+            # Sticky: confirmed_expired never demoted by absence sweep.
+            if current_state == StalenessState.CONFIRMED_EXPIRED.value:
+                await self._conn.execute(
+                    "UPDATE jobs SET consecutive_misses = consecutive_misses + 1 WHERE id = ?",
+                    (job_id,),
+                )
+                missed_count += 1
+                continue
+
+            new_misses = int(row[3] or 0) + 1
+            last_seen = row[4]
+            age_hours = 0.0
+            if last_seen:
+                try:
+                    last_seen_dt = datetime.fromisoformat(last_seen)
+                    if last_seen_dt.tzinfo is None:
+                        last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+                    age_hours = (now - last_seen_dt).total_seconds() / 3600
+                except (ValueError, TypeError):
+                    age_hours = 0.0
+            next_state = transition(new_misses, age_hours).value
             await self._conn.execute(
-                "UPDATE jobs SET consecutive_misses = consecutive_misses + 1 " "WHERE id = ?",
-                (job_id,),
+                "UPDATE jobs SET consecutive_misses = ?, staleness_state = ? " "WHERE id = ?",
+                (new_misses, next_state, job_id),
             )
+            missed_count += 1
         await self._conn.commit()
-        return len(missed_ids)
+        return missed_count
 
     async def commit(self):
         """Commit pending changes."""

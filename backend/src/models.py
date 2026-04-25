@@ -43,6 +43,21 @@ class Job:
     first_seen_at: Optional[str] = None
     last_seen_at: Optional[str] = None
     staleness_state: Optional[str] = None
+    # Step-1.5 S1.1 — per-dimension score breakdown persisted to jobs columns
+    # (migration 0011). main.py:run_search() captures every component of
+    # ScoreBreakdown into these fields before insert_job() writes the row;
+    # _row_to_job_response() reads them back so JobResponse exposes the radar
+    # values that Step 1 promised. Names mirror JobResponse field names —
+    # `role` is the title-component score, `recency` is recency_score, etc.
+    role: int = 0
+    skill: int = 0
+    seniority_score: int = 0
+    experience: int = 0
+    credentials: int = 0
+    location_score: int = 0
+    recency: int = 0
+    semantic: int = 0
+    penalty: int = 0
 
     def __post_init__(self):
         # Decode HTML entities in title and company
