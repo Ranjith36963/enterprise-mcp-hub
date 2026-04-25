@@ -488,6 +488,7 @@ Both tables are **shared catalog** — no `user_id` column (rule #10).
 17. **`job_enrichment` and `job_embeddings` must NOT gain a `user_id` column** — they are shared catalog per blueprint §3 / CLAUDE.md rule #10. The same enriched fields apply to every user; per-user scoring against the enrichment happens at read time in `JobScorer(..., user_preferences=..., enrichment_lookup=...)`.
 18. **Pillar 2 feature flags (`ENRICHMENT_ENABLED` / `SEMANTIC_ENABLED`) default off.** Default behaviour when the flags are false must **exactly** match pre-Pillar-2 behaviour — no implicit semantic queries, no LLM calls. Test any new integration with both toggles explicitly OFF to confirm the no-op path.
 19. **JobScorer gained optional multi-dim kwargs** — `JobScorer(config, user_preferences=None, enrichment_lookup=None)`. Callers passing only `config` get the legacy 4-component formula; callers passing all three activate the 7-dim Batch-2.9 scoring. Do NOT flip defaults silently; legacy callers must keep getting legacy behaviour until the reviewer greenlights a coordinated rollout.
+20. **Multi-dim scoring requires both `user_preferences` AND `enrichment_lookup` kwargs — callers must pass both or neither.** When only `user_preferences` is set (and `enrichment_lookup` is empty/None), the new dimension scorers (seniority/salary/visa/workplace) cannot read the structured enrichment data they need, and they fall back to zero — silently. The combined `match_score` then includes only the legacy 4 components plus four zero contributions, which looks identical to the legacy formula but is misleading because the dim columns suggest active scoring. Pass both kwargs (Step-1 Cohort B precedent in `main.py::run_search` and `workers/tasks.py::score_and_ingest`), or pass neither and accept the legacy formula explicitly. Defaults still fall back to legacy 4-component scoring when both kwargs are None — see rule #19.
 
 ## Related Documentation
 
@@ -496,3 +497,4 @@ Both tables are **shared catalog** — no `user_id` column (rule #10).
 - `docs/IMPLEMENTATION_LOG.md` — pillar 3 batch-by-batch completion log (read FIRST for current state)
 - `docs/plans/batch-2-decisions.md` — irreversible architectural decisions (ARQ, Apprise, polling, session cookies, SQLite-for-now)
 - `docs/plans/batch-2-plan.md` — Batch 2 TDD implementation plan with locked baseline
+- `docs/step_1_plan.md` — Step 1 (Engine→API Seam) execution plan + 12 blockers + 3 observability items

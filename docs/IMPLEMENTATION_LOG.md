@@ -13,6 +13,59 @@
 
 ---
 
+## Step 1 — Engine→API Seam (MERGED 2026-04-24)
+
+Branch: `step-1-batch-s1` off `main @ 51d5c07`. Tag: `step-1-green`.
+
+### Blocker closure (12 of 12)
+
+| # | Blocker | Commit |
+|---|---|---|
+| B1 | Job dataclass missing first_seen_at/last_seen_at/staleness_state | cec914f |
+| B2 | insert_job silently overwriting caller timestamps with raw SQL | cec914f |
+| B3 | JobScorer.score returned int — no per-dimension breakdown | 9100d6d |
+| B4 | MIN_MATCH_SCORE filter incompatible with ScoreBreakdown return | 9100d6d |
+| B5 | JobScorer callers never passed user_preferences/enrichment_lookup | f2e7d13 |
+| B6 | JobResponse missing 5 date + 13 enrichment fields | 7ee6dc1 |
+| B7 | No ENRICHMENT_THRESHOLD; enrichment was unbounded serialised LLM | 30cf923 |
+| B8 | ?mode=hybrid was dead-on-arrival; VectorIndex.upsert never called | 658844b |
+| B9 | get_recent_jobs served staleness_state='expired' rows | e1c48a6 |
+| B10 | enrich_job_task existed but wasn't registered in WorkerSettings | 226cf41 |
+| B11 | Concurrent boot raced on _schema_migrations INSERT | acb9216 |
+| B12 | No per-user rate limit on POST /search | e1c48a6 |
+
+### Observability (3 of 3)
+
+| # | Item | Commit |
+|---|---|---|
+| S1 | run_uuid ContextVar propagation + run_log.run_uuid | (pending) |
+| S2 | per-source timer + per_source_errors/duration columns | (pending) |
+| S3 | EnrichmentTelemetry / EmbeddingsTelemetry / HybridTelemetry | (pending) |
+
+### Test delta
+
+Baseline (Step-0 green): 1,018p / 0f / 3s
+Step-1 added: ~25-40 new tests across cohorts A-D
+Final: TBD (run `make verify-step-1` for the actual count)
+
+### Frontend mirror
+
+`frontend/src/lib/types.ts` extended with the same 5+13 fields. Score-dim field `seniority` renamed to `seniority_score` to free the namespace for the enrichment enum.
+
+### Deferred to Batch S1.5
+
+- Staleness writer (B9 only filters; doesn't write `staleness_state`)
+- Skill-synonyms non-tech expansion
+- FX rate freshness
+- Separate LLM quota pools (CV vs enrichment)
+- Ghost-detection nightly cron
+
+### Plan reference
+
+`docs/step_1_plan.md` (executed-version annotations applied).
+
+---
+
 ## Cross-Batch Foundation
 
 ### Branching strategy

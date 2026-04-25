@@ -20,7 +20,7 @@ export interface JobResponse {
   // 8D score breakdown
   role: number;
   skill: number;
-  seniority: number;
+  seniority_score: number;
   experience: number;
   credentials: number;
   location_score: number;
@@ -34,6 +34,26 @@ export interface JobResponse {
   // User action
   action: string | null;
   bucket: string;
+  // Step-1 B6 — date-model fields (Pillar 3 Batch 1).
+  posted_at?: string | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  date_confidence?: string | null;
+  staleness_state?: string | null;
+  // Step-1 B6 — enrichment fields (Pillar 2 Batch 2.5 subset).
+  title_canonical?: string | null;
+  seniority?: string | null;
+  employment_type?: string | null;
+  workplace_type?: string | null;
+  visa_sponsorship?: boolean | null;
+  salary_min_gbp?: number | null;
+  salary_max_gbp?: number | null;
+  salary_period?: string | null;
+  salary_currency_original?: string | null;
+  required_skills?: string[] | null;
+  nice_to_have_skills?: string[] | null;
+  industry?: string | null;
+  years_experience_min?: number | null;
 }
 
 export interface JobListResponse {
@@ -51,6 +71,7 @@ export interface JobFilters {
   visa_only?: boolean;
   limit?: number;
   offset?: number;
+  mode?: string;
 }
 
 // ---- Profile ----

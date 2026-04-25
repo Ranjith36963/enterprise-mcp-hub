@@ -309,7 +309,7 @@ export default function JobDetailPage() {
                 scores={{
                   role: job.role,
                   skill: job.skill,
-                  seniority: job.seniority,
+                  seniority: job.seniority_score,
                   experience: job.experience,
                   credentials: job.credentials,
                   location: job.location_score,
