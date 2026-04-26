@@ -349,3 +349,33 @@ export async function testChannel(id: number): Promise<ChannelTestResult> {
     method: "POST",
   });
 }
+
+// ---------------------------------------------------------------------------
+// Account management
+// ---------------------------------------------------------------------------
+
+export async function changePassword(
+  current_password: string,
+  new_password: string
+): Promise<void> {
+  await request<void>("/api/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
+export async function changeEmail(
+  current_password: string,
+  new_email: string
+): Promise<void> {
+  await request<void>("/api/auth/change-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password, new_email }),
+  });
+}
+
+export async function deleteAccount(): Promise<void> {
+  await request<void>("/api/auth/delete-account", { method: "DELETE" });
+}
