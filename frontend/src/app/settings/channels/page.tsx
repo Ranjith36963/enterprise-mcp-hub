@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const CHANNEL_TYPES: Array<{ value: Channel["channel_type"]; label: string; hint: string }> = [
   { value: "slack", label: "Slack", hint: "slack://TokenA/TokenB/TokenC" },
@@ -178,9 +179,10 @@ export default function ChannelsSettingsPage() {
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : channels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No channels yet — add your first one above.
-          </p>
+          <EmptyState
+            title="No channels yet"
+            description="Add your first channel above to start receiving job notifications."
+          />
         ) : (
           <ul className="space-y-3">
             {channels.map((ch) => {
