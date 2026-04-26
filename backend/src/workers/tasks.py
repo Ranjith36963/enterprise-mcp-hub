@@ -399,6 +399,59 @@ def _bucket_for_row(row: aiosqlite.Row) -> str:
     return "3_7d"
 
 
+# ---------- Step-3 B-14 — nightly ghost sweep periodic task ------------
+
+
+async def nightly_ghost_sweep(ctx: dict) -> dict:
+    """ARQ periodic task: advance ghost detection state for stale jobs.
+
+    Evaluates every non-expired job in the DB using the pure-function state
+    machine in :mod:`src.services.ghost_detection` and writes the new
+    ``staleness_state`` back to the ``jobs`` table when it changes.
+
+    Transitions driven by ``evaluate_job_state()``:
+      - active → possibly_stale: ≥2 misses + ≥12 h absence
+      - possibly_stale → likely_stale: ≥3 misses + ≥24 h absence
+      - likely_stale stays until a direct URL check (CONFIRMED_EXPIRED) —
+        that step is out of scope for this periodic sweep.
+
+    ``CONFIRMED_EXPIRED`` rows are skipped (sticky per ghost_detection design).
+
+    Returns ``{"evaluated": N, "transitioned": M}`` so the ARQ dashboard can
+    surface sweep health without reading the DB.
+    """
+    from src.services.ghost_detection import StalenessState, evaluate_job_state  # noqa: PLC0415 — lazy
+
+    db: aiosqlite.Connection = ctx["db"]
+    db.row_factory = aiosqlite.Row
+
+    # Load all non-expired jobs (CONFIRMED_EXPIRED is sticky; skip it).
+    cursor = await db.execute(
+        """
+        SELECT id, staleness_state, consecutive_misses, last_seen_at
+        FROM jobs
+        WHERE staleness_state != 'confirmed_expired'
+        """
+    )
+    rows = [dict(r) for r in await cursor.fetchall()]
+
+    evaluated = 0
+    transitioned = 0
+    for row in rows:
+        evaluated += 1
+        new_state = evaluate_job_state(row)
+        current = row.get("staleness_state") or StalenessState.ACTIVE.value
+        if new_state.value != current:
+            await db.execute(
+                "UPDATE jobs SET staleness_state = ? WHERE id = ?",
+                (new_state.value, row["id"]),
+            )
+            transitioned += 1
+
+    await db.commit()
+    return {"evaluated": evaluated, "transitioned": transitioned}
+
+
 # ---------- Pillar 2 Batch 2.5 — job enrichment task -------------------
 #
 # Queued post-ingest (after ``score_and_ingest``) via the ARQ fan-out hook in

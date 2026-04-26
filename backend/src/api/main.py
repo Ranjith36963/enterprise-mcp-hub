@@ -18,6 +18,7 @@ from src.api.routes import (
     notifications,
     pipeline,
     profile,
+    runs,
     search,
 )
 from src.core.settings import LOG_LEVEL
@@ -63,3 +64,5 @@ app.include_router(channels.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 # Step-3 B-02 — per-user per-channel notification rules
 app.include_router(notification_rules.router, prefix="/api")
+# Step-3 B-15 — run history
+app.include_router(runs.router, prefix="/api")
