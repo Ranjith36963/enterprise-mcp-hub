@@ -760,6 +760,40 @@ class JobDatabase:
         row = await cursor.fetchone()
         return int(row[0]) if row else 0
 
+    # ── Discovery (Step-3 B-09, B-15) ────────────────────────────────────────────
+    async def get_duplicate_jobs(self, job_id: int, normalized_company: str, normalized_title: str) -> list[dict]:
+        """Return jobs with same normalized key, excluding the given job_id."""
+        cursor = await self._conn.execute(
+            """SELECT id, title, company, source, location, match_score, apply_url, date_found
+               FROM jobs
+               WHERE normalized_company = ? AND normalized_title = ? AND id != ?
+               ORDER BY match_score DESC, date_found DESC""",
+            (normalized_company, normalized_title, job_id),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_recent_runs(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        """Return recent pipeline runs from run_log, ordered by timestamp DESC."""
+        try:
+            cursor = await self._conn.execute(
+                "SELECT * FROM run_log ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+        except aiosqlite.OperationalError:
+            return []
+
+    async def count_recent_runs(self) -> int:
+        """Return total count of rows in run_log."""
+        try:
+            cursor = await self._conn.execute("SELECT COUNT(*) FROM run_log")
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+        except aiosqlite.OperationalError:
+            return 0
+
     async def close(self):
         if self._conn:
             await self._conn.close()

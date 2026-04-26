@@ -17,6 +17,7 @@ from src.api.routes import (
     notifications,
     pipeline,
     profile,
+    runs,
     search,
 )
 from src.core.settings import LOG_LEVEL
@@ -60,3 +61,5 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
 # Step-1.5 S3-D — notification ledger reader
 app.include_router(notifications.router, prefix="/api")
+# Step-3 B-15 — run history
+app.include_router(runs.router, prefix="/api")
