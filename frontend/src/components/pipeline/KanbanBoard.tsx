@@ -381,7 +381,7 @@ export function KanbanBoard({ applications, onAdvance, onRefresh }: KanbanBoardP
     setTimelineEntries([]);
     try {
       const res = await getApplicationTimeline(jobId);
-      setTimelineEntries(res.entries);
+      setTimelineEntries(res.timeline);
     } catch (err) {
       setTimelineError(
         err instanceof Error ? err.message : "Failed to load timeline"

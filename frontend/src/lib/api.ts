@@ -7,19 +7,24 @@ import type {
   ActionRequest,
   ActionResponse,
   ApplicationTimelineResponse,
+  DuplicateJobsResponse,
   HealthResponse,
   JobFilters,
   JobListResponse,
   JobResponse,
   JsonResumeResponse,
+  NotificationLedgerListResponse,
   NotificationRule,
   NotificationRuleCreate,
+  NotificationRuleListResponse,
   NotificationRuleUpdate,
   PipelineAdvanceRequest,
   PipelineApplication,
   PreferencesRequest,
   ProfileResponse,
+  ProfileVersionDiff,
   ProfileVersionsListResponse,
+  RecentRunsResponse,
   SearchStartResponse,
   SearchStatusResponse,
   SourceInfo,
@@ -281,23 +286,6 @@ export async function getPipelineCounts(): Promise<Record<string, number>> {
   return request<Record<string, number>>("/api/pipeline/counts");
 }
 
-export async function updateApplicationNotes(
-  jobId: number,
-  notes: string
-): Promise<PipelineApplication> {
-  return request<PipelineApplication>(`/api/pipeline/${jobId}/notes`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ notes }),
-  });
-}
-
-export async function getApplicationTimeline(
-  jobId: number
-): Promise<ApplicationTimelineResponse> {
-  return request<ApplicationTimelineResponse>(`/api/pipeline/${jobId}/timeline`);
-}
-
 // ---------------------------------------------------------------------------
 // Auth (Batch 2)
 // ---------------------------------------------------------------------------
@@ -372,18 +360,6 @@ export async function testChannel(id: number): Promise<ChannelTestResult> {
 }
 
 // ---- Step-3: Notification rules ----
-
-import type {
-  NotificationRule,
-  NotificationRuleCreate,
-  NotificationRuleUpdate,
-  NotificationRuleListResponse,
-  NotificationLedgerListResponse,
-  DuplicateJobsResponse,
-  ProfileVersionDiff,
-  ApplicationTimelineResponse,
-  RecentRunsResponse,
-} from "./types";
 
 export async function getNotificationRules(): Promise<NotificationRuleListResponse> {
   return request<NotificationRuleListResponse>("/api/settings/notification-rules");
