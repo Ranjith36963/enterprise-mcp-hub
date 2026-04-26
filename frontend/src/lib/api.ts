@@ -6,11 +6,16 @@ import { ApiError } from "./api-error";
 import type {
   ActionRequest,
   ActionResponse,
+  DuplicateJobsResponse,
   HealthResponse,
   JobFilters,
   JobListResponse,
   JobResponse,
   JsonResumeResponse,
+  NotificationRule,
+  NotificationRuleCreate,
+  NotificationRuleListResponse,
+  NotificationRuleUpdate,
   PipelineAdvanceRequest,
   PipelineApplication,
   PreferencesRequest,
@@ -348,4 +353,65 @@ export async function testChannel(id: number): Promise<ChannelTestResult> {
   return request<ChannelTestResult>(`/api/settings/channels/${id}/test`, {
     method: "POST",
   });
+}
+
+// ---- Step-3: Notification rules ----
+
+export async function getNotificationRules(): Promise<NotificationRuleListResponse> {
+  return request<NotificationRuleListResponse>("/api/settings/notification-rules");
+}
+
+export async function createNotificationRule(
+  body: NotificationRuleCreate
+): Promise<NotificationRule> {
+  return request<NotificationRule>("/api/settings/notification-rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateNotificationRule(
+  id: number,
+  body: NotificationRuleUpdate
+): Promise<NotificationRule> {
+  return request<NotificationRule>(`/api/settings/notification-rules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ---- Step-3: Account management ----
+
+export async function changePassword(
+  current_password: string,
+  new_password: string
+): Promise<void> {
+  await request<void>("/api/auth/users/me/password", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
+export async function changeEmail(
+  current_password: string,
+  new_email: string
+): Promise<void> {
+  await request<void>("/api/auth/users/me/email", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password, new_email }),
+  });
+}
+
+export async function deleteAccount(): Promise<void> {
+  await request<void>("/api/auth/users/me", { method: "DELETE" });
+}
+
+// ---- Step-3: Duplicate jobs ----
+
+export async function getJobDuplicates(id: number): Promise<DuplicateJobsResponse> {
+  return request<DuplicateJobsResponse>(`/api/jobs/${id}/duplicates`);
 }

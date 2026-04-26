@@ -256,3 +256,59 @@ export interface HealthResponse {
   status: string;
   version: string;
 }
+
+// ---- Step-3: Notification rules (C-02) ----
+
+export interface NotificationRule {
+  id: number;
+  user_id: string;
+  channel: string;
+  score_threshold: number;
+  notify_mode: "instant" | "digest";
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  digest_send_time: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationRuleCreate {
+  channel: string;
+  score_threshold?: number;
+  notify_mode?: "instant" | "digest";
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  digest_send_time?: string | null;
+  enabled?: boolean;
+}
+
+export interface NotificationRuleUpdate {
+  score_threshold?: number;
+  notify_mode?: "instant" | "digest";
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  digest_send_time?: string | null;
+  enabled?: boolean;
+}
+
+export interface NotificationRuleListResponse {
+  rules: NotificationRule[];
+}
+
+// ---- Step-3: Duplicate jobs (C-05) ----
+
+export interface DuplicateJobSummary {
+  id: number;
+  title: string;
+  company: string;
+  source: string;
+  match_score: number;
+  apply_url: string;
+}
+
+export interface DuplicateJobsResponse {
+  job_id: number;
+  duplicates: DuplicateJobSummary[];
+  total: number;
+}
