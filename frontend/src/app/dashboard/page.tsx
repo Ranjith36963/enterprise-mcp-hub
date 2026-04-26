@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, Globe, Loader2, Play, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Briefcase, Clock, Globe, Loader2, Play, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -10,12 +11,14 @@ import { TimeBuckets } from "@/components/jobs/TimeBuckets";
 import { FilterPanel } from "@/components/jobs/FilterPanel";
 import {
   getJobs,
+  getStatus,
   startSearch,
   getSearchStatus,
   setJobAction,
   removeJobAction,
 } from "@/lib/api";
-import type { JobFilters, JobResponse } from "@/lib/types";
+import { toast } from "@/lib/toast";
+import type { JobFilters, JobListResponse, JobResponse, StatusResponse } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Bucket helpers — count jobs client-side by age
@@ -56,60 +59,82 @@ function bucketToHours(bucket: string): number | undefined {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  // -- State --
-  const [jobs, setJobs] = useState<JobResponse[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  // -- Filter / bucket state --
   const [activeBucket, setActiveBucket] = useState("7d");
   const [filters, setFilters] = useState<JobFilters>({
     hours: 168,
     min_score: 30,
   });
 
-  // All jobs (unfiltered by bucket) for accurate bucket counts
-  const [allJobs, setAllJobs] = useState<JobResponse[]>([]);
+  // Keep a ref so the search-complete callback always sees the latest filters
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   // Search status
   const [searching, setSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState("");
+  const [searchRateLimited, setSearchRateLimited] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const filtersRef = useRef(filters);
-  filtersRef.current = filters;
 
-  // ---------------------------------------------------------------------------
-  // Fetch jobs
-  // ---------------------------------------------------------------------------
-
-  const fetchJobs = useCallback(async (f: JobFilters) => {
-    setLoading(true);
-    try {
-      const data = await getJobs(f);
-      setJobs(data.jobs);
-      setTotal(data.total);
-      // Also fetch unfiltered for accurate bucket counts
-      const allData = await getJobs({ min_score: f.min_score ?? 30, hours: 168 });
-      setAllJobs(allData.jobs);
-    } catch (err) {
-      console.error("Failed to fetch jobs:", err);
-      setJobs([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial load
-  useEffect(() => {
-    fetchJobs(filters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Cleanup polling on unmount
+  // Cancel the polling interval on unmount to prevent state updates on a dead component
   useEffect(() => {
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // TanStack Query — filtered job list
+  // ---------------------------------------------------------------------------
+
+  const {
+    data: jobsData,
+    isFetching: loading,
+    refetch: refetchJobs,
+  } = useQuery<JobListResponse>({
+    queryKey: ["jobs", filters],
+    queryFn: () => getJobs(filters),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev, // keep previous data while re-fetching
+  });
+
+  const jobs = jobsData?.jobs ?? [];
+  const total = jobsData?.total ?? 0;
+
+  // ---------------------------------------------------------------------------
+  // TanStack Query — unfiltered list for accurate bucket counts
+  // ---------------------------------------------------------------------------
+
+  const allJobsKey = useMemo<JobFilters>(
+    () => ({ min_score: filters.min_score ?? 30, hours: 168 }),
+    [filters.min_score]
+  );
+
+  const { data: allJobsData } = useQuery<JobListResponse>({
+    queryKey: ["jobs", allJobsKey],
+    queryFn: () => getJobs(allJobsKey),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const allJobs = allJobsData?.jobs ?? [];
+
+  // ---------------------------------------------------------------------------
+  // TanStack Query — pipeline status (last run time, O1)
+  // ---------------------------------------------------------------------------
+
+  const { data: statusData } = useQuery<StatusResponse>({
+    queryKey: ["status"],
+    queryFn: getStatus,
+    staleTime: 60_000,
+    // Best-effort — don't block the page if the backend is slow
+    retry: 1,
+  });
 
   // ---------------------------------------------------------------------------
   // Bucket changes
@@ -120,7 +145,7 @@ export default function DashboardPage() {
     const hours = bucketToHours(bucket);
     const next = { ...filters, hours };
     setFilters(next);
-    fetchJobs(next);
+    // The useQuery above will automatically re-fetch for the new key
   }
 
   // ---------------------------------------------------------------------------
@@ -130,7 +155,6 @@ export default function DashboardPage() {
   function handleFilterChange(next: JobFilters) {
     const merged = { ...next, hours: filters.hours };
     setFilters(merged);
-    fetchJobs(merged);
   }
 
   // Count active non-default filters (excluding hours/bucket)
@@ -144,18 +168,22 @@ export default function DashboardPage() {
   }, [filters]);
 
   // ---------------------------------------------------------------------------
-  // Job actions (like / skip / remove)
+  // Job actions (like / skip / remove) — optimistic via setQueryData
   // ---------------------------------------------------------------------------
 
   async function handleAction(jobId: number, action: string) {
-    // Optimistic update
-    setJobs((prev) =>
-      prev.map((j) =>
-        j.id === jobId
-          ? { ...j, action: action === "remove" ? null : action }
-          : j
-      )
-    );
+    const nextAction = action === "remove" ? null : action;
+
+    // Optimistic update: patch the cached job list in-place
+    queryClient.setQueryData<JobListResponse>(["jobs", filters], (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        jobs: old.jobs.map((j) =>
+          j.id === jobId ? { ...j, action: nextAction } : j
+        ),
+      };
+    });
 
     try {
       if (action === "remove") {
@@ -167,8 +195,8 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Action failed:", err);
-      // Revert on failure
-      fetchJobs(filters);
+      // Revert by invalidating so TanStack re-fetches the truth
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     }
   }
 
@@ -203,8 +231,8 @@ export default function DashboardPage() {
                 ? "Search complete!"
                 : "Search failed"
             );
-            // Auto-refresh job list (use ref to get latest filters)
-            fetchJobs(filtersRef.current);
+            // Invalidate all job queries so both lists re-fetch with fresh data
+            void queryClient.invalidateQueries({ queryKey: ["jobs"] });
             // Clear message after a few seconds
             setTimeout(() => setSearchProgress(""), 4000);
           }
@@ -213,15 +241,22 @@ export default function DashboardPage() {
         }
       }, 3000);
     } catch (err) {
-      console.error("Search failed:", err);
       setSearching(false);
-      setSearchProgress("Failed to start search");
-      setTimeout(() => setSearchProgress(""), 4000);
+      setSearchProgress("");
+      toast.apiError(err, "Failed to start search. Is the backend running?");
+      if (err && typeof err === "object" && "status" in err) {
+        const { status, retryAfter } = err as { status: number; retryAfter?: number | null };
+        if (status === 429) {
+          const wait = (retryAfter ?? 60) * 1000;
+          setSearchRateLimited(true);
+          setTimeout(() => setSearchRateLimited(false), wait);
+        }
+      }
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Bucket counts (client-side from current data)
+  // Bucket counts (client-side from unfiltered data)
   // ---------------------------------------------------------------------------
 
   const counts = useMemo(() => bucketCounts(allJobs), [allJobs]);
@@ -265,6 +300,15 @@ export default function DashboardPage() {
                 "No jobs found yet"
               )}
             </p>
+            {statusData?.last_run && (
+              <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
+                <Clock className="h-3 w-3" aria-hidden />
+                Last run:{" "}
+                {new Date(
+                  (statusData.last_run as { completed_at?: string }).completed_at ?? ""
+                ).toLocaleString()}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -276,12 +320,13 @@ export default function DashboardPage() {
               </Badge>
             )}
 
-            {/* Search button */}
+            {/* Search button — disabled while searching or rate-limited (O2) */}
             <Button
               size="sm"
               className="gap-2"
               onClick={handleSearch}
-              disabled={searching}
+              disabled={searching || searchRateLimited}
+              title={searchRateLimited ? "Rate limited — please wait" : undefined}
             >
               {searching ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -296,7 +341,7 @@ export default function DashboardPage() {
               variant="outline"
               size="sm"
               className="gap-2"
-              onClick={() => fetchJobs(filters)}
+              onClick={() => void refetchJobs()}
               disabled={loading}
             >
               <RefreshCw

@@ -13,6 +13,80 @@
 
 ---
 
+## Step 2 — API→UI Seam (MERGED 2026-04-25)
+
+Branch: `worktree-generator` off `main @ 9ac434f`. Plan: `docs/step_2_plan.md`.
+
+### What shipped
+
+5-cohort Ralph-Loop sprint wiring the backend's ~40 accumulated features into the frontend.
+
+**Cohort A — Foundations**
+- `vitest.config.ts` + `playwright.config.ts` + `eslint-plugin-jsx-a11y` — zero-to-test-floor
+- `package.json`: new prod deps (`@tanstack/react-query`, `next-themes`, `sonner`) + 9 dev deps (Vitest, RTL, Playwright, coverage-v8)
+- `src/lib/api-error.ts` — typed `ApiError` class with `status`, `code`, `retryAfter`; `instanceof` guard via `Object.setPrototypeOf`
+- `src/lib/api.ts` — `request()` throws `ApiError` on non-2xx; `qs()` handles arrays; 3 new profile-version endpoints
+- `src/lib/toast.ts` — Sonner wrapper with `toast.apiError()` (429 rate-limit + 401 session-expired handling)
+- `src/lib/types.ts` — T1–T5: `JobResponse` +1 field, `JobFilters` +10 fields, `CVDetail` +6, `ProfileResponse` +7, `SearchStatusResponse` +2, 4 new interfaces
+- `src/app/error.tsx` + `not-found.tsx` — App Router error boundary + 404
+- `src/middleware.ts` — edge runtime, `job360_session` cookie guard, 307 redirect to `/login?next=`
+- `src/components/ui/empty-state.tsx` — shared empty-state with `role="status"`
+
+**Cohort B — Job components**
+- `ScoreRadar.tsx` — prop rename `seniority`→`seniority_score`, `location`→`location_score`; `Partial<>` null guards; aria-label with all 8 dim values; Recharts `<Tooltip>`
+- `JobCard.tsx` — structured salary, staleness badge, seniority pill, workplace_type, visa flag, industry badge; `createPipelineApplication()` on Apply
+- `FilterPanel.tsx` — 8 new controls (hybrid mode, sort-by, salary range with 250ms debounce, seniority, work arrangement, employment type, industry, freshness)
+- `ApplyButton.tsx` (new) — loading state + pipeline sync + sonner toast
+
+**Cohort C — Auth, Profile, JobDetail**
+- `AuthProvider.tsx` (new) — `useAuth()` context with `me()` on mount, window-focus revalidation, `logout()` redirect
+- `ThemeProvider.tsx` (new) — next-themes wrapper; `ThemeToggle` sun/moon button
+- `Navbar.tsx` — user email display, logout, ThemeToggle, `/jobs` + `/settings/channels` nav links
+- `JobDetailClient.tsx` (new) — client shell for `/jobs/[id]` with enrichment badges + date model + `<ApplyButton>`
+- `VersionHistoryDrawer.tsx` (new) — Sheet drawer, version list, Restore button + toast
+- `JsonResumeExportButton.tsx` (new) — blob download + toast
+- `profile/page.tsx` — version history button + drawer, JSON Resume export, skill_tiers 3-column, ESCO pairs
+
+**Cohort D — SEO + Data layer**
+- `jobs/[id]/page.tsx` — server component; `generateMetadata` with og:title + twitter:card; JSON-LD `JobPosting` schema
+- `sitemap.ts` (new) — 4 static + up to 100 dynamic job routes; `next: { revalidate: 3600 }`
+- `robots.ts` (new) — allow all, disallow `/api/`, sitemap pointer
+- `layout.tsx` — added OG + twitter:card metadata; `<QueryProvider>` + `<ThemeProvider>` wrapping
+- `QueryProvider.tsx` (new) — TanStack QueryClient with per-4xx no-retry, `refetchOnWindowFocus: false`
+- `dashboard/page.tsx` — TanStack `useQuery` for jobs + allJobs + status; O1 "Last run" header; O2 429-aware search button disable + `toast.apiError()`
+- `Footer.tsx` — legal link slots (Privacy, Terms, Contact, GitHub placeholder)
+
+**Cohort E — Verification + docs**
+- 5 unit test files (34 tests): ScoreRadar (6), JobCard (7), FilterPanel (4), api-error (11), empty-state (6)
+- 5 E2E specs: `auth-flow.spec.ts`, `job-render.spec.ts`, `share-preview.spec.ts`, `profile-version-restore.spec.ts`, `pipeline-advance.spec.ts`
+- Cohort E code review (feature-dev:code-reviewer)
+- Docs update (this entry) + CLAUDE.md rule #22
+
+### Test delta
+
+Frontend: 0 → 34 unit tests (5 files) + 5 E2E specs
+Backend: 1,087p / 0f / 17s — unchanged (no backend code touched)
+
+### Key architectural decisions
+
+- **Server/client split for `/jobs/[id]`:** Next.js 16 `generateMetadata` must run in a server component. The solution: `page.tsx` (server) calls `fetchJob()` server-side for metadata + JSON-LD, renders `<JobDetailClient jobId={...} />` which holds all `useState`/`useEffect` logic. This is the `params: Promise<{ id: string }>` pattern required by Next.js 16.
+- **TanStack Query key discipline:** dashboard uses `["jobs", filters]` and `["jobs", allJobsKey]` as distinct cache entries. Invalidating `{ queryKey: ["jobs"] }` (prefix) sweeps both on search completion. Optimistic updates patch `setQueryData` in-place and revert with `invalidateQueries` on error.
+- **`ApiError` `instanceof` preservation:** ES2015+ class extension of `Error` breaks `instanceof` after TS transpilation. Fixed with `Object.setPrototypeOf(this, new.target.prototype)` in constructor.
+
+### Deferred
+
+- `test_main.py` rehab batch (13 skip-marked tests, carried from Step 1.5)
+- Dedup-group writer batch (`JobResponse.dedup_group_ids` placeholder only)
+- Date-confidence ternary fix (~14 source files)
+- Notification body capture (`notification_ledger.body` column)
+- Playwright E2E smokes require a running backend for value-presence dim assertions — the 5 E2E specs use Playwright `page.route()` mocking for browser-side API calls; server-side `generateMetadata` fallback renders when backend offline
+
+### Plan reference
+
+`docs/step_2_plan.md`
+
+---
+
 ## Step 1.5 — Pre-Step-2 Stabilisation (MERGED 2026-04-25)
 
 Branch: `step-1-5-batch` off `main @ 17ccdf0`. Three cohort commits + sentinel.

@@ -4,6 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingIcons } from "@/components/layout/FloatingIcons";
+import { AuthProvider } from "@/components/layout/AuthProvider";
+import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { QueryProvider } from "@/components/providers/QueryProvider";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const sora = Sora({
@@ -28,6 +32,17 @@ export const metadata: Metadata = {
   title: "Job360 — Your Career Command Center",
   description:
     "50 sources. 8D scoring. One dashboard. Upload your CV and let Job360 find your perfect match.",
+  openGraph: {
+    title: "Job360 — Your Career Command Center",
+    description: "50 sources. 8D scoring. One dashboard.",
+    type: "website",
+    siteName: "Job360",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Job360 — Your Career Command Center",
+    description: "50 sources. 8D scoring. One dashboard.",
+  },
 };
 
 export default function RootLayout({
@@ -41,12 +56,19 @@ export default function RootLayout({
       className={`dark ${sora.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          <FloatingIcons />
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
-        </TooltipProvider>
+        <ThemeProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <TooltipProvider>
+                <FloatingIcons />
+                <Navbar />
+                <main className="flex-1">{children}</main>
+                <Footer />
+              </TooltipProvider>
+              <Toaster position="bottom-right" richColors />
+            </AuthProvider>
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
