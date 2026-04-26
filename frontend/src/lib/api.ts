@@ -106,7 +106,7 @@ export async function getJob(id: number): Promise<JobResponse> {
 }
 
 export async function exportJobsCsv(): Promise<void> {
-  const res = await fetch(`${API}/api/jobs/export`);
+  const res = await fetch(`${API}/api/jobs/export`, { credentials: "include" });
   if (!res.ok) {
     throw new ApiError(res.status, `CSV export failed`);
   }

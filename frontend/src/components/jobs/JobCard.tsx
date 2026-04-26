@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/tooltip";
 import { createPipelineApplication } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { safeUrl } from "@/lib/utils";
 import type { JobResponse } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -93,7 +94,7 @@ export function JobCard({ job, onAction }: JobCardProps) {
   async function handleApply(e: React.MouseEvent) {
     e.stopPropagation();
     // Open apply URL and track in pipeline
-    window.open(job.apply_url, "_blank", "noopener,noreferrer");
+    window.open(safeUrl(job.apply_url), "_blank", "noopener,noreferrer");
     try {
       await createPipelineApplication(job.id);
       toast.success("Added to pipeline — Applied");

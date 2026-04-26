@@ -5,6 +5,7 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createPipelineApplication } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { safeUrl } from "@/lib/utils";
 import type { JobResponse } from "@/lib/types";
 
 interface ApplyButtonProps {
@@ -28,7 +29,7 @@ export function ApplyButton({
 
   async function handleApply() {
     // Open link immediately (must happen in synchronous event handler)
-    window.open(job.apply_url, "_blank", "noopener,noreferrer");
+    window.open(safeUrl(job.apply_url), "_blank", "noopener,noreferrer");
 
     // Track in pipeline asynchronously
     setLoading(true);
