@@ -71,6 +71,8 @@ export default function NotificationsPage() {
   const total = data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_LIMIT < total;
+  const currentPage = Math.floor(offset / PAGE_LIMIT) + 1;
+  const totalPages = Math.ceil(total / PAGE_LIMIT);
 
   if (loading) {
     return (
@@ -96,7 +98,7 @@ export default function NotificationsPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <div className="animate-fade-in-up stagger-1 mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-          <Bell className="h-5 w-5 text-primary" />
+          <Bell className="h-5 w-5 text-primary" aria-hidden="true" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">Notification History</h1>
@@ -146,7 +148,7 @@ export default function NotificationsPage() {
         </div>
 
         {data && (
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto text-xs text-muted-foreground" aria-live="polite">
             {filtered.length} of {total} notification{total !== 1 ? "s" : ""}
           </span>
         )}
@@ -168,15 +170,18 @@ export default function NotificationsPage() {
               }
             />
           ) : (
-            <table className="w-full text-sm">
+            <table
+              className="w-full text-sm"
+              aria-label="Notification history ledger"
+            >
               <thead>
                 <tr className="border-b border-foreground/10 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Job ID</th>
-                  <th className="px-4 py-3 font-medium">Channel</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium whitespace-nowrap">Sent At</th>
-                  <th className="px-4 py-3 font-medium">Error</th>
-                  <th className="px-4 py-3 font-medium text-right">Retries</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Job ID</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Channel</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-3 font-medium whitespace-nowrap">Sent At</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Error</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-right">Retries</th>
                 </tr>
               </thead>
               <tbody>
@@ -216,16 +221,18 @@ export default function NotificationsPage() {
           <button
             onClick={() => setOffset(Math.max(0, offset - PAGE_LIMIT))}
             disabled={!hasPrev}
+            aria-label="Go to previous page"
             className="rounded-lg border border-foreground/10 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Previous
           </button>
-          <span className="text-xs text-muted-foreground">
-            Page {Math.floor(offset / PAGE_LIMIT) + 1} of {Math.ceil(total / PAGE_LIMIT)}
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            Page {currentPage} of {totalPages}
           </span>
           <button
             onClick={() => setOffset(offset + PAGE_LIMIT)}
             disabled={!hasNext}
+            aria-label="Go to next page"
             className="rounded-lg border border-foreground/10 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next

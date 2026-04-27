@@ -31,7 +31,7 @@ export function DedupGroupViewer({ jobId }: DedupGroupViewerProps) {
   return (
     <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
       <div className="mb-3 flex items-center gap-2">
-        <Layers className="h-4 w-4 text-primary/70" />
+        <Layers className="h-4 w-4 text-primary/70" aria-hidden="true" />
         <p className="text-sm font-medium text-foreground">
           Also posted on{" "}
           <span className="text-primary">
@@ -59,9 +59,9 @@ export function DedupGroupViewer({ jobId }: DedupGroupViewerProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-primary transition-colors"
-                aria-label={`Apply via ${dup.source}`}
+                aria-label={`Apply via ${dup.source} for ${dup.title}`}
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               </a>
             </div>
           </li>

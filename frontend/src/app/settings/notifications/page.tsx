@@ -217,6 +217,8 @@ export default function NotificationRulesPage() {
                         variant={isEnabled ? "outline" : "secondary"}
                         size="sm"
                         disabled={isToggling}
+                        aria-label={`${isEnabled ? "Disable" : "Enable"} notifications for ${ch.display_name}`}
+                        aria-pressed={isEnabled}
                         onClick={() => onToggleEnabled(ch)}
                       >
                         {isToggling
@@ -234,7 +236,7 @@ export default function NotificationRulesPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor={`threshold-${key}`}>Score threshold</Label>
-                      <span className="text-sm font-medium tabular-nums">
+                      <span className="text-sm font-medium tabular-nums" aria-hidden="true">
                         {threshold}
                       </span>
                     </div>
@@ -245,6 +247,10 @@ export default function NotificationRulesPage() {
                       max={100}
                       step={5}
                       value={threshold}
+                      aria-label={`Score threshold for ${ch.display_name}: ${threshold}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={threshold}
                       onChange={(e) =>
                         updateDraft(key, {
                           score_threshold: Number(e.target.value),
@@ -295,13 +301,17 @@ export default function NotificationRulesPage() {
                   {/* Quiet hours — shown for instant mode */}
                   {mode === "instant" && (
                     <div className="space-y-2">
-                      <Label>Quiet hours (optional)</Label>
-                      <div className="flex items-center gap-3">
+                      <p className="text-sm font-medium leading-none" id={`quiet-hours-label-${key}`}>
+                        Quiet hours (optional)
+                      </p>
+                      <div className="flex items-center gap-3" role="group" aria-labelledby={`quiet-hours-label-${key}`}>
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs text-muted-foreground">Start</span>
+                          <label htmlFor={`quiet-start-${key}`} className="text-xs text-muted-foreground">Start</label>
                           <input
+                            id={`quiet-start-${key}`}
                             type="time"
                             value={draft.quiet_hours_start ?? ""}
+                            aria-label={`Quiet hours start time for ${ch.display_name}`}
                             onChange={(e) =>
                               updateDraft(key, {
                                 quiet_hours_start: e.target.value || null,
@@ -310,12 +320,14 @@ export default function NotificationRulesPage() {
                             className="h-9 rounded-md border bg-background px-3 text-sm"
                           />
                         </div>
-                        <span className="mt-4 text-muted-foreground">to</span>
+                        <span className="mt-4 text-muted-foreground" aria-hidden="true">to</span>
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs text-muted-foreground">End</span>
+                          <label htmlFor={`quiet-end-${key}`} className="text-xs text-muted-foreground">End</label>
                           <input
+                            id={`quiet-end-${key}`}
                             type="time"
                             value={draft.quiet_hours_end ?? ""}
+                            aria-label={`Quiet hours end time for ${ch.display_name}`}
                             onChange={(e) =>
                               updateDraft(key, {
                                 quiet_hours_end: e.target.value || null,
@@ -359,11 +371,12 @@ export default function NotificationRulesPage() {
                     <Button
                       onClick={() => onSave(ch)}
                       disabled={isSaving}
+                      aria-label={`${isSaving ? "Saving" : existingRule ? "Save changes" : "Create rule"} for ${ch.display_name}`}
                     >
                       {isSaving ? "Saving…" : existingRule ? "Save changes" : "Create rule"}
                     </Button>
                     {justSaved && (
-                      <span className="text-sm text-emerald-400">Saved</span>
+                      <span className="text-sm text-emerald-400" role="status">Saved</span>
                     )}
                   </div>
                 </CardContent>

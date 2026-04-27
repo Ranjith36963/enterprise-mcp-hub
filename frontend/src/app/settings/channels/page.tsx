@@ -166,7 +166,7 @@ export default function ChannelsSettingsPage() {
                 Expected shape: <span className="font-mono">{hint}</span>
               </p>
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
             <Button type="submit" disabled={submitting}>
               {submitting ? "Adding..." : "Add channel"}
             </Button>
@@ -198,6 +198,7 @@ export default function ChannelsSettingsPage() {
                         </div>
                         {result && (
                           <div
+                            role="status"
                             className={`mt-1 text-xs ${
                               result.ok ? "text-emerald-400" : "text-red-400"
                             }`}
@@ -209,6 +210,7 @@ export default function ChannelsSettingsPage() {
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
+                          aria-label={`Send test notification to ${ch.display_name}`}
                           onClick={() => onTest(ch.id)}
                           disabled={testing === ch.id}
                         >
@@ -216,6 +218,7 @@ export default function ChannelsSettingsPage() {
                         </Button>
                         <Button
                           variant="destructive"
+                          aria-label={`Remove ${ch.display_name} channel`}
                           onClick={() => onDelete(ch.id)}
                         >
                           Remove

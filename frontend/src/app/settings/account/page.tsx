@@ -110,8 +110,8 @@ function ChangePasswordCard() {
               autoComplete="new-password"
             />
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          {success && <p className="text-sm text-emerald-400">{success}</p>}
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+          {success && <p className="text-sm text-emerald-400" role="status">{success}</p>}
           <Button type="submit" disabled={loading}>
             {loading ? "Updating..." : "Update password"}
           </Button>
@@ -183,8 +183,8 @@ function ChangeEmailCard() {
               autoComplete="email"
             />
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          {success && <p className="text-sm text-emerald-400">{success}</p>}
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+          {success && <p className="text-sm text-emerald-400" role="status">{success}</p>}
           <Button type="submit" disabled={loading}>
             {loading ? "Updating..." : "Update email"}
           </Button>
@@ -245,7 +245,7 @@ function DeleteAccountCard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete account</DialogTitle>
-            <DialogDescription>
+            <DialogDescription id="delete-dialog-desc">
               Are you sure? Type{" "}
               <span className="font-mono font-semibold">DELETE</span> to
               confirm. This action cannot be undone.
@@ -259,8 +259,10 @@ function DeleteAccountCard() {
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="DELETE"
               autoComplete="off"
+              aria-label="Type DELETE to confirm account deletion"
+              aria-describedby="delete-dialog-desc"
             />
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
           </div>
           <DialogFooter>
             <Button

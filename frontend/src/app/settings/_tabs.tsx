@@ -24,6 +24,7 @@ export function SettingsNavTabs() {
           <Link
             key={t.href}
             href={t.href}
+            aria-current={isActive ? "page" : undefined}
             className={`rounded-t-md px-4 py-2 text-sm font-medium transition-colors ${
               isActive
                 ? "-mb-px border border-border/40 border-b-background bg-primary/10 text-primary"
