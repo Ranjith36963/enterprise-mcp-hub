@@ -11,20 +11,47 @@ interface DedupGroupViewerProps {
 
 export function DedupGroupViewer({ jobId }: DedupGroupViewerProps) {
   const [data, setData] = useState<DuplicateJobsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     getJobDuplicates(jobId)
       .then((d) => {
         if (!cancelled) setData(d);
       })
       .catch(() => {
         // silently ignore — dedup data is best-effort
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [jobId]);
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+        </div>
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between rounded-lg bg-background/60 px-3 py-2"
+            >
+              <div className="h-4 flex-1 animate-pulse rounded bg-muted" />
+              <div className="ml-3 h-4 w-8 animate-pulse rounded bg-muted" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!data || data.total === 0) return null;
 
