@@ -9,6 +9,26 @@ const eslintConfig = defineConfig([
   {
     rules: {
       ...jsxA11y.configs.recommended.rules,
+      // shadcn/Radix wrappers behave as form controls; teach the rule to
+      // accept htmlFor associations targeting them.
+      "jsx-a11y/label-has-associated-control": [
+        "error",
+        {
+          controlComponents: [
+            "Input",
+            "Textarea",
+            "Select",
+            "SelectTrigger",
+            "Slider",
+            "Switch",
+            "Checkbox",
+            "RadioGroup",
+            "Label",
+          ],
+          assert: "either",
+          depth: 25,
+        },
+      ],
     },
   },
   // Override default ignores of eslint-config-next.

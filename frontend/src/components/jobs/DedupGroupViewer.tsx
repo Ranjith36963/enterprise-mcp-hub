@@ -15,7 +15,6 @@ export function DedupGroupViewer({ jobId }: DedupGroupViewerProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     getJobDuplicates(jobId)
       .then((d) => {
         if (!cancelled) setData(d);

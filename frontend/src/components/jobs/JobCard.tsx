@@ -114,8 +114,18 @@ export function JobCard({ job, onAction }: JobCardProps) {
   return (
     <div
       onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          // Don't activate when focus is on an inner button/link
+          const target = e.target as HTMLElement;
+          if (target.closest("button") || target.closest("a")) return;
+          e.preventDefault();
+          router.push(`/jobs/${job.id}`);
+        }
+      }}
       className="glass-card rounded-xl p-4 cursor-pointer flex flex-col gap-3"
-      role="article"
+      role="link"
+      tabIndex={0}
       aria-label={`Job: ${job.title} at ${job.company}`}
     >
       {/* ---- Top row: Score + Title ---- */}

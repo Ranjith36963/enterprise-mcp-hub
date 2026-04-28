@@ -84,7 +84,6 @@ export default function NotificationRulesPage() {
 
   useEffect(() => {
     refresh();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateDraft(key: string, patch: Partial<NotificationRuleCreate>) {
