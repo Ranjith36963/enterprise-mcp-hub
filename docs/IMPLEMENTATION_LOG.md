@@ -86,6 +86,41 @@ Two unmerged `worktree-agent-*` branches (`a9516ffa`, `acc9e4cb`) were dropped d
 
 `docs/step_3_plan.md` (preserved on commit `df36c8f`; not currently on `main` because of the planned-but-never-run relocation that gave `5d47d59` its "pre-relocation snapshot" message).
 
+### Reviewer pass — 2026-04-28 (post-tag audit, blockers closed in `864e1e6`)
+
+The `worktree-reviewer` worktree audited `step-3-green` at `b576f44` and returned **NOT APPROVED for merge** with 8 findings (1 P1, 2 P2, 4 P3, 1 Info). The full audit lives at `.claude/worktrees/reviewer/docs/reviews/step-3-audit-review.md` (~5,500 words).
+
+**Fixed in this pass (`864e1e6 fix(step-3/reviewer-R1-R3-R7)`):**
+
+- **R-1 (P1 BLOCKER) — `GET /api/runs/recent` returned all users' run history (CLAUDE.md rule #12 violation).** `database.py::get_recent_runs` and `count_recent_runs` now take a required `user_id` argument and filter `WHERE user_id = ?`; `routes/runs.py` passes `user.id`. New test `test_recent_runs_idor_isolation` asserts that a run logged for a fabricated other user never leaks to the caller. Two existing tests (`shows_logged_run`, `pagination`) updated to pass `user_id=fixture_user_id` on `db.log_run` so they pass under the strict scope.
+- **R-2 (P2) — pipeline accepted confirmed-expired jobs.** The C-1 staleness fix only landed on `get_job_by_id_with_enrichment`; the pipeline create path used bare `get_job_by_id`, so a confirmed-expired listing slipped through. `routes/pipeline.py::create_application` now checks `job["staleness_state"] == "confirmed_expired"` and raises 410 Gone. Bare `get_job_by_id` left unchanged so legacy callers (admin tooling, ghost-sweep workers) still see all rows. New tests `test_create_application_rejects_expired_job` (410) + `test_create_application_accepts_active_job` (counter-test).
+- **R-3 (P2) — frontend `RunEntry` type omitted 5 backend fields, including `user_id`, which masked R-1 in DevTools.** `frontend/src/lib/types.ts::RunEntry` widened to mirror all 11 backend columns. Per the reviewer's pattern note: schema-omission ≠ data-omission — the wire payload always carried `user_id`; the type just hid it from inspection.
+- **R-7 (P3) — `quiet_hours_*` and `digest_send_time` not validated as `HH:MM`.** Added `_HHMM_PATTERN = "^(?:[01]\\d|2[0-3]):[0-5]\\d$"` and applied via `Field(pattern=...)` to all three optional time fields in both `NotificationRuleCreate` and `NotificationRuleUpdate`. Pydantic now rejects malformed strings with 422 at the model boundary. The dispatcher's existing `try/except` defence retained as defence-in-depth.
+
+**Deferred per reviewer note:**
+
+- **R-4 (P3)** — `change_email` / `change_password` clear cookie but don't revoke DB session row. Replay window narrow but real. Defer to Step 4.
+- **R-5 (P3)** — bare `ALTER TABLE ADD COLUMN` in migrations `0012`/`0014` extends Step 0's F-M1 documentation gap. Cosmetic; defer.
+- **R-6 (P3)** — redundant `DELETE FROM _schema_migrations` in `0014.down.sql` (the migration runner manages that table). Cosmetic; defer.
+- **R-8 (Info)** — `NotificationRule.user_id` exposed in API response. Cosmetic; the surfaced id always equals the caller's id (rule #12), so it carries no leak risk. Defer.
+
+**Verification at fix time:**
+
+- Targeted tests: 5/5 pass (3 new R-1/R-2 tests + 2 updated existing).
+- Combined: 34/34 across `test_notification_rules` + `test_discovery` + `test_pipeline_timeline`.
+- Spot-check: 7 test files covering all changed surfaces — see commit message for breakdown.
+- Frontend type-check clean, lint 0/0.
+
+**Reviewer's three insights worth preserving:**
+
+1. **Pattern repeat watchlist works.** R-1 was a Step-1 C-2 repeat (auth gate present, scoping missing, no IDOR test); R-2 was a Step-1 C-1 repeat (staleness fix landed on the with-enrichment variant only). The reviewer's earlier-batch carryover-watchlist caught both at audit time, before they reached `main`.
+2. **Gates need probes, not just invocations.** The Step 2 ESLint config bug (Cohort A's plugin double-registration) made `npm run lint` exit 0 while running zero rules — masking 21 errors and 4 warnings for an entire sprint. The Step 1.6 generator/reviewer contract should require *output-shape* probes on each gate command (`npm run lint --` exit 0 *and* output non-empty when invoked on a deliberately-bad file), not just exit-code checks. Captured as a Step-1.6 lesson.
+3. **Schema-omission ≠ data-omission.** R-3 is the textbook example: backend payload carried the cross-tenant tag (`user_id` field), but the frontend type silently dropped it, so a UI-only inspection of the dashboard saw only the visible 6 fields. The leak only surfaces in network/devtools or a different client. Future audits should diff backend response schemas against frontend type definitions, not just probe rendered UI.
+
+### Tagging note
+
+The original `step-3-green` tag at `b576f44` is preserved as the **pre-reviewer-audit anchor** (claimed-green, blocker-found state). A separate tag `step-3-reviewer-clear` will land on the post-fix sentinel commit. Whether to move `step-3-green` forward is the user's call (per CLAUDE.md tag-management convention).
+
 ---
 
 ## Step 2 — API→UI Seam (MERGED 2026-04-25)
