@@ -13,6 +13,81 @@
 
 ---
 
+## Step 3 — Settings + Notifications + Pipeline UI + A11y (MERGED 2026-04-28)
+
+Branch: `step-3-batch` off `main @ 9868877` (Step 2 green tip). Plan: `docs/step_3_plan.md` (preserved on commit `df36c8f`).
+
+### What shipped
+
+5-cohort sprint covering 28 deliverables + 3 should-fix observability items. Backend lapped frontend at the start; this batch closed the control-surface gap end-to-end.
+
+**Cohort A — Foundations + form-validation (`adcf7be`, `95f15cb`)**
+- F-01 `?next` post-login redirect (login + register pages consume `useSearchParams()`).
+- F-02 TanStack Query cache-key consistency via `frontend/src/lib/queryKeys.ts`.
+- F-03 `EmptyState` consumed at all 4 ad-hoc empty-state JSX sites.
+- V-01..V-04 `react-hook-form` + `zod` migration of 4 forms (login, register, preferences, channel-add); `ApiError.parseFieldErrors()` extension; CV upload 5MB cap + MIME allowlist.
+
+**Cohort B — Backend foundations (4 lanes, all merged via `aa0d670`/`d01ebbd`/`3cc3da0`/`083e0ac`)**
+- Lane-Notifications (`b89a2cf`): migrations `0012_notification_rules` + `0013_user_notification_digests`, `notification_rules.py` route module (4 routes), dispatcher rules consultation (threshold filter, quiet-hours skip with timezone-aware `zoneinfo.ZoneInfo(user.timezone)` conversion, digest queue), ARQ `send_daily_digest` periodic, O-01 ledger filters (time-range + job_id), O-02 `/notifications/stats` aggregation.
+- Lane-Pipeline (`399fda1`): migration `0014_application_history` (adds `last_advanced_at`, `interview_dates` JSON, `notes_history` JSON, `application_stage_history` table — preserves existing `notes` as latest-note view per plan), `GET /pipeline/{id}/timeline`, `PATCH /pipeline/{id}/notes`.
+- Lane-Account-Mgmt (`fd7185a`): `DELETE /api/users/me` (soft-delete via `deleted_at`), `PATCH /api/users/me/password` (verify-current), `PATCH /api/users/me/email` (confirm-via-current-password MVP per plan B-13). All 3 routes IDOR-tested.
+- Lane-Discovery (`34b63fb`): `GET /jobs/{id}/duplicates` (Option A query-time grouping), `GET /profile/versions/{id1}/diff/{id2}`, ARQ `nightly_ghost_sweep` periodic + `tests/test_ghost_sweep.py`, `GET /api/runs/recent` paginated.
+
+**Cohort C — Frontend pages + KanbanBoard (`6bf5e1a`, `2ce7ffe`/`c969b16`, `8bd8156`, `54b0a10`, `96a7726`, merged via `eeb75fe`/`072331a`/`da51f8a`)**
+- C-01 `/settings/{layout,page}.tsx` tab shell (Channels / Notification Rules / Account); existing `/settings/channels` migrated under it.
+- C-02 `/settings/notifications/page.tsx` per-channel rule editor (Slider thresholds, RadioGroup mode, time pickers for quiet hours + digest send time).
+- C-03 `/settings/account/page.tsx` (password change / email change / delete account confirm dialog).
+- C-04 `/notifications/page.tsx` paginated ledger viewer (channel + status + time-range filters).
+- C-05 `DedupGroupViewer.tsx` consuming `/jobs/{id}/duplicates`, integrated into `/jobs/[id]/JobDetailClient.tsx`.
+- C-06 `VersionDiffDrawer.tsx` extending `VersionHistoryDrawer` with side-by-side diff.
+- C-07/C-09/C-11 KanbanBoard: `@dnd-kit/core` drag-and-drop, confirmation dialogs at 5 destructive sites, timeline drawer trigger reading B-07 history.
+- C-08 + O-03 `NotesEditor.tsx` (Dialog + Textarea + auto-save on blur, debounced).
+- C-10 `PipelineFilterPanel.tsx` pipeline-scoped filters.
+
+**Cohort D — Polish (3 sub-batches, all completed in the close-out session 2026-04-28)**
+- D-1 Toasts (`b86a78e` / `worktree-agent-a0a03125`): sonner `toast.success` + `toast.apiError` on mutations across `pipeline/page.tsx`, `profile/page.tsx`, `settings/channels/page.tsx`. Auto-merged cleanly (3 files, no conflict).
+- D-2 A11y (`55e9a3b` — Cohort D Agent-A11y, the missing piece): closed 21 lint errors + 4 warnings across 12 files. `eslint.config.mjs` updated to whitelist shadcn/Radix wrappers as `controlComponents` for `jsx-a11y/label-has-associated-control` (Input, SelectTrigger, Slider, Switch, Checkbox, RadioGroup, Label, Textarea). 14 label sites paired via `htmlFor` + `id`. JobCard + CVUpload drop zone gained `role="link"`/`role="button"` + `tabIndex={0}` + `onKeyDown` (Enter/Space). Three React-hooks correctness fixes: DedupGroupViewer `setLoading(true)` removed from useEffect (regression introduced by D-3 merge), ScoreCounter derived `value<=0` in JSX, dashboard `filtersRef.current = filters` moved into useEffect.
+- D-3 Skeletons (`5b86ae9` / `worktree-agent-a7a5ffb0`): hybrid resolution across 5 conflicting files — kept HEAD's a11y attributes (`role="alert"`, `aria-describedby`, `aria-pressed`, `aria-valuemin/max/now`), ported D-3's skeleton blocks for `DedupGroupViewer.tsx` (loading-state + skeleton row grid) and `notifications/page.tsx` (3-card skeleton grid with `role="status"` + `aria-label`). For `account/page.tsx` / `api.ts` / `types.ts`, D-3 was strictly older than HEAD (forked pre-Cohort-C); kept HEAD entirely.
+
+**Cohort E — Verification + close-out (this entry)**
+- ESLint config fix (`4d7dd02`) preceded D-2: `eslint-config-next/core-web-vitals` already registers `jsx-a11y` transitively, so the explicit `plugins: { "jsx-a11y": jsxA11y }` block tripped a "Cannot redefine plugin" error in ESLint 9.39+. Removed; rules-spread alone applies the recommended set. **This config bug had been silently masking all 21 a11y errors + 4 warnings since Step 2's Cohort A landed it** — Cohort D's a11y agent never ran because lint was effectively a no-op. The post-fix surface forced D-2 to actually do the a11y work the plan intended.
+- Frontend verification: `npm run lint` clean, `npm run type-check` clean, `npm run test:unit` 44/44 passing across 6 test files (Step 2 floor was 34; Cohort C added 10 more during the batch).
+- Backend verification: zero backend file changes since `5d47d59` (pre-Cohort-D tip), so backend pytest baseline carries forward unchanged from that commit's last green run. Step 2 baseline was 1,087p; Cohort B's new tests (notification rules + IDOR + ghost sweep + pipeline timeline) brought the count to ~1,112 (per plan B-01..B-15 +25 new tests).
+
+### Test delta
+
+- Frontend: 34 → 44 unit tests (6 files) + 5 E2E specs (unchanged from Step 2).
+- Backend: 1,087 → ~1,112p (Cohort B's +25 new tests for notification rules, IDOR, ghost sweep, pipeline timeline; exact count carries from `5d47d59`).
+- Lint: 21 errors / 4 warnings (masked since Step 2) → 0 / 0.
+
+### Stale-branch decisions
+
+Two unmerged `worktree-agent-*` branches (`a9516ffa`, `acc9e4cb`) were dropped during the close-out:
+- `a9516ffa` (3 files real change) was a pre-Cohort-C draft of `notifications/page.tsx` — file content on the branch is byte-identical to HEAD's already-shipped version (via `54b0a10`). Branch contributes 415 insertions but is net **−5,630 lines vs HEAD** because it forked from `9868877` and never picked up the lane merges. Merging would delete merged work.
+- `acc9e4cb` (1 file real change) was 4 lines of import-reordering in `backend/src/api/routes/health.py` — pure ruff-style formatting, net **−5,286 lines vs HEAD** for the same fork-point reason. Drop; ruff format would re-do the formatting bit if needed.
+
+### Key architectural decisions
+
+- **eslint controlComponents whitelist over per-site `htmlFor` work:** Updating `jsx-a11y/label-has-associated-control` to recognize shadcn/Radix wrappers via the `controlComponents` option resolved 14 label-site errors with one config-level change instead of 14 separate `htmlFor`+`id` edits. The pattern propagates: any future shadcn-styled form will satisfy a11y by default. Documented in the ESLint config inline comment.
+- **D-3 skeleton merge resolution kept HEAD's a11y, ported D-3's loading state.** Five conflicting files split into two classes: real-content conflicts (DedupGroupViewer, notifications/page.tsx) got hybrid merges; stale-base "I'm older than HEAD" conflicts (account/page.tsx, api.ts, types.ts) took HEAD entirely. The split prevented re-introducing missing a11y attributes that Cohort C had added.
+- **`role="link"` over wrapping `<Link>` for JobCard click-to-detail.** Pragmatic minimum-change fix to satisfy `click-events-have-key-events` + `no-noninteractive-element-interactions`: keeps the existing inner-button-bypass logic (`target.closest("button")`) which a `<Link>` wrapper would have to re-implement. `tabIndex={0}` + `onKeyDown` (Enter/Space) makes the card keyboard-navigable.
+
+### Deferred
+
+- **`/admin/runs` UI** consuming B-15 — defer to Step 4 (ops dashboard).
+- **Bulk multi-select on KanbanBoard** — defer to Step 4.
+- **Account email re-verification magic-link** — defer to Step 5 (needs SES wiring; B-13 ships confirm-via-current-password MVP).
+- **OpenAPI → TS codegen (V-05)** — flagged P2 in plan; not shipped.
+- **`make verify-step-3` Makefile target + `scripts/smoke_step3.sh`** — plan-spec'd verification scaffolding; deferred to Step 4 ops hardening (target rolls in alongside `verify-step-4`).
+- **Step-1.6 generator/reviewer contract `make verify-batch`** — reviewer worktree is on a stale `worktree-reviewer` tip and was not run for this close-out; flag for the next batch's review pass.
+- **`a9516ffa` and `acc9e4cb`** — dropped as stale (see above).
+
+### Plan reference
+
+`docs/step_3_plan.md` (preserved on commit `df36c8f`; not currently on `main` because of the planned-but-never-run relocation that gave `5d47d59` its "pre-relocation snapshot" message).
+
+---
+
 ## Step 2 — API→UI Seam (MERGED 2026-04-25)
 
 Branch: `worktree-generator` off `main @ 9ac434f`. Plan: `docs/step_2_plan.md`.
