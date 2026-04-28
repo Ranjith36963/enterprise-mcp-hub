@@ -79,10 +79,21 @@ async def create_application(
     db: JobDatabase = Depends(get_db),
     user: CurrentUser = Depends(require_user),
 ):
-    """Add a job to the caller's application pipeline (stage: applied)."""
+    """Add a job to the caller's application pipeline (stage: applied).
+
+    R-2: ``get_job_by_id`` does not filter on ``staleness_state`` (only
+    ``get_job_by_id_with_enrichment`` carries the C-1 fix). Refuse to
+    create a pipeline row for a confirmed-expired listing — return 410
+    Gone so the frontend can drop the stale card from the UI.
+    """
     job = await db.get_job_by_id(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.get("staleness_state") == "confirmed_expired":
+        raise HTTPException(
+            status_code=410,
+            detail=f"Job {job_id} is no longer accepting applications",
+        )
     row = await db.create_application(job_id, user.id)
     return _to_pipeline_application(row)
 

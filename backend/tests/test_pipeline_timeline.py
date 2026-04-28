@@ -221,3 +221,44 @@ async def test_notes_update_404(authenticated_async_context):
     async with authenticated_async_context() as client:
         resp = await client.patch("/api/pipeline/999999/notes", json={"notes": "hello"})
     assert resp.status_code == 404
+
+
+# ── R-2: pipeline rejects expired jobs ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_application_rejects_expired_job(authenticated_async_context):
+    """R-2 fix: POST /pipeline/{id} on a confirmed-expired job → 410 Gone.
+
+    The C-1 staleness fix only landed on get_job_by_id_with_enrichment;
+    the pipeline create path uses bare get_job_by_id, so an expired
+    listing slipped through. Route layer now checks staleness_state
+    explicitly and returns 410 with a user-readable detail.
+    """
+    db = await api_deps.get_db()
+    job_id = await _insert_job_row(db, title="Stale Role", company="Ghost Corp")
+    # Mark the job confirmed_expired post-insert. update_staleness_state
+    # deliberately does NOT commit (callers batch); commit explicitly so
+    # the route, which opens its own connection, sees the new state.
+    await db.update_staleness_state(job_id, "confirmed_expired")
+    await db._conn.commit()
+
+    async with authenticated_async_context() as client:
+        resp = await client.post(f"/api/pipeline/{job_id}")
+
+    assert resp.status_code == 410, resp.text
+    body = resp.json()
+    assert "no longer accepting" in body["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_application_accepts_active_job(authenticated_async_context):
+    """Counter-test: an active job still creates an application normally."""
+    db = await api_deps.get_db()
+    job_id = await _insert_job_row(db, title="Live Role", company="Active Co")
+    # Default staleness_state is 'active' from _insert_job_row — no change.
+
+    async with authenticated_async_context() as client:
+        resp = await client.post(f"/api/pipeline/{job_id}")
+
+    assert resp.status_code == 200, resp.text

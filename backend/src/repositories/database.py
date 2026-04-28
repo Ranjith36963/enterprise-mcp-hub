@@ -1171,22 +1171,32 @@ class JobDatabase:
             result.setdefault(channel, {})[status] = count
         return result
 
-    async def get_recent_runs(self, limit: int = 20, offset: int = 0) -> list[dict]:
-        """Return recent pipeline runs from run_log, ordered by timestamp DESC."""
+    async def get_recent_runs(
+        self, user_id: str, limit: int = 20, offset: int = 0
+    ) -> list[dict]:
+        """Return recent pipeline runs scoped to ``user_id``, newest first.
+
+        Per CLAUDE.md rule #12 the run_log is per-user operational metadata —
+        rows without a user_id (legacy, pre-Batch-2) are not exposed.
+        """
         try:
             cursor = await self._conn.execute(
-                "SELECT * FROM run_log ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                "SELECT * FROM run_log WHERE user_id = ? "
+                "ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+                (user_id, limit, offset),
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except aiosqlite.OperationalError:
             return []
 
-    async def count_recent_runs(self) -> int:
-        """Return total count of rows in run_log."""
+    async def count_recent_runs(self, user_id: str) -> int:
+        """Return run_log row count for the given user."""
         try:
-            cursor = await self._conn.execute("SELECT COUNT(*) FROM run_log")
+            cursor = await self._conn.execute(
+                "SELECT COUNT(*) FROM run_log WHERE user_id = ?",
+                (user_id,),
+            )
             row = await cursor.fetchone()
             return int(row[0]) if row else 0
         except aiosqlite.OperationalError:

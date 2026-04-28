@@ -67,8 +67,8 @@ async def recent_runs(
     Step-3 B-15.  Requires authentication (rule #12) — the run log is
     operational metadata, not a public catalog surface.
     """
-    runs_raw = await db.get_recent_runs(limit=limit, offset=offset)
-    total = await db.count_recent_runs()
+    runs_raw = await db.get_recent_runs(user_id=user.id, limit=limit, offset=offset)
+    total = await db.count_recent_runs(user_id=user.id)
     return RunsListResponse(
         runs=[RunEntry.from_row(r) for r in runs_raw],
         total=total,
