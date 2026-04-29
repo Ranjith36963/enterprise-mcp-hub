@@ -389,12 +389,15 @@ async def test_recent_runs_returns_list(authenticated_async_context):
 
 @pytest.mark.asyncio
 async def test_recent_runs_shows_logged_run(authenticated_async_context, fixture_user_id):
-    """A run logged via log_run() appears in the response."""
+    """A run logged via log_run() appears in the response when scoped to caller."""
     from src.api import dependencies as api_deps
 
     async with authenticated_async_context() as client:
         db = await api_deps.get_db()
-        await db.log_run({"total_found": 5, "new_jobs": 3, "sources_queried": 10})
+        await db.log_run(
+            {"total_found": 5, "new_jobs": 3, "sources_queried": 10},
+            user_id=fixture_user_id,
+        )
 
         resp = await client.get("/api/runs/recent")
 
@@ -415,7 +418,10 @@ async def test_recent_runs_pagination(authenticated_async_context, fixture_user_
     async with authenticated_async_context() as client:
         db = await api_deps.get_db()
         for i in range(5):
-            await db.log_run({"total_found": i, "new_jobs": 0, "sources_queried": 10})
+            await db.log_run(
+                {"total_found": i, "new_jobs": 0, "sources_queried": 10},
+                user_id=fixture_user_id,
+            )
 
         resp_page1 = await client.get("/api/runs/recent?limit=2&offset=0")
         resp_page2 = await client.get("/api/runs/recent?limit=2&offset=2")
@@ -434,6 +440,48 @@ async def test_recent_runs_pagination(authenticated_async_context, fixture_user_
     ids1 = {r["id"] for r in body1["runs"]}
     ids2 = {r["id"] for r in body2["runs"]}
     assert ids1.isdisjoint(ids2)
+
+
+@pytest.mark.asyncio
+async def test_recent_runs_idor_isolation(authenticated_async_context, fixture_user_id):
+    """R-1: GET /runs/recent must NOT leak other users' run history.
+
+    Logs two runs — one belonging to the authenticated caller, one
+    belonging to a fabricated other user — then confirms the response
+    contains only the caller's run and that the total count reflects
+    only the caller's rows.
+    """
+    from src.api import dependencies as api_deps
+
+    other_user_id = "00000000-0000-0000-0000-0000000000ff"
+    assert other_user_id != fixture_user_id, "fixture must not collide with sentinel id"
+
+    async with authenticated_async_context() as client:
+        db = await api_deps.get_db()
+        # Caller's own run.
+        await db.log_run(
+            {"total_found": 7, "new_jobs": 3, "sources_queried": 10},
+            user_id=fixture_user_id,
+        )
+        # A different user's run — must NEVER appear in the response.
+        await db.log_run(
+            {"total_found": 999, "new_jobs": 999, "sources_queried": 999},
+            user_id=other_user_id,
+        )
+
+        resp = await client.get("/api/runs/recent")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Total reflects only this user's runs; the other user's row stays hidden.
+    assert body["total"] == 1, f"expected only 1 run for caller, got {body['total']}"
+    assert len(body["runs"]) == 1
+    # Belt and braces — the leaking row would have new_jobs=999.
+    assert body["runs"][0]["new_jobs"] != 999
+    # And every returned row must be tagged to the caller (or untagged for
+    # legacy data — which the strict scope already rules out via WHERE).
+    for run in body["runs"]:
+        assert run.get("user_id") in (fixture_user_id, None)
 
 
 @pytest.mark.asyncio

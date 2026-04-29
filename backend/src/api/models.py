@@ -328,22 +328,29 @@ class NotificationRule(BaseModel):
     updated_at: str
 
 
+# R-7: HH:MM (24-hour) regex shared by Create + Update. Validates at the
+# model boundary — defence-in-depth alongside the dispatcher's try/except.
+# Pydantic's ``pattern`` rejects malformed strings with 422 before they
+# ever reach the DB or the dispatcher.
+_HHMM_PATTERN = r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+
+
 class NotificationRuleCreate(BaseModel):
     channel: str
     score_threshold: int = Field(default=60, ge=0, le=100)
     notify_mode: str = Field(default="instant", pattern="^(instant|digest)$")
-    quiet_hours_start: Optional[str] = None
-    quiet_hours_end: Optional[str] = None
-    digest_send_time: Optional[str] = "08:00"
+    quiet_hours_start: Optional[str] = Field(default=None, pattern=_HHMM_PATTERN)
+    quiet_hours_end: Optional[str] = Field(default=None, pattern=_HHMM_PATTERN)
+    digest_send_time: Optional[str] = Field(default="08:00", pattern=_HHMM_PATTERN)
     enabled: bool = True
 
 
 class NotificationRuleUpdate(BaseModel):
     score_threshold: Optional[int] = Field(None, ge=0, le=100)
     notify_mode: Optional[str] = Field(None, pattern="^(instant|digest)$")
-    quiet_hours_start: Optional[str] = None
-    quiet_hours_end: Optional[str] = None
-    digest_send_time: Optional[str] = None
+    quiet_hours_start: Optional[str] = Field(default=None, pattern=_HHMM_PATTERN)
+    quiet_hours_end: Optional[str] = Field(default=None, pattern=_HHMM_PATTERN)
+    digest_send_time: Optional[str] = Field(default=None, pattern=_HHMM_PATTERN)
     enabled: Optional[bool] = None
 
 

@@ -215,7 +215,7 @@ export function FilterPanel({
 
           {/* ---- Sort By ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Sort By</label>
+            <label htmlFor="fp-sort-by" className="text-sm font-medium text-foreground">Sort By</label>
             <Select
               value={draft.sort_by ?? "score"}
               onValueChange={(val) =>
@@ -225,7 +225,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-sort-by" className="w-full">
                 <SelectValue placeholder="Score" />
               </SelectTrigger>
               <SelectContent>
@@ -242,7 +242,7 @@ export function FilterPanel({
           {/* ---- Min Score ---- */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-foreground">
+              <label htmlFor="fp-min-score" className="text-sm font-medium text-foreground">
                 Minimum Score
               </label>
               <span className="font-mono text-sm text-primary tabular-nums">
@@ -250,6 +250,7 @@ export function FilterPanel({
               </span>
             </div>
             <Slider
+              id="fp-min-score"
               min={0}
               max={100}
               value={[draft.min_score ?? 0]}
@@ -269,12 +270,13 @@ export function FilterPanel({
 
           {/* ---- Salary Range ---- */}
           <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
+            <label htmlFor="fp-salary-min" className="text-sm font-medium text-foreground">
               Salary Range (annual GBP)
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Input
+                  id="fp-salary-min"
                   type="number"
                   placeholder="Min £"
                   value={draft.salary_min ?? ""}
@@ -302,7 +304,7 @@ export function FilterPanel({
 
           {/* ---- Seniority ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Seniority</label>
+            <label htmlFor="fp-seniority" className="text-sm font-medium text-foreground">Seniority</label>
             <Select
               value={draft.seniority ?? "all"}
               onValueChange={(val) =>
@@ -312,7 +314,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-seniority" className="w-full">
                 <SelectValue placeholder="Any level" />
               </SelectTrigger>
               <SelectContent>
@@ -332,7 +334,7 @@ export function FilterPanel({
 
           {/* ---- Workplace Type ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Work Arrangement</label>
+            <label htmlFor="fp-workplace-type" className="text-sm font-medium text-foreground">Work Arrangement</label>
             <Select
               value={draft.workplace_type ?? "all"}
               onValueChange={(val) =>
@@ -342,7 +344,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-workplace-type" className="w-full">
                 <SelectValue placeholder="Any" />
               </SelectTrigger>
               <SelectContent>
@@ -358,7 +360,7 @@ export function FilterPanel({
 
           {/* ---- Employment Type ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Employment Type</label>
+            <label htmlFor="fp-employment-type" className="text-sm font-medium text-foreground">Employment Type</label>
             <Select
               value={draft.employment_type ?? "all"}
               onValueChange={(val) =>
@@ -368,7 +370,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-employment-type" className="w-full">
                 <SelectValue placeholder="Any" />
               </SelectTrigger>
               <SelectContent>
@@ -386,8 +388,9 @@ export function FilterPanel({
 
           {/* ---- Industry ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Industry</label>
+            <label htmlFor="fp-industry" className="text-sm font-medium text-foreground">Industry</label>
             <Input
+              id="fp-industry"
               placeholder="e.g. fintech, healthcare, SaaS..."
               value={draft.industry ?? ""}
               onChange={(e) =>
@@ -404,8 +407,9 @@ export function FilterPanel({
 
           {/* ---- Source ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Source</label>
+            <label htmlFor="fp-source" className="text-sm font-medium text-foreground">Source</label>
             <Input
+              id="fp-source"
               placeholder="e.g. greenhouse, reed, indeed..."
               value={draft.source ?? ""}
               onChange={(e) =>
@@ -435,7 +439,7 @@ export function FilterPanel({
 
           {/* ---- Staleness filter ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Listing Freshness</label>
+            <label htmlFor="fp-staleness" className="text-sm font-medium text-foreground">Listing Freshness</label>
             <Select
               value={draft.staleness_state ?? "all"}
               onValueChange={(val) =>
@@ -445,7 +449,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-staleness" className="w-full">
                 <SelectValue placeholder="Any" />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +465,7 @@ export function FilterPanel({
 
           {/* ---- Action filter ---- */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">My Actions</label>
+            <label htmlFor="fp-action" className="text-sm font-medium text-foreground">My Actions</label>
             <Select
               value={draft.action ?? "all"}
               onValueChange={(val) =>
@@ -471,7 +475,7 @@ export function FilterPanel({
                 }))
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="fp-action" className="w-full">
                 <SelectValue placeholder="All jobs" />
               </SelectTrigger>
               <SelectContent>

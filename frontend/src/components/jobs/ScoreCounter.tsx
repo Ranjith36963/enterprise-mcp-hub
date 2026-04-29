@@ -11,10 +11,7 @@ export function ScoreCounter({ value, duration = 600 }: ScoreCounterProps) {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (value <= 0) {
-      setDisplay(0);
-      return;
-    }
+    if (value <= 0) return;
 
     let start = 0;
     const step = value / (duration / 16);
@@ -31,5 +28,5 @@ export function ScoreCounter({ value, duration = 600 }: ScoreCounterProps) {
     return () => clearInterval(timer);
   }, [value, duration]);
 
-  return <span>{display}</span>;
+  return <span>{value <= 0 ? 0 : display}</span>;
 }

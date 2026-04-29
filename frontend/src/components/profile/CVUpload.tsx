@@ -234,6 +234,16 @@ export function CVUpload({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => !uploading && fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && !uploading) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            role="button"
+            tabIndex={uploading ? -1 : 0}
+            aria-label="Upload a CV — click or drop a PDF or DOCX file here"
+            aria-disabled={uploading}
             className={`cursor-pointer border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
               dragging
                 ? "border-primary/60 bg-primary/5"

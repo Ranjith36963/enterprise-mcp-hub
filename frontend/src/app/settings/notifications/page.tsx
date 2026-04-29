@@ -84,7 +84,6 @@ export default function NotificationRulesPage() {
 
   useEffect(() => {
     refresh();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateDraft(key: string, patch: Partial<NotificationRuleCreate>) {
@@ -163,8 +162,31 @@ export default function NotificationRulesPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl py-12">
-        <p className="text-sm text-muted-foreground">Loading notification rules…</p>
+      <div className="mx-auto max-w-3xl space-y-8 py-12" role="status" aria-label="Loading notification rules">
+        <div className="space-y-2">
+          <div className="h-8 w-56 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-96 animate-pulse rounded bg-muted" />
+        </div>
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-16 animate-pulse rounded bg-muted" />
+                  </div>
+                  <div className="h-8 w-20 animate-pulse rounded bg-muted" />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-8 w-28 animate-pulse rounded bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }

@@ -361,13 +361,22 @@ export interface ApplicationTimelineResponse {
 
 // ---- Step-3: Recent runs (C-04 / sidebar) ----
 
+// Mirror of backend RunEntry (src/api/routes/runs.py). Schema-omission
+// previously hid R-1 (cross-tenant leak via user_id surfacing on the
+// wire while the type silently dropped it). Mirror every column the
+// backend may return so devtools / inspections see the full payload.
 export interface RunEntry {
   id: number;
   timestamp: string;
-  total_found: number;
-  new_jobs: number;
-  sources_queried: number;
+  total_found: number | null;
+  new_jobs: number | null;
+  sources_queried: number | null;
+  per_source: string | null;
+  run_uuid: string | null;
+  per_source_errors: string | null;
+  per_source_duration: string | null;
   total_duration: number | null;
+  user_id: string | null;
 }
 
 export interface RecentRunsResponse {

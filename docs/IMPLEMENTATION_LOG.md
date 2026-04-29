@@ -13,6 +13,127 @@
 
 ---
 
+## Step 3 — Settings + Notifications + Pipeline UI + A11y (MERGED 2026-04-28)
+
+Branch: `step-3-batch` off `main @ 9868877` (Step 2 green tip). Plan: `docs/step_3_plan.md` (preserved on commit `df36c8f`).
+
+### What shipped
+
+5-cohort sprint covering 28 deliverables + 3 should-fix observability items. Backend lapped frontend at the start; this batch closed the control-surface gap end-to-end.
+
+**Cohort A — Foundations + form-validation (`adcf7be`, `95f15cb`)**
+- F-01 `?next` post-login redirect (login + register pages consume `useSearchParams()`).
+- F-02 TanStack Query cache-key consistency via `frontend/src/lib/queryKeys.ts`.
+- F-03 `EmptyState` consumed at all 4 ad-hoc empty-state JSX sites.
+- V-01..V-04 `react-hook-form` + `zod` migration of 4 forms (login, register, preferences, channel-add); `ApiError.parseFieldErrors()` extension; CV upload 5MB cap + MIME allowlist.
+
+**Cohort B — Backend foundations (4 lanes, all merged via `aa0d670`/`d01ebbd`/`3cc3da0`/`083e0ac`)**
+- Lane-Notifications (`b89a2cf`): migrations `0012_notification_rules` + `0013_user_notification_digests`, `notification_rules.py` route module (4 routes), dispatcher rules consultation (threshold filter, quiet-hours skip with timezone-aware `zoneinfo.ZoneInfo(user.timezone)` conversion, digest queue), ARQ `send_daily_digest` periodic, O-01 ledger filters (time-range + job_id), O-02 `/notifications/stats` aggregation.
+- Lane-Pipeline (`399fda1`): migration `0014_application_history` (adds `last_advanced_at`, `interview_dates` JSON, `notes_history` JSON, `application_stage_history` table — preserves existing `notes` as latest-note view per plan), `GET /pipeline/{id}/timeline`, `PATCH /pipeline/{id}/notes`.
+- Lane-Account-Mgmt (`fd7185a`): `DELETE /api/users/me` (soft-delete via `deleted_at`), `PATCH /api/users/me/password` (verify-current), `PATCH /api/users/me/email` (confirm-via-current-password MVP per plan B-13). All 3 routes IDOR-tested.
+- Lane-Discovery (`34b63fb`): `GET /jobs/{id}/duplicates` (Option A query-time grouping), `GET /profile/versions/{id1}/diff/{id2}`, ARQ `nightly_ghost_sweep` periodic + `tests/test_ghost_sweep.py`, `GET /api/runs/recent` paginated.
+
+**Cohort C — Frontend pages + KanbanBoard (`6bf5e1a`, `2ce7ffe`/`c969b16`, `8bd8156`, `54b0a10`, `96a7726`, merged via `eeb75fe`/`072331a`/`da51f8a`)**
+- C-01 `/settings/{layout,page}.tsx` tab shell (Channels / Notification Rules / Account); existing `/settings/channels` migrated under it.
+- C-02 `/settings/notifications/page.tsx` per-channel rule editor (Slider thresholds, RadioGroup mode, time pickers for quiet hours + digest send time).
+- C-03 `/settings/account/page.tsx` (password change / email change / delete account confirm dialog).
+- C-04 `/notifications/page.tsx` paginated ledger viewer (channel + status + time-range filters).
+- C-05 `DedupGroupViewer.tsx` consuming `/jobs/{id}/duplicates`, integrated into `/jobs/[id]/JobDetailClient.tsx`.
+- C-06 `VersionDiffDrawer.tsx` extending `VersionHistoryDrawer` with side-by-side diff.
+- C-07/C-09/C-11 KanbanBoard: `@dnd-kit/core` drag-and-drop, confirmation dialogs at 5 destructive sites, timeline drawer trigger reading B-07 history.
+- C-08 + O-03 `NotesEditor.tsx` (Dialog + Textarea + auto-save on blur, debounced).
+- C-10 `PipelineFilterPanel.tsx` pipeline-scoped filters.
+
+**Cohort D — Polish (3 sub-batches, all completed in the close-out session 2026-04-28)**
+- D-1 Toasts (`b86a78e` / `worktree-agent-a0a03125`): sonner `toast.success` + `toast.apiError` on mutations across `pipeline/page.tsx`, `profile/page.tsx`, `settings/channels/page.tsx`. Auto-merged cleanly (3 files, no conflict).
+- D-2 A11y (`55e9a3b` — Cohort D Agent-A11y, the missing piece): closed 21 lint errors + 4 warnings across 12 files. `eslint.config.mjs` updated to whitelist shadcn/Radix wrappers as `controlComponents` for `jsx-a11y/label-has-associated-control` (Input, SelectTrigger, Slider, Switch, Checkbox, RadioGroup, Label, Textarea). 14 label sites paired via `htmlFor` + `id`. JobCard + CVUpload drop zone gained `role="link"`/`role="button"` + `tabIndex={0}` + `onKeyDown` (Enter/Space). Three React-hooks correctness fixes: DedupGroupViewer `setLoading(true)` removed from useEffect (regression introduced by D-3 merge), ScoreCounter derived `value<=0` in JSX, dashboard `filtersRef.current = filters` moved into useEffect.
+- D-3 Skeletons (`5b86ae9` / `worktree-agent-a7a5ffb0`): hybrid resolution across 5 conflicting files — kept HEAD's a11y attributes (`role="alert"`, `aria-describedby`, `aria-pressed`, `aria-valuemin/max/now`), ported D-3's skeleton blocks for `DedupGroupViewer.tsx` (loading-state + skeleton row grid) and `notifications/page.tsx` (3-card skeleton grid with `role="status"` + `aria-label`). For `account/page.tsx` / `api.ts` / `types.ts`, D-3 was strictly older than HEAD (forked pre-Cohort-C); kept HEAD entirely.
+
+**Cohort E — Verification + close-out (this entry)**
+- ESLint config fix (`4d7dd02`) preceded D-2: `eslint-config-next/core-web-vitals` already registers `jsx-a11y` transitively, so the explicit `plugins: { "jsx-a11y": jsxA11y }` block tripped a "Cannot redefine plugin" error in ESLint 9.39+. Removed; rules-spread alone applies the recommended set. **This config bug had been silently masking all 21 a11y errors + 4 warnings since Step 2's Cohort A landed it** — Cohort D's a11y agent never ran because lint was effectively a no-op. The post-fix surface forced D-2 to actually do the a11y work the plan intended.
+- Frontend verification: `npm run lint` clean, `npm run type-check` clean, `npm run test:unit` 44/44 passing across 6 test files (Step 2 floor was 34; Cohort C added 10 more during the batch).
+- Backend verification: zero backend file changes since `5d47d59` (pre-Cohort-D tip), so backend pytest baseline carries forward unchanged from that commit's last green run. Step 2 baseline was 1,087p; Cohort B's new tests (notification rules + IDOR + ghost sweep + pipeline timeline) brought the count to ~1,112 (per plan B-01..B-15 +25 new tests).
+
+### Test delta
+
+- Frontend: 34 → 44 unit tests (6 files) + 5 E2E specs (unchanged from Step 2).
+- Backend: 1,087 → ~1,112p (Cohort B's +25 new tests for notification rules, IDOR, ghost sweep, pipeline timeline; exact count carries from `5d47d59`).
+- Lint: 21 errors / 4 warnings (masked since Step 2) → 0 / 0.
+
+### Stale-branch decisions
+
+Two unmerged `worktree-agent-*` branches (`a9516ffa`, `acc9e4cb`) were dropped during the close-out:
+- `a9516ffa` (3 files real change) was a pre-Cohort-C draft of `notifications/page.tsx` — file content on the branch is byte-identical to HEAD's already-shipped version (via `54b0a10`). Branch contributes 415 insertions but is net **−5,630 lines vs HEAD** because it forked from `9868877` and never picked up the lane merges. Merging would delete merged work.
+- `acc9e4cb` (1 file real change) was 4 lines of import-reordering in `backend/src/api/routes/health.py` — pure ruff-style formatting, net **−5,286 lines vs HEAD** for the same fork-point reason. Drop; ruff format would re-do the formatting bit if needed.
+
+### Key architectural decisions
+
+- **eslint controlComponents whitelist over per-site `htmlFor` work:** Updating `jsx-a11y/label-has-associated-control` to recognize shadcn/Radix wrappers via the `controlComponents` option resolved 14 label-site errors with one config-level change instead of 14 separate `htmlFor`+`id` edits. The pattern propagates: any future shadcn-styled form will satisfy a11y by default. Documented in the ESLint config inline comment.
+- **D-3 skeleton merge resolution kept HEAD's a11y, ported D-3's loading state.** Five conflicting files split into two classes: real-content conflicts (DedupGroupViewer, notifications/page.tsx) got hybrid merges; stale-base "I'm older than HEAD" conflicts (account/page.tsx, api.ts, types.ts) took HEAD entirely. The split prevented re-introducing missing a11y attributes that Cohort C had added.
+- **`role="link"` over wrapping `<Link>` for JobCard click-to-detail.** Pragmatic minimum-change fix to satisfy `click-events-have-key-events` + `no-noninteractive-element-interactions`: keeps the existing inner-button-bypass logic (`target.closest("button")`) which a `<Link>` wrapper would have to re-implement. `tabIndex={0}` + `onKeyDown` (Enter/Space) makes the card keyboard-navigable.
+
+### Deferred
+
+- **`/admin/runs` UI** consuming B-15 — defer to Step 4 (ops dashboard).
+- **Bulk multi-select on KanbanBoard** — defer to Step 4.
+- **Account email re-verification magic-link** — defer to Step 5 (needs SES wiring; B-13 ships confirm-via-current-password MVP).
+- **OpenAPI → TS codegen (V-05)** — flagged P2 in plan; not shipped.
+- **`make verify-step-3` Makefile target + `scripts/smoke_step3.sh`** — plan-spec'd verification scaffolding; deferred to Step 4 ops hardening (target rolls in alongside `verify-step-4`).
+- **Step-1.6 generator/reviewer contract `make verify-batch`** — reviewer worktree is on a stale `worktree-reviewer` tip and was not run for this close-out; flag for the next batch's review pass.
+- **`a9516ffa` and `acc9e4cb`** — dropped as stale (see above).
+
+### Plan reference
+
+`docs/step_3_plan.md` (preserved on commit `df36c8f`; not currently on `main` because of the planned-but-never-run relocation that gave `5d47d59` its "pre-relocation snapshot" message).
+
+### Reviewer pass — 2026-04-28 (post-tag audit, blockers closed in `864e1e6`)
+
+The `worktree-reviewer` worktree audited `step-3-green` at `b576f44` and returned **NOT APPROVED for merge** with 8 findings (1 P1, 2 P2, 4 P3, 1 Info). The full audit lives at `.claude/worktrees/reviewer/docs/reviews/step-3-audit-review.md` (~5,500 words).
+
+**Fixed in this pass (`864e1e6 fix(step-3/reviewer-R1-R3-R7)`):**
+
+- **R-1 (P1 BLOCKER) — `GET /api/runs/recent` returned all users' run history (CLAUDE.md rule #12 violation).** `database.py::get_recent_runs` and `count_recent_runs` now take a required `user_id` argument and filter `WHERE user_id = ?`; `routes/runs.py` passes `user.id`. New test `test_recent_runs_idor_isolation` asserts that a run logged for a fabricated other user never leaks to the caller. Two existing tests (`shows_logged_run`, `pagination`) updated to pass `user_id=fixture_user_id` on `db.log_run` so they pass under the strict scope.
+- **R-2 (P2) — pipeline accepted confirmed-expired jobs.** The C-1 staleness fix only landed on `get_job_by_id_with_enrichment`; the pipeline create path used bare `get_job_by_id`, so a confirmed-expired listing slipped through. `routes/pipeline.py::create_application` now checks `job["staleness_state"] == "confirmed_expired"` and raises 410 Gone. Bare `get_job_by_id` left unchanged so legacy callers (admin tooling, ghost-sweep workers) still see all rows. New tests `test_create_application_rejects_expired_job` (410) + `test_create_application_accepts_active_job` (counter-test).
+- **R-3 (P2) — frontend `RunEntry` type omitted 5 backend fields, including `user_id`, which masked R-1 in DevTools.** `frontend/src/lib/types.ts::RunEntry` widened to mirror all 11 backend columns. Per the reviewer's pattern note: schema-omission ≠ data-omission — the wire payload always carried `user_id`; the type just hid it from inspection.
+- **R-7 (P3) — `quiet_hours_*` and `digest_send_time` not validated as `HH:MM`.** Added `_HHMM_PATTERN = "^(?:[01]\\d|2[0-3]):[0-5]\\d$"` and applied via `Field(pattern=...)` to all three optional time fields in both `NotificationRuleCreate` and `NotificationRuleUpdate`. Pydantic now rejects malformed strings with 422 at the model boundary. The dispatcher's existing `try/except` defence retained as defence-in-depth.
+
+**Deferred per reviewer note:**
+
+- **R-4 (P3)** — `change_email` / `change_password` clear cookie but don't revoke DB session row. Replay window narrow but real. Defer to Step 4.
+- **R-5 (P3)** — bare `ALTER TABLE ADD COLUMN` in migrations `0012`/`0014` extends Step 0's F-M1 documentation gap. Cosmetic; defer.
+- **R-6 (P3)** — redundant `DELETE FROM _schema_migrations` in `0014.down.sql` (the migration runner manages that table). Cosmetic; defer.
+- **R-8 (Info)** — `NotificationRule.user_id` exposed in API response. Cosmetic; the surfaced id always equals the caller's id (rule #12), so it carries no leak risk. Defer.
+
+**Verification at fix time:**
+
+- Targeted tests: 5/5 pass (3 new R-1/R-2 tests + 2 updated existing).
+- Combined: 34/34 across `test_notification_rules` + `test_discovery` + `test_pipeline_timeline`.
+- Spot-check: 7 test files covering all changed surfaces — see commit message for breakdown.
+- Frontend type-check clean, lint 0/0.
+
+**Reviewer's three insights worth preserving:**
+
+1. **Pattern repeat watchlist works.** R-1 was a Step-1 C-2 repeat (auth gate present, scoping missing, no IDOR test); R-2 was a Step-1 C-1 repeat (staleness fix landed on the with-enrichment variant only). The reviewer's earlier-batch carryover-watchlist caught both at audit time, before they reached `main`.
+2. **Gates need probes, not just invocations.** The Step 2 ESLint config bug (Cohort A's plugin double-registration) made `npm run lint` exit 0 while running zero rules — masking 21 errors and 4 warnings for an entire sprint. The Step 1.6 generator/reviewer contract should require *output-shape* probes on each gate command (`npm run lint --` exit 0 *and* output non-empty when invoked on a deliberately-bad file), not just exit-code checks. Captured as a Step-1.6 lesson.
+3. **Schema-omission ≠ data-omission.** R-3 is the textbook example: backend payload carried the cross-tenant tag (`user_id` field), but the frontend type silently dropped it, so a UI-only inspection of the dashboard saw only the visible 6 fields. The leak only surfaces in network/devtools or a different client. Future audits should diff backend response schemas against frontend type definitions, not just probe rendered UI.
+
+### Tagging note
+
+The original `step-3-green` tag at `b576f44` is preserved as the **pre-reviewer-audit anchor** (claimed-green, blocker-found state). A separate tag `step-3-reviewer-clear` will land on the post-fix sentinel commit. Whether to move `step-3-green` forward is the user's call (per CLAUDE.md tag-management convention).
+
+### Re-audit close-out — 2026-04-29
+
+Reviewer re-audited at `ea47320` and returned **MERGE-READY**. Two carry-forward observations from the re-audit worth preserving:
+
+- **R-2-N1 (Info, not a blocker) — allowlist vs blocklist divergence between Step-1 C-1 and Step-3 R-2.** Step-1 C-1's staleness fix uses an *allowlist* (`staleness_state IS NULL OR = 'active'` — anything else hides). Step-3 R-2's fix uses a *blocklist* (`staleness_state == 'confirmed_expired'` — only that one state blocks). Same UX today because the read path hides intermediate states (`possibly_stale`, `likely_stale`), but a future code path that bypasses the read filter (deep-link, third-party API client) could let a `'stale'` job through R-2's gate. Future stale-job consistency pass should align the two on the safer allowlist semantics.
+- **`origin/main` advanced from `df36c8f` to `2cb0225` mid-session.** The audit was scoped against `df36c8f` (the docs-preserve commit prior to the session-start hard-reset). Push planning for `step-3-batch` should account for the 1-commit drift on the merge target — fast-forward merge no longer applies; expect either a merge commit or a rebase.
+
+**Recommended new rule for CLAUDE.md (Rule #23 candidate, proposed in re-audit §8):** every authenticated per-user route requires an `idor_isolation` test that creates two users (or fakes a second `user_id`), inserts data for both, and asserts the response excludes the non-caller's data. R-1 was a Step-1 C-2 repeat precisely because the original C-2 fix landed without such a test; the rule would catch the next repeat at PR-review time, not at audit time. Defer the rule's adoption to a CLAUDE.md sweep batch.
+
+The reviewer's full re-audit is in `.claude/worktrees/reviewer/docs/reviews/step-3-audit-review.md` §8.
+
+---
+
 ## Step 2 — API→UI Seam (MERGED 2026-04-25)
 
 Branch: `worktree-generator` off `main @ 9ac434f`. Plan: `docs/step_2_plan.md`.

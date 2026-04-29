@@ -71,7 +71,9 @@ export default function DashboardPage() {
 
   // Keep a ref so the search-complete callback always sees the latest filters
   const filtersRef = useRef(filters);
-  filtersRef.current = filters;
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   // Search status
   const [searching, setSearching] = useState(false);
@@ -123,7 +125,7 @@ export default function DashboardPage() {
     placeholderData: (prev) => prev,
   });
 
-  const allJobs = allJobsData?.jobs ?? [];
+  const allJobs = useMemo(() => allJobsData?.jobs ?? [], [allJobsData?.jobs]);
 
   // ---------------------------------------------------------------------------
   // TanStack Query — pipeline status (last run time, O1)

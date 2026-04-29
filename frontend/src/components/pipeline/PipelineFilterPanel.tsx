@@ -64,10 +64,11 @@ export function PipelineFilterPanel({
     <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border/40 bg-card/30 px-4 py-3">
       {/* Company / title search */}
       <div className="flex flex-col gap-1 min-w-[180px] flex-1">
-        <label className="text-xs text-muted-foreground font-medium">
+        <label htmlFor="pfp-company" className="text-xs text-muted-foreground font-medium">
           Company / Title
         </label>
         <Input
+          id="pfp-company"
           type="text"
           placeholder="Filter by company or title…"
           value={company}
@@ -78,10 +79,11 @@ export function PipelineFilterPanel({
 
       {/* Applied from */}
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-muted-foreground font-medium">
+        <label htmlFor="pfp-date-from" className="text-xs text-muted-foreground font-medium">
           Applied from
         </label>
         <Input
+          id="pfp-date-from"
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
@@ -91,10 +93,11 @@ export function PipelineFilterPanel({
 
       {/* Applied to */}
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-muted-foreground font-medium">
+        <label htmlFor="pfp-date-to" className="text-xs text-muted-foreground font-medium">
           Applied to
         </label>
         <Input
+          id="pfp-date-to"
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
