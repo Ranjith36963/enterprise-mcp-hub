@@ -121,6 +121,17 @@ The `worktree-reviewer` worktree audited `step-3-green` at `b576f44` and returne
 
 The original `step-3-green` tag at `b576f44` is preserved as the **pre-reviewer-audit anchor** (claimed-green, blocker-found state). A separate tag `step-3-reviewer-clear` will land on the post-fix sentinel commit. Whether to move `step-3-green` forward is the user's call (per CLAUDE.md tag-management convention).
 
+### Re-audit close-out — 2026-04-29
+
+Reviewer re-audited at `ea47320` and returned **MERGE-READY**. Two carry-forward observations from the re-audit worth preserving:
+
+- **R-2-N1 (Info, not a blocker) — allowlist vs blocklist divergence between Step-1 C-1 and Step-3 R-2.** Step-1 C-1's staleness fix uses an *allowlist* (`staleness_state IS NULL OR = 'active'` — anything else hides). Step-3 R-2's fix uses a *blocklist* (`staleness_state == 'confirmed_expired'` — only that one state blocks). Same UX today because the read path hides intermediate states (`possibly_stale`, `likely_stale`), but a future code path that bypasses the read filter (deep-link, third-party API client) could let a `'stale'` job through R-2's gate. Future stale-job consistency pass should align the two on the safer allowlist semantics.
+- **`origin/main` advanced from `df36c8f` to `2cb0225` mid-session.** The audit was scoped against `df36c8f` (the docs-preserve commit prior to the session-start hard-reset). Push planning for `step-3-batch` should account for the 1-commit drift on the merge target — fast-forward merge no longer applies; expect either a merge commit or a rebase.
+
+**Recommended new rule for CLAUDE.md (Rule #23 candidate, proposed in re-audit §8):** every authenticated per-user route requires an `idor_isolation` test that creates two users (or fakes a second `user_id`), inserts data for both, and asserts the response excludes the non-caller's data. R-1 was a Step-1 C-2 repeat precisely because the original C-2 fix landed without such a test; the rule would catch the next repeat at PR-review time, not at audit time. Defer the rule's adoption to a CLAUDE.md sweep batch.
+
+The reviewer's full re-audit is in `.claude/worktrees/reviewer/docs/reviews/step-3-audit-review.md` §8.
+
 ---
 
 ## Step 2 — API→UI Seam (MERGED 2026-04-25)
