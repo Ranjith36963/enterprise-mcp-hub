@@ -303,15 +303,18 @@ export default function DashboardPage() {
                 "No jobs found yet"
               )}
             </p>
-            {statusData?.last_run && (
-              <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
-                <Clock className="h-3 w-3" aria-hidden />
-                Last run:{" "}
-                {new Date(
-                  (statusData.last_run as { completed_at?: string }).completed_at ?? ""
-                ).toLocaleString()}
-              </p>
-            )}
+            {statusData?.last_run && (() => {
+              const ts = (statusData.last_run as { timestamp?: string }).timestamp;
+              if (!ts) return null;
+              const d = new Date(ts);
+              if (Number.isNaN(d.getTime())) return null;
+              return (
+                <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
+                  <Clock className="h-3 w-3" aria-hidden />
+                  Last run: {d.toLocaleString()}
+                </p>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2">
