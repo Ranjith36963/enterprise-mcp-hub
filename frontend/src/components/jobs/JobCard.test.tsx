@@ -86,4 +86,39 @@ describe("JobCard", () => {
     await userEvent.click(screen.getByRole("button", { name: /like this job/i }));
     expect(mockOnAction).toHaveBeenCalledWith(42, "liked");
   });
+
+  // ── B-2 — salary point estimate ────────────────────────────────────────────
+  it("formats salary as point estimate when min == max (B-2)", () => {
+    const jobPoint = { ...baseJob, salary_min_gbp: 83284, salary_max_gbp: 83284 };
+    render(<JobCard job={jobPoint} onAction={mockOnAction} />);
+    expect(screen.getByText("£83k")).toBeInTheDocument();
+    // No fake range marker rendered.
+    expect(screen.queryByText(/£83k.*–.*£83k/)).not.toBeInTheDocument();
+  });
+
+  it("still renders a range when min != max (B-2 regression guard)", () => {
+    const jobRange = { ...baseJob, salary_min_gbp: 60000, salary_max_gbp: 90000 };
+    render(<JobCard job={jobRange} onAction={mockOnAction} />);
+    expect(screen.getByText("£60k–£90k")).toBeInTheDocument();
+  });
+
+  // ── B-3 — source label tooltip ─────────────────────────────────────────────
+  it("source label has native title tooltip (B-3)", () => {
+    render(<JobCard job={baseJob} onAction={mockOnAction} />);
+    expect(screen.getByText("greenhouse")).toHaveAttribute("title", "greenhouse");
+  });
+
+  // ── B-6 / B-7 — title / company / location tooltips ────────────────────────
+  it("title / company / location all have native title tooltips (B-6/B-7)", () => {
+    const longJob = {
+      ...baseJob,
+      title: "Senior AI Engineer (Enterprise AI Platform): Foundations Team",
+      company: "Adria Solutions Limited UK",
+      location: "Manchester, Greater Manchester, UK",
+    };
+    render(<JobCard job={longJob} onAction={mockOnAction} />);
+    expect(screen.getByText(longJob.title)).toHaveAttribute("title", longJob.title);
+    expect(screen.getByText(longJob.company)).toHaveAttribute("title", longJob.company);
+    expect(screen.getByText(longJob.location)).toHaveAttribute("title", longJob.location);
+  });
 });

@@ -53,7 +53,7 @@ function formatSalaryRange(min?: number | null, max?: number | null): string | n
   if (!min && !max) return null;
   const fmt = (n: number) =>
     n >= 1000 ? `£${Math.round(n / 1000)}k` : `£${n}`;
-  if (min && max) return `${fmt(min)}–${fmt(max)}`;
+  if (min && max) return min === max ? fmt(min) : `${fmt(min)}–${fmt(max)}`;
   if (min) return `${fmt(min)}+`;
   if (max) return `up to ${fmt(max)}`;
   return null;
@@ -139,18 +139,21 @@ export function JobCard({ job, onAction }: JobCardProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="font-heading font-semibold text-foreground leading-tight line-clamp-2">
+          <h3
+            className="font-heading font-semibold text-foreground leading-tight line-clamp-2"
+            title={job.title}
+          >
             {job.title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Briefcase className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
-              <span className="truncate max-w-[120px]">{job.company}</span>
+              <span className="truncate max-w-[120px]" title={job.company}>{job.company}</span>
             </span>
             <span className="hidden sm:inline text-border" aria-hidden="true">|</span>
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
-              <span className="truncate max-w-[120px]">{job.location || "Remote"}</span>
+              <span className="truncate max-w-[120px]" title={job.location || "Remote"}>{job.location || "Remote"}</span>
             </span>
             <span className="hidden sm:inline text-border" aria-hidden="true">|</span>
             <span className="flex items-center gap-1">
@@ -348,7 +351,10 @@ export function JobCard({ job, onAction }: JobCardProps) {
         </Button>
 
         {/* Source tag */}
-        <span className="text-xs text-muted-foreground/60 font-mono">
+        <span
+          className="text-xs text-muted-foreground/60 font-mono flex-shrink-0"
+          title={job.source}
+        >
           {job.source}
         </span>
       </div>

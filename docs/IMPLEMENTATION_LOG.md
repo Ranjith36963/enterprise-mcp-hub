@@ -132,6 +132,33 @@ Reviewer re-audited at `ea47320` and returned **MERGE-READY**. Two carry-forward
 
 The reviewer's full re-audit is in `.claude/worktrees/reviewer/docs/reviews/step-3-audit-review.md` §8.
 
+### Dashboard polish — 2026-04-30 (post-merge bugs from manual smoke against PR #9)
+
+After login on the post-Step-3 build, manual smoke surfaced 6 user-visible dashboard bugs (B-1..B-7 minus B-4 carrying its own number; full bug-by-bug breakdown in plan file `~/.claude/plans/write-a-plan-typed-piglet.md`). All pre-existing carry-overs unmasked the moment Step 3's frontend wired the real data through — none blocked the PR-9 merge.
+
+**Three commits landed on `step-3-batch`:**
+
+- `1329bda fix(frontend): dashboard polish` — closes B-1 (`Last run: Invalid Date` — backend's `run_log` carries `timestamp` not `completed_at`; frontend now reads the right field with `Number.isNaN(d.getTime())` future-drift guard), B-2 (point-estimate salary rendered as fake range — `formatSalaryRange()` short-circuits when `min === max`), B-3 (source slug clipped mid-word — `flex-shrink-0` + native `title=`), B-6/B-7 (truncated title/company/location lacked tooltip — added native `title=` on all three).
+- `6c10057 fix(frontend): active-bucket stat tile shows count not label` — closes B-5/B-11. The 4th stat tile previously rendered the active bucket NAME (`7D` as a string) where every other tile shows a number; now `value: counts[activeBucket] ?? 0` and label gains a parenthetical hint `Active (7D)`. Cumulative bucket semantics deliberately preserved (per option-b in the plan) because `filters.hours` consumes them downstream — switching to per-window would create a counts-vs-results mismatch.
+- `e243353 fix(backend): dedup em-dash/colon marketing suffixes (B-4)` — closes the Harnham-duplicate smoke case where "AI Solutions Engineer – GenAI Platform Startup" and "AI Solutions Engineer" both rendered. Added `_MARKETING_SUFFIX_RE = re.compile(r'(?:\s+[\u2013\u2014\-]\s+|:\s+).+$')` to `services/deduplicator.py::_normalize_title`. Two-branch alternation: dashes need both-side ws (preserves `Front-End Engineer`); colons need only trailing ws (`Foo: Bar` is the dominant written form). 5 new tests in `test_deduplicator.py` (4 collapse cases + 1 negative case for `Front-End Engineer` survival). Deliberately did NOT touch `models.py::normalized_key()` per CLAUDE.md rule #1 — the deduplicator already runs deliberately more aggressive in-memory normalization on top of the DB key (per its docstring).
+
+**Verification at fix time:**
+- Frontend lint 0/0, type-check clean, vitest 48/48 across 6 files (was 44; +4 new JobCard tests pinning B-2/B-3/B-6/B-7).
+- Backend dedup 34/34 (was 29; +5 new B-4 tests). Regression spot-check across `test_models.py` + `test_deduplicator.py` + `test_main.py` + `test_scorer.py` = 137 passed / 13 skipped (the skips are pre-existing Step-1.5 carry-overs — unchanged).
+
+**Reviewer re-audit pass #3 verdict (2026-04-30, on `e243353`): MERGE-READY.** Frontend lint/type-check/vitest re-confirmed clean; backend dedup + models 58/58 including all 5 new B-4 cases.
+
+**One new finding from re-audit pass #3, deferred:**
+
+- **R-11 (P3, non-blocking) — leading-separator over-merge edge case in B-4 regex.** The `\s+[-\u2013\u2014]\s+|:\s+.+$` pattern greedily strips from the FIRST in-bounds separator to end-of-string, which over-merges leading-separator titles like `Senior - Backend Engineer` and `Senior - Frontend Engineer` (both normalize to `Senior`). The negative test `test_dedup_preserves_internal_hyphenated_words` covers internal hyphens (`Front-End`) but doesn't probe leading-separator titles. Recommended fix + regression test sketched in re-audit §11. Defer to Step-4 stale-job consistency pass (where R-2-N1's allowlist/blocklist alignment also lives).
+
+### Carry-forward observations (cumulative across re-audits)
+
+- **R-2-N1** (re-audit pass #1): allowlist (Step-1 C-1) vs blocklist (Step-3 R-2) staleness gate divergence — align in Step-4 stale-job consistency pass.
+- **R-11** (re-audit pass #3): dedup regex over-merge for leading-separator titles — bundle with the same Step-4 dedup/staleness consistency batch.
+- **Rule #23 candidate** (re-audit pass #1): every authenticated per-user route requires an `idor_isolation` test — adopt via CLAUDE.md sweep batch.
+- **`origin/main` drift** (re-audit pass #1): main was at `df36c8f` when Step 3 was scoped, advanced to `2cb0225` mid-session, then to `7194d0e` on PR #9 merge, then to `160cbc3` (separate pull). Always rebase/merge against current `origin/main` before opening any post-PR-9 follow-up PR.
+
 ---
 
 ## Step 2 — API→UI Seam (MERGED 2026-04-25)

@@ -418,3 +418,90 @@ def test_dedup_10k_jobs_finishes_quickly():
     # of unique (title, company) keys is roughly min(10_000, 500×200) = 10_000
     # because each (i%500, i%200) can be unique.
     assert 500 <= len(result) <= 10_000
+
+
+# ── B-4 — em-dash / colon marketing-suffix dedup ─────────────────────────────
+# Surfaced by manual smoke against PR #9: two Harnham postings of "AI Solutions
+# Engineer" both shown because Layer-1 keys diverged when one had a marketing
+# suffix (" – GenAI Platform Startup"). Fix lives in deduplicator._normalize_title
+# via _MARKETING_SUFFIX_RE; tests pin both directions (collapse + don't-collapse).
+
+
+def test_dedup_strips_em_dash_marketing_suffix():
+    """B-4: 'AI Solutions Engineer – GenAI Platform Startup' collapses with bare title."""
+    jobs = [
+        _make_job(
+            title="AI Solutions Engineer \u2013 GenAI Platform Startup",
+            company="Harnham", source="reed", apply_url="https://reed.co.uk/1",
+        ),
+        _make_job(
+            title="AI Solutions Engineer",
+            company="Harnham", source="adzuna", apply_url="https://adzuna.co.uk/2",
+        ),
+    ]
+    assert len(deduplicate(jobs)) == 1
+
+
+def test_dedup_strips_em_dash_unicode_variant():
+    """B-4: U+2014 em-dash also collapses."""
+    jobs = [
+        _make_job(
+            title="ML Engineer \u2014 Series B Fintech",
+            company="Acme", source="reed", apply_url="https://reed.co.uk/3",
+        ),
+        _make_job(
+            title="ML Engineer",
+            company="Acme", source="adzuna", apply_url="https://adzuna.co.uk/4",
+        ),
+    ]
+    assert len(deduplicate(jobs)) == 1
+
+
+def test_dedup_strips_hyphen_marketing_suffix():
+    """B-4: ASCII hyphen with whitespace on both sides also collapses."""
+    jobs = [
+        _make_job(
+            title="Data Engineer - Remote First",
+            company="Acme", source="reed", apply_url="https://reed.co.uk/5",
+        ),
+        _make_job(
+            title="Data Engineer",
+            company="Acme", source="adzuna", apply_url="https://adzuna.co.uk/6",
+        ),
+    ]
+    assert len(deduplicate(jobs)) == 1
+
+
+def test_dedup_strips_colon_marketing_suffix():
+    """B-4: colon-separated marketing tail also collapses."""
+    jobs = [
+        _make_job(
+            title="Backend Engineer: GenAI Team",
+            company="Acme", source="reed", apply_url="https://reed.co.uk/7",
+        ),
+        _make_job(
+            title="Backend Engineer",
+            company="Acme", source="adzuna", apply_url="https://adzuna.co.uk/8",
+        ),
+    ]
+    assert len(deduplicate(jobs)) == 1
+
+
+def test_dedup_preserves_internal_hyphenated_words():
+    """B-4 negative case: 'Front-End Engineer' must NOT collapse with 'Backend Engineer'.
+
+    The marketing-suffix regex requires whitespace on BOTH sides of the
+    separator, so internal hyphens (no surrounding whitespace) survive.
+    Layer 2 (RapidFuzz) is disabled here to isolate Layer 1 behaviour.
+    """
+    jobs = [
+        _make_job(
+            title="Front-End Engineer",
+            company="Acme", source="reed", apply_url="https://reed.co.uk/9",
+        ),
+        _make_job(
+            title="Backend Engineer",
+            company="Acme", source="adzuna", apply_url="https://adzuna.co.uk/10",
+        ),
+    ]
+    assert len(deduplicate(jobs, enable_fuzzy=False, enable_tfidf=False)) == 2

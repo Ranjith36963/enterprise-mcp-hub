@@ -303,15 +303,18 @@ export default function DashboardPage() {
                 "No jobs found yet"
               )}
             </p>
-            {statusData?.last_run && (
-              <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
-                <Clock className="h-3 w-3" aria-hidden />
-                Last run:{" "}
-                {new Date(
-                  (statusData.last_run as { completed_at?: string }).completed_at ?? ""
-                ).toLocaleString()}
-              </p>
-            )}
+            {statusData?.last_run && (() => {
+              const ts = (statusData.last_run as { timestamp?: string }).timestamp;
+              if (!ts) return null;
+              const d = new Date(ts);
+              if (Number.isNaN(d.getTime())) return null;
+              return (
+                <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
+                  <Clock className="h-3 w-3" aria-hidden />
+                  Last run: {d.toLocaleString()}
+                </p>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2">
@@ -369,7 +372,7 @@ export default function DashboardPage() {
               { label: "Total Matches", value: total, icon: Briefcase },
               { label: "New Today", value: counts["24h"] || 0, icon: Sparkles },
               { label: "This Week", value: counts["7d"] || 0, icon: TrendingUp },
-              { label: "Active Bucket", value: activeBucket.toUpperCase(), icon: Globe },
+              { label: `Active (${activeBucket.toUpperCase()})`, value: counts[activeBucket] ?? 0, icon: Globe },
             ].map(({ label, value: v, icon: Icon }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
