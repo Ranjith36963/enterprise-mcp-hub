@@ -372,7 +372,7 @@ export default function DashboardPage() {
               { label: "Total Matches", value: total, icon: Briefcase },
               { label: "New Today", value: counts["24h"] || 0, icon: Sparkles },
               { label: "This Week", value: counts["7d"] || 0, icon: TrendingUp },
-              { label: "Active Bucket", value: activeBucket.toUpperCase(), icon: Globe },
+              { label: `Active (${activeBucket.toUpperCase()})`, value: counts[activeBucket] ?? 0, icon: Globe },
             ].map(({ label, value: v, icon: Icon }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
